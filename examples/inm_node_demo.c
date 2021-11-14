@@ -466,7 +466,7 @@ static void sensor_handler(sched_task *task) {
 			light_meter_state = adc_value;
 			msg_data_out.s.sensor_type = REMTCAM_SENSOR_T_LIGHT;
 			// Convert the 10-bit ADC result to an 8-bit value.
-			msg_data_out.s.value = (remtcam_sensor_value)(adc_value >> 2);;
+			msg_data_out.s.value = (remtcam_sensor_value)(adc_value >> 2);
 			break;
 		// TODO: etc.
 		}

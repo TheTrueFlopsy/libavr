@@ -32,8 +32,8 @@ ldirs := -L../avr/$(bdir)
 lnames := -lavrtask -lm
 
 # Filename variables.
-asm_targets  :=
-targets      := sched_blinker inm_node_demo
+asm_targets :=
+targets     := sched_blinker inm_node_demo
 
 programs   := $(addprefix prog-, $(targets))
 
