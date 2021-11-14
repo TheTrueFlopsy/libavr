@@ -1,0 +1,18 @@
+# INM address to register under. Usually doesn't matter.
+--inm-adr 17
+
+# TLV message type to look for. Usually DOES matter.
+--tlv-type 3
+
+# Receive relayed messages on loopback, UDP port 3001.
+--ip-adr   127.0.0.1
+--udp-port 3001
+
+--graph-style line
+--graph-width 60
+--range-low   0
+--range-high  1024
+--mask-size   10
+--mask-offset 0
+
+--label-minmax

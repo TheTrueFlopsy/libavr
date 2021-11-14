@@ -1,0 +1,27 @@
+# The router's own INM address.
+--inm-adr 17
+# Enable relay routing (route even when the router is the destination).
+--relay
+
+# Serial-over-USB channel.
+--serial-ch 1 /dev/ttyUSB0
+# IP channel. Use the default UDP port for INM.
+--ip-ch     2 192.168.1.17 0
+# Loopback IP channel for monitoring.
+--ip-ch     3 127.0.0.1 3000
+
+# Reach INM node 1 via the virtual serial port.
+--route 1   1
+# Reach INM node 12 via IP address [192.168.1.12].
+--route 12 2 192.168.1.12
+# Reach INM node 13 via IP address [192.168.1.13].
+--route 13 2 192.168.1.13
+# Reach INM node 14 via IP address [192.168.1.14].
+--route 14 2 192.168.1.14
+
+# Relay any traffic to the router itself on the loopback channel.
+--route 17 3 127.0.0.1 3001
+--route 17 3 127.0.0.1 3002
+
+# Debugging route (default InmHelper route).
+--route 99 3 127.0.0.1 2999

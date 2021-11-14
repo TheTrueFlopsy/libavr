@@ -49,17 +49,9 @@ test_target_o   := $(addprefix $(todir)/, $(addsuffix .o, $(test_targets)))
 test_target_exe := $(addprefix $(tbdir)/, $(test_targets))
 
 # Phony targets.
-.PHONY : all $(programs) $(test_runs) $(libname) $(test_targets) clean doc tests run-tests
+.PHONY : all clean doc lib tests run-tests $(test_runs) $(libname) $(test_targets)
 
-all : $(libname)
-
-$(test_runs) : run-% : %
-$(test_runs) : run-% : $(tbdir)/%
-	$<
-
-$(libname) : $(builddirs) $(libname_a)
-
-$(test_targets) : % : $(builddirs) $(tbdir)/%
+all : lib tests
 
 clean :
 	rm -f $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex $(todir)/*.o  $(tbdir)/*_test
@@ -69,9 +61,20 @@ doc : $(headers)
 	mkdir -p $(doc_dir) $(doc_conf_dir)
 	$(natural) -i . -o HTML $(doc_dir) -p $(doc_conf_dir)
 
+lib : $(libname)
+
 tests : $(test_targets)
 
 run-tests : $(test_runs)
+
+$(test_runs) : run-% : %
+$(test_runs) : run-% : $(tbdir)/%
+	$<
+
+$(libname) : $(builddirs) $(libname_a)
+
+$(test_targets) : % : $(builddirs) $(tbdir)/%
+
 
 # File targets.
 $(builddirs) :

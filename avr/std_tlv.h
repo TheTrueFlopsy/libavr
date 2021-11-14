@@ -256,6 +256,7 @@ enum {
 	TTLV_MSG_L_REGPAIR_WR_EXCH  = sizeof(ttlv_msg_regpair)
 };
 
+// TODO: Document these macros.
 #define TTLV_CHECK_RESULT TTLV_CHECK_TL(TTLV_MSG_T_RESULT, TTLV_MSG_L_RESULT)
 #define TTLV_CHECK_INM_RESULT TTLV_CHECK_TL(TTLV_MSG_T_INM_RESULT, TTLV_MSG_L_INM_RESULT)
 #define TTLV_CHECK_REG_READ TTLV_CHECK_TL(TTLV_MSG_T_REG_READ, TTLV_MSG_L_REG_READ)
@@ -276,6 +277,8 @@ enum {
 //       by creating application-specific implementations of the READ_REG and
 //       WRITE_REG operations. The other register operations can then be defined
 //       declaratively in terms of READ_REG and WRITE_REG.
+
+// TODO: Document these macros.
 
 #define TTLV_STD_REG_TOGGLE(RF, WF, DF) \
 	static ttlv_result DF(ttlv_reg_index index, ttlv_reg_value *value_p) { \

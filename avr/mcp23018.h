@@ -11,8 +11,6 @@
 
 #include "i2chelper.h"
 
-// TODO: Write doc comments for this module.
-
 #ifdef MCP23018_BANK_MODE
 // --- MCP23018 register pair addresses (bits 0:3) ---
 // NOTE: The IODIRx registers are set to all ones (i.e. all inputs) on startup/reset.
