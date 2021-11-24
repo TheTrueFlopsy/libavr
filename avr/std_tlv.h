@@ -411,8 +411,9 @@ ttlv_state ttlv_xmit_result(ttlv_result res);
 	Function: ttlv_xmit_inm_result
 	Convenience function that uses <ttlv_xmit> to transmit a <TTLV_MSG_T_INM_RESULT>
 	message. The INM destination address and request ID in the transmitted message
-	will be copied from the *msg_id* field of <ttlv_recv_inm_header> (assumed to
-	contain the source address and message ID of the most recently received request).
+	will be copied from the *srcadr* and *msg_id* fields of <ttlv_recv_inm_header>
+	(assumed to contain the source address and message ID of the most recently
+	received request).
 	
 	Parameters:
 		res - The result code to send in the <TTLV_MSG_T_INM_RESULT> message.
