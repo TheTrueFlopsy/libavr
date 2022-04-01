@@ -86,12 +86,12 @@ static void blink_handler(sched_task *task) {
 		if (ttlv_recv_header.h.type == 0x11 && ttlv_recv_header.h.length == 2) {
 			ttlv_get_bytes(2, blink_states);
 			ttlv_finish_recv();
-			ttlv_xmit(0, 1, 2, (const uint8_t*)"OK");
+			ttlv_xmit(ttlv_recv_inm_header.h.srcadr, 1, 2, (const uint8_t*)"OK");
 		}
 		else {
 			ttlv_finish_recv();
-			//ttlv_xmit(0, 1, 2, (const uint8_t*)"NO");
-			ttlv_xmit(0, 0x11, 2, ttlv_recv_header.b);
+			//ttlv_xmit(ttlv_recv_inm_header.h.srcadr, 1, 2, (const uint8_t*)"NO");
+			ttlv_xmit(ttlv_recv_inm_header.h.srcadr, 0x11, 2, blink_states);
 		}
 	}
 	
@@ -148,6 +148,11 @@ int main(void) {
 	ttlv_xmit_inm_header.h.srcadr = 0x20; // Set INM source address.
 	
 	init_tasks();
+	
+	// Speed up the CPU clock.
+	// CAUTION: MUST be done with interrupts disabled.
+	//CLKPR = BV(CLKPCE); // Begin clock prescaler update.
+	//CLKPR = 0; // No prescaling, full steam ahead.
 	
 	sched_run();
 	

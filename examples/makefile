@@ -13,7 +13,9 @@ device := atmega328p
 mcu := atmega328p
 avrdude_device := m328p
 
-port ?= /dev/ttyUSB0
+port ?= /dev/ttyUSB0  # Good for Arduino and Bus Pirate.
+#port ?= /dev/ttyACM0  # Good for Pololu programmer.
+
 avrdude := avrdude
 
 # Directory variables.
@@ -32,10 +34,9 @@ ldirs := -L../avr/$(bdir)
 lnames := -lavrtask -lm
 
 # Filename variables.
-asm_targets :=
-targets     := sched_blinker inm_node_demo
+targets := sched_blinker inm_node_demo
 
-programs   := $(addprefix prog-, $(targets))
+programs := $(addprefix prog-, $(targets))
 
 headers    := *.h
 target_o   := $(addprefix $(odir)/, $(addsuffix .o, $(targets)))
@@ -44,11 +45,16 @@ target_hex := $(addprefix $(bdir)/, $(addsuffix .hex, $(targets)))
 
 # Command option variables.
 warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
+
+# 16 MHz MCU clock, 32 clock cycles per scheduler tick.
+macro_defs := -DF_CPU=16000000L -DSCHED_CLOCK_PRESCALE_LOG=5  # Good for Arduino Uno.
+# 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
+#macro_defs := -DF_CPU=1000000L -DSCHED_CLOCK_PRESCALE_LOG=3  # Good for ATmega out-of-the-box.
+
 # Re: -mcall-prologues
 # "Functions prologues/epilogues are expanded as calls to appropriate subroutines.
 #  Code size is smaller."
 # https://gcc.gnu.org/onlinedocs/gcc/AVR-Options.html
-macro_defs := -DF_CPU=16000000L
 ASFLAGS := $(macro_defs) -mmcu=$(mcu)
 CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os $(idirs)
 # Re: -Wl,-relax
@@ -71,6 +77,13 @@ clean :
 $(programs) : prog-% : %
 $(programs) : prog-% : $(bdir)/%.hex
 	$(avrdude) -v -p $(avrdude_device) -c arduino -P $(port) -b 115200 -D -U flash:w:$<
+
+# Bus Pirate settings:
+#$(avrdude) -v -p $(avrdude_device) -c buspirate -x spifreq=1 -P $(port) -U flash:w:$<
+# Pololu programmer settings:
+#$(avrdude) -v -p $(avrdude_device) -c avrisp2 -B 100kHz -P $(port) -U flash:w:$<
+# Arduino settings:
+#$(avrdude) -v -p $(avrdude_device) -c arduino -P $(port) -b 115200 -D -U flash:w:$<
 
 # TODO: Add a command that programs the EEPROM (with a hex file that only
 #       contains the .eeprom section).

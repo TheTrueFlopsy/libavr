@@ -10,6 +10,37 @@
 
 #include "task_sched.h"
 
+#define SCHED_CLOCK_PRESCALE_1    (BV(CS20))
+#define SCHED_CLOCK_PRESCALE_8    (BV(CS21))
+#define SCHED_CLOCK_PRESCALE_32   (BV(CS21) | BV(CS20))
+#define SCHED_CLOCK_PRESCALE_64   (BV(CS22))
+#define SCHED_CLOCK_PRESCALE_128  (BV(CS22) | BV(CS20))
+#define SCHED_CLOCK_PRESCALE_256  (BV(CS22) | BV(CS21))
+#define SCHED_CLOCK_PRESCALE_1024 (BV(CS22) | BV(CS21) | BV(CS20))
+
+#ifndef SCHED_CLOCK_PRESCALE_LOG
+#error "SCHED_CLOCK_PRESCALE_LOG must be defined."
+#endif
+
+// CAUTION: This setting MUST match the one in SCHED_CLOCK_PRESCALE_LOG
+#if SCHED_CLOCK_PRESCALE_LOG == 0
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_1
+#elif SCHED_CLOCK_PRESCALE_LOG == 3
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_8
+#elif SCHED_CLOCK_PRESCALE_LOG == 5
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_32
+#elif SCHED_CLOCK_PRESCALE_LOG == 6
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_64
+#elif SCHED_CLOCK_PRESCALE_LOG == 7
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_128
+#elif SCHED_CLOCK_PRESCALE_LOG == 8
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_256
+#elif SCHED_CLOCK_PRESCALE_LOG == 10
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_1024
+#else
+#error "SCHED_CLOCK_PRESCALE_LOG has an illegal value."
+#endif
+
 volatile sched_catflags sched_isr_tcww; // ISR-Task Category Wakeup Word (I-TCWW).
 
 sched_catflags sched_task_tcww; // Task-Task Category Wakeup Word (T-TCWW).
@@ -140,9 +171,8 @@ void sched_run(void) {
 	
 	sei(); // Ensure that interrupts are enabled.
 	
-	// Start the tick counter with prescaler divisor 32.
-	// TODO: Make the divisor compile-time configurable.
-	TCCR2B |= BV(CS21) | BV(CS20);
+	// Start the tick counter with the appropriate prescaler divisor.
+	TCCR2B |= SCHED_CLOCK_PRESCALE_BITS;
 	
 	// Main scheduler loop.
 	while (1) {
@@ -277,7 +307,11 @@ void sched_run(void) {
 			sched_delay = sched_time_sub(SCHED_MIN_DELTA, delta);
 			
 			// Impose scheduler iteration rate limiting delay.
+#if SCHED_CLOCK_PRESCALE_LOG < 2
+			delta.h = ((uint16_t)sched_delay.l >> (2 - SCHED_CLOCK_PRESCALE_LOG));
+#else
 			delta.h = ((uint16_t)sched_delay.l << (SCHED_CLOCK_PRESCALE_LOG - 2));
+#endif
 			delta.h += sched_delay.h << (SCHED_CLOCK_PRESCALE_LOG + 6); // 8 - 2 = 6.
 			_delay_loop_2(delta.h); // Four cycles per step.
 		}

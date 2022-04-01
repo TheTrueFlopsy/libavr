@@ -11,11 +11,16 @@ mcu := atmega328p
 avrdude_device := m328p
 
 warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
+
+# 16 MHz MCU clock, 32 clock cycles per scheduler tick.
+macro_defs := -DF_CPU=16000000L -DSCHED_CLOCK_PRESCALE_LOG=5  # Good for Arduino Uno.
+# 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
+#macro_defs := -DF_CPU=1000000L -DSCHED_CLOCK_PRESCALE_LOG=3  # Good for ATmega out-of-the-box.
+
 # Re: -mcall-prologues
 # "Functions prologues/epilogues are expanded as calls to appropriate subroutines.
 #  Code size is smaller."
 # https://gcc.gnu.org/onlinedocs/gcc/AVR-Options.html
-macro_defs := -DF_CPU=16000000L
 ASFLAGS := $(macro_defs) -mmcu=$(mcu)
 CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os
 testflags := $(macro_defs) -g $(warnings)
@@ -49,23 +54,9 @@ test_target_o   := $(addprefix $(todir)/, $(addsuffix .o, $(test_targets)))
 test_target_exe := $(addprefix $(tbdir)/, $(test_targets))
 
 # Phony targets.
-.PHONY : all clean doc lib tests run-tests $(test_runs) $(libname) $(test_targets)
+.PHONY : all $(test_runs) $(libname) $(test_targets) clean doc tests run-tests
 
-all : lib tests
-
-clean :
-	rm -f $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex $(todir)/*.o  $(tbdir)/*_test
-
-# NOTE: Output dirs are automatically excluded from doc generation.
-doc : $(headers)
-	mkdir -p $(doc_dir) $(doc_conf_dir)
-	$(natural) -i . -o HTML $(doc_dir) -p $(doc_conf_dir)
-
-lib : $(libname)
-
-tests : $(test_targets)
-
-run-tests : $(test_runs)
+all : $(libname)
 
 $(test_runs) : run-% : %
 $(test_runs) : run-% : $(tbdir)/%
@@ -75,6 +66,17 @@ $(libname) : $(builddirs) $(libname_a)
 
 $(test_targets) : % : $(builddirs) $(tbdir)/%
 
+clean :
+	rm -f $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex $(todir)/*.o  $(tbdir)/*_test
+
+# NOTE: Output dirs are automatically excluded from doc generation.
+doc : $(headers)
+	mkdir -p $(doc_dir) $(doc_conf_dir)
+	$(natural) -i . -o HTML $(doc_dir) -p $(doc_conf_dir)
+
+tests : $(test_targets)
+
+run-tests : $(test_runs)
 
 # File targets.
 $(builddirs) :

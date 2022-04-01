@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
 	t = SCHED_TIME_MUSECS(1030);
 	PRINT_SYM(t.l, d);
 	PRINT_SYM(t.h, d);
-	t = SCHED_TIME_MS(1000);
+	t = SCHED_TIME_MS(800);
 	PRINT_SYM(t.l, d);
 	PRINT_SYM(t.h, d);
 	
