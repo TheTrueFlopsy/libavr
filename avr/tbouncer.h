@@ -10,7 +10,7 @@
 	Input debouncing module that uses the <task_sched.h> task scheduler.
 	
 	NOTE: To disable debouncing on an ATmega I/O port, define the macro
-	TBOUNCER_DISABLE_PORT_{x}, where {x} is "B", "C" or "D".
+	TBOUNCER_DISABLE_PORT_{x}, where {x} is "A", "B", "C" or "D".
 */
 
 /**
@@ -20,6 +20,70 @@
 	should trigger pin change notifications.
 */
 #define TBOUNCER_ALL 0xff
+
+#ifdef LIBAVR_ATTINY
+
+#ifndef TBOUNCER_DISABLE_PORT_C
+#define TBOUNCER_DISABLE_PORT_C
+#endif
+
+#ifndef TBOUNCER_DISABLE_PORT_D
+#define TBOUNCER_DISABLE_PORT_D
+#endif
+
+#define TBOUNCER_INIT(TNC, PD, AM, BM, AC, IM, IS) \
+	tbouncer_init((TNC), (PD), (AM), (BM), 0, 0, (AC), (IM), (IS))
+
+#else
+
+#ifndef TBOUNCER_DISABLE_PORT_A
+#define TBOUNCER_DISABLE_PORT_A
+#endif
+
+#define TBOUNCER_INIT(TNC, PD, BM, CM, DM, AC, IM, IS) \
+	tbouncer_init((TNC), (PD), 0, (BM), (CM), (DM), (AC), (IM), (IS))
+
+#endif
+
+#ifndef TBOUNCER_DISABLE_PORT_A
+/**
+	Variable: tbouncer_a_mask
+	Pin change notification bit mask for I/O port A. Notifications will be
+	sent for a given pin only if the corresponding bit in this mask is set
+	to one (1).
+*/
+extern uint8_t tbouncer_a_mask;
+
+/**
+	Variable: tbouncer_a
+	Debounced pin values for I/O port A.
+*/
+extern uint8_t tbouncer_a;
+
+/**
+	Variable: tbouncer_a_prev
+	Previous debounced pin values for I/O port A.
+*/
+extern uint8_t tbouncer_a_prev;
+
+/**
+	Variable: tbouncer_a_diff
+	Pin change flags for I/O port A. Equal to <tbouncer_a> XOR <tbouncer_a_prev>.
+*/
+extern uint8_t tbouncer_a_diff;
+
+/**
+	Macro: TBOUNCER_A_RISING
+	Rising edge flags for I/O port A. Evaluates to <tbouncer_a> AND NOT <tbouncer_a_prev>.
+*/
+#define TBOUNCER_A_RISING (tbouncer_a & ~tbouncer_a_prev)
+
+/**
+	Macro: TBOUNCER_A_FALLING
+	Falling edge flags for I/O port A. Evaluates to NOT <tbouncer_a> AND <tbouncer_a_prev>.
+*/
+#define TBOUNCER_A_FALLING (~tbouncer_a & tbouncer_a_prev)
+#endif
 
 #ifndef TBOUNCER_DISABLE_PORT_B
 /**
@@ -183,6 +247,8 @@ extern uint8_t tbouncer_invoke_st;
 			of the argument is ignored.)
 		poll_delay - Scheduler delay of the debouncer task. Determines how
 			often the I/O ports are sampled and the debounced pin values updated.
+		a_mask - Pin change notification bit mask for I/O port A. Will be used
+			to initialize <tbouncer_a_mask>.
 		b_mask - Pin change notification bit mask for I/O port B. Will be used
 			to initialize <tbouncer_b_mask>.
 		c_mask - Pin change notification bit mask for I/O port C. Will be used
@@ -198,7 +264,7 @@ extern uint8_t tbouncer_invoke_st;
 */
 void tbouncer_init(
 	uint8_t task_num_cat, sched_time poll_delay,
-	uint8_t b_mask, uint8_t c_mask, uint8_t d_mask,
+	uint8_t a_mask, uint8_t b_mask, uint8_t c_mask, uint8_t d_mask,
 	sched_catflags awaken_cats, uint8_t invoke_mask, uint8_t invoke_st);
 
 /**

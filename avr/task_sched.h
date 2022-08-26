@@ -7,15 +7,20 @@
 	File: task_sched.h
 	A task scheduler for ATmega microcontrollers.
 	
-	NOTE: The scheduler uses the ATmega's Timer2 to implement
-	the scheduling clock, so programs that use the scheduler
-	must be carefully written if they also use that timer
-	for other purposes. If the macro *SCHED_NO_ISR* is defined,
-	the scheduler will be compiled without an *TIMER2_OVF_vect*
-	ISR, which means that external code needs to provide that
-	ISR and ensure that it updates the scheduling clock. The
-	documentation of the variable <sched_tick_count_h> contains
-	more information about this.
+	NOTE: The scheduler uses the ATmega's Timer2 (or Timer0)
+	to implement the scheduling clock, so programs that use
+	the scheduler must be carefully written if they also use
+	that timer for other purposes.
+	
+	NOTE: If the macro *SCHED_USE_TIMER0* is defined, then the scheduler
+	will use Timer0 instead of Timer2. Since the ATtiny has no Timer2,
+	this macro is defined internally when *LIBAVR_ATTINY* is defined.
+	
+	NOTE: If the macro *SCHED_NO_ISR* is defined, then the scheduler
+	will be compiled without an *TIMER[02]_OVF_vect* ISR, which means
+	that external code needs to provide that ISR and ensure that it
+	updates the scheduling clock. The documentation of the variable
+	<sched_tick_count_h> contains more information about this.
 */
 
 // IDEA: Add a feature that lets a task "hijack" the MCU. Run
@@ -29,11 +34,16 @@
 #define MUSECS_TO_CYCLES(T) ((F_CPU * (T)) / 1000000L)
 
 // CAUTION: The SCHED_CLOCK_PRESCALE_LOG setting MUST be 0, 3, 5, 6, 7, 8 or 10,
-//          and MUST match the SCHED_CLOCK_PRESCALE_BITS setting (see task_sched.c).
+//          (0, 3, 6, 8 or 10 when using Timer0) and MUST match the
+//          SCHED_CLOCK_PRESCALE_BITS setting (see task_sched.c).
 //          It MUST also be true (with integer division) that
 //            1 <= (10^6 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU <= 255.
 #ifndef SCHED_CLOCK_PRESCALE_LOG
+#if defined(SCHED_USE_TIMER0) || defined(LIBAVR_ATTINY)
+#define SCHED_CLOCK_PRESCALE_LOG 6
+#else
 #define SCHED_CLOCK_PRESCALE_LOG 5
+#endif
 #endif
 
 #define SCHED_CLOCK_PRESCALE (1 << SCHED_CLOCK_PRESCALE_LOG)
@@ -59,6 +69,10 @@
 #define SCHED_MIN_DELTA_L ((uint8_t)MUSECS_TO_SCHED_SMALLTICKS(SCHED_MIN_DELTA_MUSECS))
 #define SCHED_MIN_DELTA_H ((uint16_t)MUSECS_TO_SCHED_BIGTICKS(SCHED_MIN_DELTA_MUSECS))
 
+#ifndef SCHED_MAX_TASKS
+#ifdef LIBAVR_ATTINY
+#define SCHED_MAX_TASKS 8
+#else
 /**
 	Macro: SCHED_MAX_TASKS
 	The maximum number of tasks that can be scheduled simultaneously.
@@ -69,6 +83,8 @@
 	allocated memory used by the scheduler.
 */
 #define SCHED_MAX_TASKS 16
+#endif
+#endif
 
 #define TASK_ST_N(B) (1 << (B))
 #define TASK_ST_MAX(B) (TASK_ST_N(B) - 1)
@@ -299,7 +315,7 @@ extern uint8_t sched_list_size;
 	
 	NOTE: To get correct scheduling when *SCHED_NO_ISR* is defined, this
 	variable MUST be incremented in an externally defined *TIMER2_OVF_vect*
-	ISR.
+	(*TIMER0_OVF_vect* when *SCHED_USE_TIMER0* is defined) ISR.
 */
 extern volatile uint16_t sched_tick_count_h;
 
@@ -375,6 +391,12 @@ void sched_init(void);
 	*st_mask* are equal to the corresponding bits in *st_val*. The search starts
 	at index *start_i* in the task list. If no matching task is found, then
 	<SCHED_MAX_TASKS> is returned.
+	
+	NOTE: If all bits in *st_mask* are set (i.e. the value is 255) and *st_val*
+	      is <TASK_ST_GARBAGE>, then <SCHED_MAX_TASKS> will always be returned.
+	      This special case can be used when an always-empty query is useful,
+	      e.g. when some API requires task query arguments to use as a filter
+	      for synchronous task invocation, but that feature isn't being used.
 	
 	Parameters:
 		st_mask - Bit mask to apply to the task control and status byte.

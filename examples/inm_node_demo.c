@@ -617,7 +617,7 @@ int main(void) {
 	
 	sched_init();
 	
-	tbouncer_init(
+	TBOUNCER_INIT(
 		TASK_ST_MAKE(0, NOAWAKE_TASK_CAT, 0), SCHED_TIME_MS(10),
 		BV(LED_INPUT_PIN0) | BV(LED_INPUT_PIN1), 0, 0,
 		0, TASK_ST_CAT_MASK, TASK_ST_CAT(LED_TASK_CAT));

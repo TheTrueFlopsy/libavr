@@ -10,6 +10,59 @@
 
 #include "task_sched.h"
 
+#ifdef LIBAVR_ATTINY
+
+// NOTE: No Timer2 on the ATtiny.
+#define SCHED_USE_TIMER0
+
+// NOTE: This thing with inconsistent names in the I/O headers is so dumb.
+#ifndef TIMER0_OVF_vect
+#define TIMER0_OVF_vect TIM0_OVF_vect
+#endif
+
+#endif
+
+#ifdef SCHED_USE_TIMER0
+
+#define SCHED_CLOCK_PRESCALE_1    (BV(CS00))
+#define SCHED_CLOCK_PRESCALE_8    (BV(CS01))
+#define SCHED_CLOCK_PRESCALE_64   (BV(CS01) | BV(CS00))
+#define SCHED_CLOCK_PRESCALE_256  (BV(CS02))
+#define SCHED_CLOCK_PRESCALE_1024 (BV(CS02) | BV(CS00))
+
+#ifndef SCHED_CLOCK_PRESCALE_LOG
+#error "SCHED_CLOCK_PRESCALE_LOG must be defined."
+#endif
+
+#if SCHED_CLOCK_PRESCALE_LOG == 0
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_1
+#elif SCHED_CLOCK_PRESCALE_LOG == 3
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_8
+#elif SCHED_CLOCK_PRESCALE_LOG == 6
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_64
+#elif SCHED_CLOCK_PRESCALE_LOG == 8
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_256
+#elif SCHED_CLOCK_PRESCALE_LOG == 10
+#define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_1024
+#else
+#error "SCHED_CLOCK_PRESCALE_LOG has an illegal value."
+#endif
+
+#define SCHED_TIMER_VECT TIMER0_OVF_vect
+
+#define SCHED_TCNT TCNT0
+#define SCHED_TIMSK TIMSK0
+#define SCHED_TCCRA TCCR0A
+#define SCHED_TCCRB TCCR0B
+#define SCHED_TIFR TIFR0
+
+#define SCHED_TIMSK_INIT_VAL BV(TOIE0)
+#define SCHED_TCCRA_INIT_VAL 0
+#define SCHED_TCCRB_INIT_VAL 0
+#define SCHED_TIFR_BIT_MASK BV(TOV0)
+
+#else
+
 #define SCHED_CLOCK_PRESCALE_1    (BV(CS20))
 #define SCHED_CLOCK_PRESCALE_8    (BV(CS21))
 #define SCHED_CLOCK_PRESCALE_32   (BV(CS21) | BV(CS20))
@@ -22,7 +75,6 @@
 #error "SCHED_CLOCK_PRESCALE_LOG must be defined."
 #endif
 
-// CAUTION: This setting MUST match the one in SCHED_CLOCK_PRESCALE_LOG
 #if SCHED_CLOCK_PRESCALE_LOG == 0
 #define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_1
 #elif SCHED_CLOCK_PRESCALE_LOG == 3
@@ -39,6 +91,21 @@
 #define SCHED_CLOCK_PRESCALE_BITS SCHED_CLOCK_PRESCALE_1024
 #else
 #error "SCHED_CLOCK_PRESCALE_LOG has an illegal value."
+#endif
+
+#define SCHED_TIMER_VECT TIMER2_OVF_vect
+
+#define SCHED_TCNT TCNT2
+#define SCHED_TIMSK TIMSK2
+#define SCHED_TCCRA TCCR2A
+#define SCHED_TCCRB TCCR2B
+#define SCHED_TIFR TIFR2
+
+#define SCHED_TIMSK_INIT_VAL BV(TOIE2)
+#define SCHED_TCCRA_INIT_VAL 0
+#define SCHED_TCCRB_INIT_VAL 0
+#define SCHED_TIFR_BIT_MASK BV(TOV2)
+
 #endif
 
 volatile sched_catflags sched_isr_tcww; // ISR-Task Category Wakeup Word (I-TCWW).
@@ -60,7 +127,7 @@ static sched_time sched_delay; // Scheduler rate limiting delay.
 #endif
 
 #ifndef SCHED_NO_ISR
-ISR(TIMER2_OVF_vect) { // The tick counter has overflowed.
+ISR(SCHED_TIMER_VECT) { // The tick counter has overflowed.
 	sched_tick_count_h++; // Add 1 to the high bytes of the tick count.
 }
 #endif
@@ -97,14 +164,18 @@ void sched_init(void) {
 #endif
 	
 	// Configure the scheduler's tick counter.
-	TCNT2 = 0; // Clear the count.
-	TIMSK2 = BV(TOIE2); // Enable overflow interrupt.
-	TCCR2A = 0; // No waveform generation, normal mode.
-	TCCR2B = 0; // Normal mode, counter stopped.
+	SCHED_TCNT = 0; // Clear the count.
+	SCHED_TIMSK = SCHED_TIMSK_INIT_VAL; // Enable overflow interrupt.
+	SCHED_TCCRA = SCHED_TCCRA_INIT_VAL; // No waveform generation, normal mode.
+	SCHED_TCCRB = SCHED_TCCRB_INIT_VAL; // Normal mode, counter stopped.
 }
 
 uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
 	uint8_t i;
+	
+	if (st_val == TASK_ST_GARBAGE && st_mask == 0xff)
+		return SCHED_MAX_TASKS;
+	
 	st_val &= st_mask;
 	
 	for (i = start_i; i < sched_list_size; i++) {
@@ -172,7 +243,7 @@ void sched_run(void) {
 	sei(); // Ensure that interrupts are enabled.
 	
 	// Start the tick counter with the appropriate prescaler divisor.
-	TCCR2B |= SCHED_CLOCK_PRESCALE_BITS;
+	SCHED_TCCRB |= SCHED_CLOCK_PRESCALE_BITS;
 	
 	// Main scheduler loop.
 	while (1) {
@@ -188,28 +259,28 @@ void sched_run(void) {
 			tcww = sched_isr_tcww;
 			sched_isr_tcww = 0;
 			
-			// Get TCNT2 as seen /before/ checking for overflow.
-			delta.l = TCNT2;
+			// Get TCNT as seen /before/ checking for overflow.
+			delta.l = SCHED_TCNT;
 			
 			// Get 'sched_tick_count_h'.
 			delta.h = sched_tick_count_h;
 			
-			// NOTE: Timer counts are NOT stopped by disabling interrupts, so TCNT2
+			// NOTE: Timer counts are NOT stopped by disabling interrupts, so TCNT
 			//       may actually overflow /inside/ the atomic block, and in that case,
 			//       there obviously won't be any update of 'sched_tick_count_h' until after
 			//       it has been read into 'delta.h', and then it will be /too late/.
-			if (BV(TOV2) & TIFR2) { // A timer overflow has happened sometime /between/ cli() and now.
+			if (SCHED_TIFR_BIT_MASK & SCHED_TIFR) { // A timer overflow has happened sometime /between/ cli() and now.
 				// Clear the overflow interrupt flag, because we'll update 'sched_tick_count_h' here.
-				TIFR2 = BV(TOV2); // Clear-by-setting semantics.
+				SCHED_TIFR = SCHED_TIFR_BIT_MASK; // Clear-by-setting semantics.
 				
-				// Get TCNT2 as seen /after/ the overflow, hopefully before the next one.
-				delta.l = TCNT2;
+				// Get TCNT as seen /after/ the overflow, hopefully before the next one.
+				delta.l = SCHED_TCNT;
 				
 				// Increment and write back 'sched_tick_count_h'.
 				delta.h++;
 				sched_tick_count_h = delta.h;
 			}
-			// else: Keep the TCNT2 value we stored /before/ checking for and /not seeing/ an overflow.
+			// else: Keep the TCNT value we stored /before/ checking for and /not seeing/ an overflow.
 		}
 		
 		// Get and clear the Task-Task Category Wakeup Word.
