@@ -1,16 +1,72 @@
 #!/usr/bin/python3
 
 import argparse
+import logging
+import logging.handlers
 import selectors
 import sys
 
 import inm
+from inm import ValueConversions as _VC
+from inm import StandardTypes as _ST, StandardResults as _SRes, StandardRegisters as _SR
 
 _DEFAULT_UDP_PORT = inm.InetMessageChannel.DEFAULT_UDP_PORT
 _MAX_INM_ADR = inm.MessageHeader.MAX_MESSAGE_ADR
 _BROADCAST_ADR = inm.MessageHeader.BROADCAST_ADR
 
 # TODO: Implement a TLV/INM console.
+
+_prog_title = 'INM Router Script'
+# 0xAABBCCDD
+# A: major version, B: minor version, C: revision, D: build.
+_prog_version = 0x01_00_02_02  # 1.0.2.2
+
+_firmware_id_l = 0x01
+_firmware_id_h = 0x03
+_firmware_id = (_firmware_id_h << 8) | _firmware_id_l
+_firmware_version = 0xff & _prog_version
+
+_def_loglevel     = logging.INFO
+_syslog_adr       = '/dev/log'  # TODO: Make this configurable.
+_rootlog_handlers = []
+_rootlog          = logging.getLogger()
+_log              = logging.getLogger('inm_router')
+
+_msg_factory = inm.default_msg_factory
+
+
+def _init_logger(loglevel):
+	global _rootlog_handler
+	
+	stream_handler = logging.StreamHandler()
+	formatter = logging.Formatter('{levelname}:{name}: {message}', style='{')
+	stream_handler.setFormatter(formatter)
+	
+	syslog_handler = logging.handlers.SysLogHandler(
+		_syslog_adr, logging.handlers.SysLogHandler.LOG_DAEMON)
+	formatter = logging.Formatter('{levelname}:{name}: {message}', style='{')
+	syslog_handler.setFormatter(formatter)
+	
+	_rootlog.setLevel(loglevel)
+	_rootlog.addHandler(stream_handler)
+	_rootlog.addHandler(syslog_handler)
+	_rootlog_handlers = [stream_handler, syslog_handler]
+
+def _set_loglevel(loglevel):
+	_rootlog.setLevel(loglevel)
+
+def _set_log_format(debug_fmt):
+	fmt = '{levelname}:{name}: {message}'
+	
+	if debug_fmt:
+		fmt = '{levelname}:{name}:{funcName}:{lineno}: {message}'
+	
+	for handler in _rootlog_handlers:
+		formatter = logging.Formatter(fmt, style='{')
+		handler.setFormatter(formatter)
+
+def _shutdown_logger():
+	logging.shutdown()
 
 class _BetterArgumentParser(argparse.ArgumentParser):
 	def convert_arg_line_to_args(self, arg_line):
@@ -27,38 +83,47 @@ def _parse_args(args=None, namespace=None):
 		fromfile_prefix_chars='@')
 	
 	arg_p.add_argument('-A', '--inm-adr',
-		help='INM address of router', metavar='INM_ADR',
+		help='INM address of router', metavar='INMADR',
 		default=0, type=int, dest='inm_adr')
+	arg_p.add_argument('-D', '--debug-log',
+		help='use debug log format', action='store_true', dest='debug_log')
+	arg_p.add_argument('-L', '--loglevel',
+		help='set numeric log level', default=_def_loglevel, type=int,
+		metavar='LOGLEVEL', dest='loglevel')
 	arg_p.add_argument('-I', '--ip-ch',
-		help='<channel number> <IP address> <UDP port>', metavar='IP_CH',
+		help='<channel number> <IP address> <UDP port>', metavar=('CH', 'IPADR', 'PORT'),
 		nargs=3, action='append', dest='ip_channels')
-	arg_p.add_argument('-S', '--serial-ch',
-		help='<channel number> <serial port>', metavar='SERIAL_CH',
-		nargs=2, action='append', dest='serial_channels')
-	arg_p.add_argument('-r', '--route',
-		help='<INM destination> <channel number> <link address ...>', metavar='ROUTE',
-		nargs='+', action='append', dest='routes')
 	arg_p.add_argument('-R', '--relay',
 		help='relay mode, route messages even when the router is the destination',
 		action='store_true', dest='relay')
+	arg_p.add_argument('-S', '--serial-ch',
+		help='<channel number> <serial port>', metavar=('CH', 'PORT'),
+		nargs=2, action='append', dest='serial_channels')
+	arg_p.add_argument('-V', '--version',
+		help='print version number and exit', action='store_true', dest='print_version')
+	arg_p.add_argument('-r', '--route',
+		help='<INM destination> <channel number> <link address ...>', metavar=('INMADR', 'ARG'),
+		nargs='+', action='append', dest='routes')
+	arg_p.add_argument('-v', '--verbose',
+		help='increase log verbosity', action='count', default=0, dest='verbosity')
 	
 	return arg_p.parse_args(args, namespace)
 
 def _parse_inm_adr(s):
 	inm_adr = int(s)
 	if inm_adr < 0 or inm_adr > _MAX_INM_ADR:
-		print('Invalid INM address {0} specified. Exiting.'.format(inm_adr))
+		_log.error(f'Invalid INM address {inm_adr} specified. Exiting.')
 		sys.exit(2)
 	return inm_adr
 
 def _parse_ch_num(s, channels=None):
 	ch_num = int(s)
 	if ch_num < 0 or ch_num > 9999:
-		print('Invalid channel number {0} specified. Exiting.'.format(ch_num))
+		_log.error(f'Invalid channel number {ch_num} specified. Exiting.')
 		sys.exit(3)
 	
 	if channels is not None and ch_num in channels:
-		print('Duplicate channel number {0} specified. Exiting.'.format(ch_num))
+		_log.error(f'Duplicate channel number {ch_num} specified. Exiting.')
 		sys.exit(4)
 	
 	return ch_num
@@ -66,7 +131,7 @@ def _parse_ch_num(s, channels=None):
 def _parse_port_num(s):
 	port_num = int(s)
 	if port_num < 0 or port_num > 0xffff:
-		print('Invalid port number {0} specified. Exiting.'.format(port_num))
+		_log.error(f'Invalid port number {port_num} specified. Exiting.')
 		sys.exit(5)
 	elif port_num == 0:
 		port_num = _DEFAULT_UDP_PORT
@@ -74,7 +139,7 @@ def _parse_port_num(s):
 
 def _parse_serial_link_adr(link_adr):
 	if len(link_adr) > 0:
-		print('Serial channels do not use link addresses. Exiting.')
+		_log.error('Serial channels do not use link addresses. Exiting.')
 		sys.exit(6)
 	return None
 
@@ -84,7 +149,7 @@ def _parse_ip_link_adr(link_adr):
 	elif len(link_adr) == 2:
 		return (link_adr[0], _parse_port_num(link_adr[1]))
 	else:
-		print('Invalid IP link address {0} specified. Exiting.'.format(link_adr))
+		_log.error(f'Invalid IP link address {link_adr} specified. Exiting.')
 		sys.exit(7)
 
 def _init_channels(args, inm_adr, def_selector):
@@ -113,7 +178,7 @@ def _init_routes(args, channels):
 		ch_num = _parse_ch_num(ch_num)
 		
 		if ch_num not in channels:
-			print('Routing channel number {0} not found. Exiting.'.format(ch_num))
+			_log.error(f'Routing channel number {ch_num} not found. Exiting.')
 			sys.exit(10)
 		
 		ch = channels[ch_num]
@@ -123,7 +188,7 @@ def _init_routes(args, channels):
 		elif isinstance(ch, inm.SerialMessageChannel):
 			link_adr = _parse_serial_link_adr(link_adr)
 		else:
-			print('Unrecognized routing channel {0}. Exiting.'.format(ch))
+			_log.error(f'Unrecognized routing channel {ch}. Exiting.')
 			sys.exit(11)
 		
 		rentry = (ch, link_adr)
@@ -142,17 +207,87 @@ def _init_routes(args, channels):
 	
 	return rtab
 
+def _handle_reg_read(header, msg, link_adr):
+	reg_index = msg.format_val(conv=_VC.Int)
+	reg_val = None
+	response = None
+	res = None
+	
+	if reg_index == _SR.FWID_L:
+		reg_val = _firmware_id_l
+	elif reg_index == _SR.FWID_H:
+		reg_val = _firmware_id_h
+	elif reg_index == _SR.FWVERSION:
+		reg_val = _firmware_version
+	else:
+		res = _SRes.REGISTER
+	
+	if reg_val is not None:
+		response = _msg_factory.make_msg_mval(
+			_ST.INM_REG_READ_RES, (reg_index, reg_val, header.msg_id))
+		res = _SRes.OK
+	
+	return response, res
+
+def _handle_regpair_read(header, msg, link_adr):
+	reg_index = msg.format_val(conv=_VC.Int)
+	regpair_val = None
+	response = None
+	res = None
+	
+	if reg_index == _SR.PAIR_FWID:
+		regpair_val = _firmware_id
+	else:
+		res = _SRes.REGISTER
+	
+	if regpair_val is not None:
+		response = _msg_factory.make_msg_mval(
+			_ST.INM_REGPAIR_READ_RES, (reg_index, regpair_val, header.msg_id))
+		res = _SRes.OK
+	
+	return response, res
+
+def _handle_msg(header, msg, link_adr):
+	response = None
+	res = None
+	
+	if msg.typ == _ST.REG_READ:
+		response, res = _handle_reg_read(header, msg, link_adr)
+	elif msg.typ == _ST.REGPAIR_READ:
+		response, res = _handle_regpair_read(header, msg, link_adr)
+	# NOTE: Ignore unrecognized message types.
+	
+	if response is None and res != None and res != _SRes.OK:
+		response = _msg_factory.make_msg(_ST.RESULT, res, 1)
+	
+	return response
+
+
+def _dotted_byte_format(i):
+	a, b, c, d = 0xff & (i >> 24), 0xff & (i >> 16), 0xff & (i >> 8), 0xff & i
+	return f'{a}.{b}.{c}.{d}'
+
 def main():
 	inm.default_msg_factory.default_val_conv = 'hex'
 	
 	args = _parse_args()
+	version_str = _dotted_byte_format(_prog_version)
+	
+	_set_loglevel(max(args.loglevel - 10*args.verbosity, 0))
+	_set_log_format(args.debug_log)
+	
+	if args.print_version:
+		print(version_str)
+		return
+	
+	_log.info(f'Version {version_str}')
 	
 	inm_adr = _parse_inm_adr(args.inm_adr)
 	
 	with selectors.DefaultSelector() as selector:
 		channels = _init_channels(args, inm_adr, selector)
 		if len(channels) == 0:
-			print('No message channels specified. Exiting.')
+			_log.warning('No message channels specified. Exiting.')
 			sys.exit(1)
 		
 		rtab = _init_routes(args, channels)
@@ -166,12 +301,26 @@ def main():
 					msg_for_me, res, header, msg, link_adr = rch.route()
 					
 					if res == inm.ResultCode.SUCCESS:
-						event_type = 'ACCEPT' if msg_for_me else 'ROUTE'
-						print(inm.format_msg_info(msg, event_type, header, link_adr, 8))
+						if msg_for_me:
+							_log.info(inm.format_msg_info(msg, 'ACCEPT', header, link_adr, 8))
+							
+							response = _handle_msg(header, msg, link_adr)
+							
+							if response is not None:
+								res = rch.send(header.srcadr, response, link_adr=link_adr)
+								
+								if res != inm.ResultCode.SUCCESS:
+									_log.info(inm.format_msg_info(res.name, 'REPL_ERR', header, link_adr, 8))
+						else:
+							_log.info(inm.format_msg_info(msg, 'ROUTE', header, link_adr, 8))
 					else:
-						print(inm.format_msg_info(res.name, 'ERROR', header, link_adr, 8))
+						_log.info(inm.format_msg_info(res.name, 'ERROR', header, link_adr, 8))
 		except KeyboardInterrupt:
-			print('Interrupted. Cleaning up and exiting.')
+			_log.info('Interrupted. Cleaning up and exiting.')
 
 if __name__ == '__main__':
+	_init_logger(_def_loglevel)
+	
 	main()
+	
+	_shutdown_logger()

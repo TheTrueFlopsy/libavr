@@ -15,6 +15,7 @@
 	NOTE: If the macro *SCHED_USE_TIMER0* is defined, then the scheduler
 	will use Timer0 instead of Timer2. Since the ATtiny has no Timer2,
 	this macro is defined internally when *LIBAVR_ATTINY* is defined.
+	The same applies to the ATmega(16|32)U4 and *LIBAVR_ATMEGA_U*.
 	
 	NOTE: If the macro *SCHED_NO_ISR* is defined, then the scheduler
 	will be compiled without an *TIMER[02]_OVF_vect* ISR, which means

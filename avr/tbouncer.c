@@ -4,7 +4,16 @@
 
 #include "tbouncer.h"
 
+// NOTE: Port C sucks on the ATmegaU (only two pins), so we pretend that Port F is Port C
+//       and that Port C is Port A. (Confusing, I know, but /they started it/ with this weird
+//       port layout.)
+
 #ifndef TBOUNCER_DISABLE_PORT_A
+#ifdef LIBAVR_ATMEGA_U
+#define TBOUNCER_PINA PINC
+#else
+#define TBOUNCER_PINA PINA
+#endif
 uint8_t tbouncer_a_mask; // Change notification pin mask.
 uint8_t tbouncer_a; // Debounced pin values.
 uint8_t tbouncer_a_prev; // Previous debounced pin values.
@@ -12,6 +21,7 @@ uint8_t tbouncer_a_diff; // Pin change flags.
 #endif
 
 #ifndef TBOUNCER_DISABLE_PORT_B
+#define TBOUNCER_PINB PINB
 uint8_t tbouncer_b_mask; // Change notification pin mask.
 uint8_t tbouncer_b; // Debounced pin values.
 uint8_t tbouncer_b_prev; // Previous debounced pin values.
@@ -19,6 +29,11 @@ uint8_t tbouncer_b_diff; // Pin change flags.
 #endif
 
 #ifndef TBOUNCER_DISABLE_PORT_C
+#ifdef LIBAVR_ATMEGA_U
+#define TBOUNCER_PINC PINF
+#else
+#define TBOUNCER_PINC PINC
+#endif
 uint8_t tbouncer_c_mask; // Change notification pin mask.
 uint8_t tbouncer_c; // Debounced pin values.
 uint8_t tbouncer_c_prev; // Previous debounced pin values.
@@ -26,6 +41,7 @@ uint8_t tbouncer_c_diff; // Pin change flags.
 #endif
 
 #ifndef TBOUNCER_DISABLE_PORT_D
+#define TBOUNCER_PIND PIND
 uint8_t tbouncer_d_mask; // Change notification pin mask.
 uint8_t tbouncer_d; // Debounced pin values.
 uint8_t tbouncer_d_prev; // Previous debounced pin values.
@@ -57,28 +73,28 @@ static void tbouncer_handler(sched_task *task) {
 	
 #ifndef TBOUNCER_DISABLE_PORT_A
 	tbouncer_a_prev = tbouncer_a;
-	tbouncer_a = tbouncer_a_mask & PINA;
+	tbouncer_a = tbouncer_a_mask & TBOUNCER_PINA;
 	tbouncer_a_diff = tbouncer_a ^ tbouncer_a_prev;
 	diff |= tbouncer_a_diff;
 #endif
 	
 #ifndef TBOUNCER_DISABLE_PORT_B
 	tbouncer_b_prev = tbouncer_b;
-	tbouncer_b = tbouncer_b_mask & PINB;
+	tbouncer_b = tbouncer_b_mask & TBOUNCER_PINB;
 	tbouncer_b_diff = tbouncer_b ^ tbouncer_b_prev;
 	diff |= tbouncer_b_diff;
 #endif
 	
 #ifndef TBOUNCER_DISABLE_PORT_C
 	tbouncer_c_prev = tbouncer_c;
-	tbouncer_c = tbouncer_c_mask & PINC;
+	tbouncer_c = tbouncer_c_mask & TBOUNCER_PINC;
 	tbouncer_c_diff = tbouncer_c ^ tbouncer_c_prev;
 	diff |= tbouncer_c_diff;
 #endif
 	
 #ifndef TBOUNCER_DISABLE_PORT_D
 	tbouncer_d_prev = tbouncer_d;
-	tbouncer_d = tbouncer_d_mask & PIND;
+	tbouncer_d = tbouncer_d_mask & TBOUNCER_PIND;
 	tbouncer_d_diff = tbouncer_d ^ tbouncer_d_prev;
 	diff |= tbouncer_d_diff;
 #endif
@@ -104,28 +120,28 @@ void tbouncer_init(
 	
 #ifndef TBOUNCER_DISABLE_PORT_A
 	tbouncer_a_mask = a_mask;
-	tbouncer_a = a_mask & PINA;
+	tbouncer_a = a_mask & TBOUNCER_PINA;
 	tbouncer_a_prev = tbouncer_a;
 	tbouncer_a_diff = 0;
 #endif
 	
 #ifndef TBOUNCER_DISABLE_PORT_B
 	tbouncer_b_mask = b_mask;
-	tbouncer_b = b_mask & PINB;
+	tbouncer_b = b_mask & TBOUNCER_PINB;
 	tbouncer_b_prev = tbouncer_b;
 	tbouncer_b_diff = 0;
 #endif
 	
 #ifndef TBOUNCER_DISABLE_PORT_C
 	tbouncer_c_mask = c_mask;
-	tbouncer_c = c_mask & PINC;
+	tbouncer_c = c_mask & TBOUNCER_PINC;
 	tbouncer_c_prev = tbouncer_c;
 	tbouncer_c_diff = 0;
 #endif
 	
 #ifndef TBOUNCER_DISABLE_PORT_D
 	tbouncer_d_mask = d_mask;
-	tbouncer_d = d_mask & PIND;
+	tbouncer_d = d_mask & TBOUNCER_PIND;
 	tbouncer_d_prev = tbouncer_d;
 	tbouncer_d_diff = 0;
 #endif

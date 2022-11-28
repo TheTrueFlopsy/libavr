@@ -20,44 +20,48 @@
 	NOTE: Application-specific message type identifiers should be greater than
 	or equal to *TTLV_MSG_T_APPLICATION*.
 	
-	TTLV_MSG_T_DEFAULT          - Default message type.
-	TTLV_MSG_T_RESULT           - Generic TLV operation response (result code).
-	TTLV_MSG_T_INM_RESULT       - Generic INM operation response (result code and request ID).
-	TTLV_MSG_T_REG_READ         - Generic logical register read request.
-	TTLV_MSG_T_REG_READ_RES     - Generic logical register read response.
-	TTLV_MSG_T_REG_WRITE        - Generic logical register write request.
-	TTLV_MSG_T_REG_TOGGLE       - Generic logical register toggle request.
-	TTLV_MSG_T_REG_RW_EXCH      - Generic logical register read-write request.
-	TTLV_MSG_T_REG_WR_EXCH      - Generic logical register write-read request.
-	TTLV_MSG_T_REGPAIR_READ     - Generic logical register pair read request.
-	TTLV_MSG_T_REGPAIR_READ_RES - Generic logical register pair read response.
-	TTLV_MSG_T_REGPAIR_WRITE    - Generic logical register pair write request.
-	TTLV_MSG_T_REGPAIR_TOGGLE   - Generic logical register pair toggle request.
-	TTLV_MSG_T_REGPAIR_RW_EXCH  - Generic logical register pair read-write request.
-	TTLV_MSG_T_REGPAIR_WR_EXCH  - Generic logical register pair write-read request.
-	TTLV_MSG_T_MEMMON_DATA      - Memory monitor notification. Variable-length message.
-	TTLV_MSG_T_MEMMON_CTRL      - Memory monitor control request. Not implemented.
-	TTLV_MSG_T_APPLICATION      - Start of application-specific identifier range.
+	TTLV_MSG_T_DEFAULT              - Default message type.
+	TTLV_MSG_T_RESULT               - Generic TLV operation response (result code).
+	TTLV_MSG_T_INM_RESULT           - Generic INM operation response (result code and request ID).
+	TTLV_MSG_T_REG_READ             - Generic logical register read request.
+	TTLV_MSG_T_REG_READ_RES         - Generic TLV logical register read response.
+	TTLV_MSG_T_INM_REG_READ_RES     - Generic INM logical register read response (with request ID).
+	TTLV_MSG_T_REG_WRITE            - Generic logical register write request.
+	TTLV_MSG_T_REG_TOGGLE           - Generic logical register toggle request.
+	TTLV_MSG_T_REG_RW_EXCH          - Generic logical register read-write request.
+	TTLV_MSG_T_REG_WR_EXCH          - Generic logical register write-read request.
+	TTLV_MSG_T_REGPAIR_READ         - Generic logical register pair read request.
+	TTLV_MSG_T_REGPAIR_READ_RES     - Generic TLV logical register pair read response.
+	TTLV_MSG_T_INM_REGPAIR_READ_RES - Generic INM logical register pair read response (with request ID).
+	TTLV_MSG_T_REGPAIR_WRITE        - Generic logical register pair write request.
+	TTLV_MSG_T_REGPAIR_TOGGLE       - Generic logical register pair toggle request.
+	TTLV_MSG_T_REGPAIR_RW_EXCH      - Generic logical register pair read-write request.
+	TTLV_MSG_T_REGPAIR_WR_EXCH      - Generic logical register pair write-read request.
+	TTLV_MSG_T_MEMMON_DATA          - Memory monitor notification. Variable-length message.
+	TTLV_MSG_T_MEMMON_CTRL          - Memory monitor control request. Not implemented.
+	TTLV_MSG_T_APPLICATION          - Start of application-specific identifier range.
 */
 enum {
-	TTLV_MSG_T_DEFAULT          = 0x00,
-	TTLV_MSG_T_RESULT           = 0x01,
-	TTLV_MSG_T_INM_RESULT       = 0x02,
-	TTLV_MSG_T_REG_READ         = 0x03,
-	TTLV_MSG_T_REG_READ_RES     = 0x04,
-	TTLV_MSG_T_REG_WRITE        = 0x05,
-	TTLV_MSG_T_REG_TOGGLE       = 0x06,
-	TTLV_MSG_T_REG_RW_EXCH      = 0x07,
-	TTLV_MSG_T_REG_WR_EXCH      = 0x08,
-	TTLV_MSG_T_REGPAIR_READ     = 0x09,
-	TTLV_MSG_T_REGPAIR_READ_RES = 0x0a,
-	TTLV_MSG_T_REGPAIR_WRITE    = 0x0b,
-	TTLV_MSG_T_REGPAIR_TOGGLE   = 0x0c,
-	TTLV_MSG_T_REGPAIR_RW_EXCH  = 0x0d,
-	TTLV_MSG_T_REGPAIR_WR_EXCH  = 0x0e,
-	TTLV_MSG_T_MEMMON_DATA      = 0x0f,
-	TTLV_MSG_T_MEMMON_CTRL      = 0x10,
-	TTLV_MSG_T_APPLICATION      = 0x40
+	TTLV_MSG_T_DEFAULT              = 0x00,
+	TTLV_MSG_T_RESULT               = 0x01,
+	TTLV_MSG_T_INM_RESULT           = 0x02,
+	TTLV_MSG_T_REG_READ             = 0x03,
+	TTLV_MSG_T_REG_READ_RES         = 0x04,
+	TTLV_MSG_T_INM_REG_READ_RES     = 0x05,
+	TTLV_MSG_T_REG_WRITE            = 0x06,
+	TTLV_MSG_T_REG_TOGGLE           = 0x07,
+	TTLV_MSG_T_REG_RW_EXCH          = 0x08,
+	TTLV_MSG_T_REG_WR_EXCH          = 0x09,
+	TTLV_MSG_T_REGPAIR_READ         = 0x0a,
+	TTLV_MSG_T_REGPAIR_READ_RES     = 0x0b,
+	TTLV_MSG_T_INM_REGPAIR_READ_RES = 0x0c,
+	TTLV_MSG_T_REGPAIR_WRITE        = 0x0d,
+	TTLV_MSG_T_REGPAIR_TOGGLE       = 0x0e,
+	TTLV_MSG_T_REGPAIR_RW_EXCH      = 0x0f,
+	TTLV_MSG_T_REGPAIR_WR_EXCH      = 0x10,
+	TTLV_MSG_T_MEMMON_DATA          = 0x11,
+	TTLV_MSG_T_MEMMON_CTRL          = 0x12,
+	TTLV_MSG_T_APPLICATION          = 0x40
 };
 
 
@@ -93,6 +97,9 @@ enum {
 */
 typedef uint8_t ttlv_result;
 
+
+// ISSUE: Include the request message ID in other response message values
+//        (e.g. responses to REG_READ) for more reliable request/response matching?
 /**
 	Struct: ttlv_msg_inm_result
 	Specifies the byte format of a generic INM response message.
@@ -115,7 +122,8 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_inm_result {
 
 /// Section: Logical Registers
 
-// IDEA: Define a number of standard logical register indices.
+// TODO: Review the standard register set and consider improvements
+//       (e.g. replace the index register with indexed read/write).
 enum {
 	TTLV_REG_NULL = 0x00,
 	TTLV_REG_APP_STATUS = 0x01, // Zero means normal status.
@@ -184,7 +192,7 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_reg {
 		Field: index
 		Register identifier.
 	*/
-	ttlv_reg_index index;
+	ttlv_reg_index index;  // ISSUE: Isn't this redundant?
 	
 	/**
 		Field: value
@@ -193,6 +201,33 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_reg {
 	ttlv_reg_value value;
 	
 } ttlv_msg_reg;
+
+/**
+	Struct: ttlv_msg_inm_reg
+	Specifies the byte format of an identifier-value pair for a logical register,
+	with an INM message ID appended. Such triples are the payloads of register read
+	responses in INM applications.
+*/
+typedef struct __attribute__ ((__packed__)) ttlv_msg_inm_reg {
+	/**
+		Field: index
+		Register identifier.
+	*/
+	ttlv_reg_index index;  // ISSUE: Isn't this redundant, especially with request ID in the response?
+	
+	/**
+		Field: value
+		Register value.
+	*/
+	ttlv_reg_value value;
+	
+	/**
+		Field: request_id
+		Identifies the request message.
+	*/
+	uint16_t request_id;
+	
+} ttlv_msg_inm_reg;
 
 /**
 	Struct: ttlv_msg_regpair
@@ -205,7 +240,7 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_regpair {
 		Field: index
 		Register identifier.
 	*/
-	ttlv_reg_index index;
+	ttlv_reg_index index;  // ISSUE: Isn't this redundant, especially with request ID in the response?
 	
 	/**
 		Field: value
@@ -218,42 +253,76 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_regpair {
 	
 } ttlv_msg_regpair;
 
+/**
+	Struct: ttlv_msg_inm_regpair
+	Specifies the byte format of an identifier-value pair for a logical register pair,
+	with an INM message ID appended. Such triples are the payloads of register pair read
+	responses in INM applications.
+*/
+typedef struct __attribute__ ((__packed__)) ttlv_msg_inm_regpair {
+	/**
+		Field: index
+		Register identifier.
+	*/
+	ttlv_reg_index index;  // ISSUE: Isn't this redundant, especially with request ID in the response?
+	
+	/**
+		Field: value
+		Register pair value. The value of the lower register (i.e.
+		the one with the lesser register identifier) is in the least
+		significant byte and the value of the higher register is in
+		the most significant byte.
+	*/
+	ttlv_regpair_value value;
+	
+	/**
+		Field: request_id
+		Identifies the request message.
+	*/
+	uint16_t request_id;
+	
+} ttlv_msg_inm_regpair;
+
 
 /// Section: Message Lengths
 
 /**
 	Enum: Standard TTLV Message Lengths
 	
-	TTLV_MSG_L_RESULT           - TLV length of a <TTLV_MSG_T_RESULT> message.
-	TTLV_MSG_L_INM_RESULT       - TLV length of a <TTLV_MSG_T_INM_RESULT> message.
-	TTLV_MSG_L_REG_READ         - TLV length of a <TTLV_MSG_T_REG_READ> message.
-	TTLV_MSG_L_REG_READ_RES     - TLV length of a <TTLV_MSG_T_REG_READ_RES> message.
-	TTLV_MSG_L_REG_WRITE        - TLV length of a <TTLV_MSG_T_REG_WRITE> message.
-	TTLV_MSG_L_REG_TOGGLE       - TLV length of a <TTLV_MSG_T_REG_TOGGLE> message.
-	TTLV_MSG_L_REG_RW_EXCH      - TLV length of a <TTLV_MSG_T_REG_RW_EXCH> message.
-	TTLV_MSG_L_REG_WR_EXCH      - TLV length of a <TTLV_MSG_T_REG_WR_EXCH> message.
-	TTLV_MSG_L_REGPAIR_READ     - TLV length of a <TTLV_MSG_T_REGPAIR_READ> message.
-	TTLV_MSG_L_REGPAIR_READ_RES - TLV length of a <TTLV_MSG_T_REGPAIR_READ_RES> message.
-	TTLV_MSG_L_REGPAIR_WRITE    - TLV length of a <TTLV_MSG_T_REGPAIR_WRITE> message.
-	TTLV_MSG_L_REGPAIR_TOGGLE   - TLV length of a <TTLV_MSG_T_REGPAIR_TOGGLE> message.
-	TTLV_MSG_L_REGPAIR_RW_EXCH  - TLV length of a <TTLV_MSG_T_REGPAIR_RW_EXCH> message.
-	TTLV_MSG_L_REGPAIR_WR_EXCH  - TLV length of a <TTLV_MSG_T_REGPAIR_WR_EXCH> message.
+	TTLV_MSG_L_RESULT               - TLV length of a <TTLV_MSG_T_RESULT> message.
+	TTLV_MSG_L_INM_RESULT           - TLV length of a <TTLV_MSG_T_INM_RESULT> message.
+	TTLV_MSG_L_REG_READ             - TLV length of a <TTLV_MSG_T_REG_READ> message.
+	TTLV_MSG_L_REG_READ_RES         - TLV length of a <TTLV_MSG_T_REG_READ_RES> message.
+	TTLV_MSG_L_INM_REG_READ_RES     - TLV length of a <TTLV_MSG_T_INM_REG_READ_RES> message.
+	TTLV_MSG_L_REG_WRITE            - TLV length of a <TTLV_MSG_T_REG_WRITE> message.
+	TTLV_MSG_L_REG_TOGGLE           - TLV length of a <TTLV_MSG_T_REG_TOGGLE> message.
+	TTLV_MSG_L_REG_RW_EXCH          - TLV length of a <TTLV_MSG_T_REG_RW_EXCH> message.
+	TTLV_MSG_L_REG_WR_EXCH          - TLV length of a <TTLV_MSG_T_REG_WR_EXCH> message.
+	TTLV_MSG_L_REGPAIR_READ         - TLV length of a <TTLV_MSG_T_REGPAIR_READ> message.
+	TTLV_MSG_L_REGPAIR_READ_RES     - TLV length of a <TTLV_MSG_T_REGPAIR_READ_RES> message.
+	TTLV_MSG_L_INM_REGPAIR_READ_RES - TLV length of a <TTLV_MSG_T_INM_REGPAIR_READ_RES> message.
+	TTLV_MSG_L_REGPAIR_WRITE        - TLV length of a <TTLV_MSG_T_REGPAIR_WRITE> message.
+	TTLV_MSG_L_REGPAIR_TOGGLE       - TLV length of a <TTLV_MSG_T_REGPAIR_TOGGLE> message.
+	TTLV_MSG_L_REGPAIR_RW_EXCH      - TLV length of a <TTLV_MSG_T_REGPAIR_RW_EXCH> message.
+	TTLV_MSG_L_REGPAIR_WR_EXCH      - TLV length of a <TTLV_MSG_T_REGPAIR_WR_EXCH> message.
 */
 enum {
-	TTLV_MSG_L_RESULT           = sizeof(ttlv_result),
-	TTLV_MSG_L_INM_RESULT       = sizeof(ttlv_msg_inm_result),
-	TTLV_MSG_L_REG_READ         = sizeof(ttlv_reg_index),
-	TTLV_MSG_L_REG_READ_RES     = sizeof(ttlv_msg_reg),
-	TTLV_MSG_L_REG_WRITE        = sizeof(ttlv_msg_reg),
-	TTLV_MSG_L_REG_TOGGLE       = sizeof(ttlv_msg_reg),
-	TTLV_MSG_L_REG_RW_EXCH      = sizeof(ttlv_msg_reg),
-	TTLV_MSG_L_REG_WR_EXCH      = sizeof(ttlv_msg_reg),
-	TTLV_MSG_L_REGPAIR_READ     = sizeof(ttlv_reg_index),
-	TTLV_MSG_L_REGPAIR_READ_RES = sizeof(ttlv_msg_regpair),
-	TTLV_MSG_L_REGPAIR_WRITE    = sizeof(ttlv_msg_regpair),
-	TTLV_MSG_L_REGPAIR_TOGGLE   = sizeof(ttlv_msg_regpair),
-	TTLV_MSG_L_REGPAIR_RW_EXCH  = sizeof(ttlv_msg_regpair),
-	TTLV_MSG_L_REGPAIR_WR_EXCH  = sizeof(ttlv_msg_regpair)
+	TTLV_MSG_L_RESULT               = sizeof(ttlv_result),
+	TTLV_MSG_L_INM_RESULT           = sizeof(ttlv_msg_inm_result),
+	TTLV_MSG_L_REG_READ             = sizeof(ttlv_reg_index),
+	TTLV_MSG_L_REG_READ_RES         = sizeof(ttlv_msg_reg),
+	TTLV_MSG_L_INM_REG_READ_RES     = sizeof(ttlv_msg_inm_reg),
+	TTLV_MSG_L_REG_WRITE            = sizeof(ttlv_msg_reg),
+	TTLV_MSG_L_REG_TOGGLE           = sizeof(ttlv_msg_reg),
+	TTLV_MSG_L_REG_RW_EXCH          = sizeof(ttlv_msg_reg),
+	TTLV_MSG_L_REG_WR_EXCH          = sizeof(ttlv_msg_reg),
+	TTLV_MSG_L_REGPAIR_READ         = sizeof(ttlv_reg_index),
+	TTLV_MSG_L_REGPAIR_READ_RES     = sizeof(ttlv_msg_regpair),
+	TTLV_MSG_L_INM_REGPAIR_READ_RES = sizeof(ttlv_msg_inm_regpair),
+	TTLV_MSG_L_REGPAIR_WRITE        = sizeof(ttlv_msg_regpair),
+	TTLV_MSG_L_REGPAIR_TOGGLE       = sizeof(ttlv_msg_regpair),
+	TTLV_MSG_L_REGPAIR_RW_EXCH      = sizeof(ttlv_msg_regpair),
+	TTLV_MSG_L_REGPAIR_WR_EXCH      = sizeof(ttlv_msg_regpair)
 };
 
 #define TTLV_CHECK_RESULT TTLV_CHECK_TL(TTLV_MSG_T_RESULT, TTLV_MSG_L_RESULT)

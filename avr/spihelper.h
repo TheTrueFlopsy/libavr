@@ -12,10 +12,21 @@
 #define SPI_DDR  DDRB
 #define SPI_PORT PORTB
 
+#ifdef LIBAVR_ATMEGA_U
+
+#define SPI_SS   PINB0
+#define SPI_MOSI PINB2
+#define SPI_MISO PINB3
+#define SPI_SCK  PINB1
+
+#else
+
 #define SPI_SS   PINB2
 #define SPI_MOSI PINB3
 #define SPI_MISO PINB4
 #define SPI_SCK  PINB5
+
+#endif
 
 /**
 	Function: spihelper_mstr_init

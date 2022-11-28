@@ -6,6 +6,8 @@
 #include "task_sched.h"
 #include "tbouncer.h"
 
+
+// ---<<< I/O Constants >>>---
 #define TBOUNCER_TASK_CAT 14
 #define STEPPER_TASK_CAT 1
 
@@ -39,6 +41,12 @@
 #define ENABLE_INVERTERS_DDR_PIN  BV(DDA3)
 #define ENABLE_INVERTERS_PORT_PIN BV(PA3)
 
+#define FREQ_SELECT_DDR  DDRA
+#define FREQ_SELECT_PORT PORTA
+
+#define FREQ_SELECT_DDR_PIN  BV(DDA4)
+#define FREQ_SELECT_PORT_PIN BV(PA4)
+
 /*#define PWM_OUTPUT_DDR_A  DDRA
 #define PWM_OUTPUT_PORT_A PORTA
 #define PWM_OUTPUT_DDR_B  DDRA
@@ -51,6 +59,12 @@
 #define PWM_OUTPUT_DDR_PIN_B  BV(DDA5)
 #define PWM_OUTPUT_PORT_PIN_A BV(PA6)
 #define PWM_OUTPUT_PORT_PIN_B BV(PA5)
+
+
+// ---<<< Type and Constant Definitions >>>---
+#define E_POW_X_SHIFT 3
+#define POLY_VAR_SHIFT 11
+#define FRACTION_SHIFT 4
 
 #define PWM_PRESCALER_LOG2 3
 #define PWM_PRESCALER (1 << PWM_PRESCALER_LOG2)
@@ -65,8 +79,8 @@
 // ~20 seconds per turn
 #define PWM_FREQ_INIT 25
 
+#define INVALID_ADC_INPUT 0xffff
 
-// ---<<< Type and Constant Definitions >>>---
 typedef uint16_t output_freq;
 
 enum {
@@ -87,23 +101,63 @@ enum {
 
 
 // ---<<< Data Definitions >>>---
-static output_freq pulse_freq      = PWM_FREQ_INIT;  // square wave frequency in Hz
+static volatile uint16_t adc_input = INVALID_ADC_INPUT;
+
+static output_freq pulse_freq      = 16 * PWM_FREQ_INIT;  // square wave frequency in Hz/16
 // If this is true, the motor control sequence is [(-A,-B), (-A,+B), (+A,+B), (+A,-B)] (i.e. 0132).
 // If this is false, the sequence is [(-A,+B), (-A,-B), (+A,-B), (+A,+B)] (i.e. 1023).
 static uint8_t     pulse_direction = 1;
-static uint8_t     pulse_state     = STATE_STOPPED;     // motor control output not requested
+static uint8_t     pulse_state     = STATE_STOPPED;  // motor control output not requested
 static uint8_t     pulse_output    = OUTPUT_STATE_OFF;  // motor control output disabled
 
 
+// ---<<< ISRs >>>---
+ISR(ADC_vect) {
+	adc_input = ADC;
+	sched_isr_tcww |= SCHED_CATFLAG(STEPPER_TASK_CAT);
+}
+
+
 // ---<<< Helper Functions >>>---
-static uint16_t hz_to_top(output_freq hz) {
+static uint16_t int_exp_poly(uint16_t x) {
+	uint32_t x32;
+	uint16_t res = 1U << POLY_VAR_SHIFT;
+	
+	x32 = x;
+	res += x;
+	
+	x32 *= x;
+	res += (uint16_t)((x32 / 2U) >> POLY_VAR_SHIFT);
+	
+	x32 *= x;
+	res += (uint16_t)((x32 / 6U) >> 2*POLY_VAR_SHIFT);
+	
+	return res;
+}
+
+static uint16_t int_exp(uint16_t x) {
+	uint32_t y = int_exp_poly(x);
+	uint8_t i;
+	
+	for (i = 0; i < E_POW_X_SHIFT; i++) {
+		y *= y;
+		y >>= POLY_VAR_SHIFT;
+	}
+	
+	y >>= (POLY_VAR_SHIFT - FRACTION_SHIFT);
+	
+	return (uint16_t)y;
+}
+
+static uint16_t hz_to_top(output_freq hz16) {  // Argument is in 16ths of a hertz.
 	// F_COUNT = F_CPU / PWM_PRESCALER
 	//         = F_CPU >> PWM_PRESCALER_LOG2.
 	// top = (F_COUNT / (2*hz)) - 1
 	//     = (F_COUNT >> 1) / hz - 1
 	//     = ((F_CPU >> PWM_PRESCALER_LOG2) >> 1) / hz - 1
 	//     = (F_CPU >> (PWM_PRESCALER_LOG2 + 1)) / hz - 1.
-	uint16_t top = (uint16_t)((F_CPU >> (PWM_PRESCALER_LOG2 + 1)) / hz - 1);
+	//uint16_t top = (uint16_t)((F_CPU >> (PWM_PRESCALER_LOG2 + 5)) / hz16 - 1);
+	uint16_t top = (uint16_t)(F_CPU / hz16 - 1);
 	
 	// NOTE: To get output signals in quadrature, use only odd values for top.
 	//   Top (i.e. (2*N - 1)) is odd, (top // 2) is ((top+1)/2 - 1) (i.e. N-1), correct:
@@ -195,20 +249,12 @@ static void stepper_handler(sched_task *task) {
 		(pulse_state == STATE_SHUTDOWN && sched_time_is_zero(task->delay));
 	
 	if (starting) {
-		// TODO: If starting, sample the potentiometer input to get desired frequency
-		//       of the motor control output.
-		// NOTE: Use an exponential relationship between ADC value and frequency.
+		// Sample the potentiometer input to get desired frequency
+		// of the motor control output.
+		adc_input = INVALID_ADC_INPUT;
+		ADCSRA |= BV(ADSC);
 		
-		// Get desired direction of rotation.
-		pulse_direction = !!(DIRECTION_PIN_PIN & DIRECTION_PIN);
-		
-		// Starting, turn on the indicator LED.
-		LED_PORT |= LED_PORT_PIN;
-		
-		// Start motor control output.
-		pulse_output_on();
-		
-		pulse_state = STATE_STARTED;
+		pulse_state = STATE_STARTUP;
 		task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
 	}
 	else if (stopping) {
@@ -223,6 +269,35 @@ static void stepper_handler(sched_task *task) {
 			pulse_state = STATE_CANCELED;
 			task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
 		}
+	}
+	else if (pulse_state == STATE_STARTUP) {
+		uint16_t adc_input_val = adc_input;
+		
+		if (adc_input_val != INVALID_ADC_INPUT) {  // ADC conversion finished.
+			// Use an exponential relationship between ADC value and PWM frequency.
+			pulse_freq = int_exp(adc_input_val) + 16;
+			
+			// Get desired direction of rotation.
+			pulse_direction = !!(DIRECTION_PIN_PIN & DIRECTION_PIN);
+			
+			// Starting, turn on the indicator LED.
+			LED_PORT |= LED_PORT_PIN;
+			
+			// Start motor control output.
+			pulse_output_on();
+			
+			pulse_state = STATE_STARTED;
+		}
+		
+		task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
+	}
+	else if (pulse_state == STATE_CANCELED) {
+		uint16_t adc_input_val = adc_input;
+		
+		if (adc_input_val != INVALID_ADC_INPUT)  // ADC conversion finished.
+			pulse_state = STATE_STOPPED;
+		
+		task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
 	}
 	else if (shutdown_ready) {
 		// Stopped, turn off the indicator LED.
@@ -244,6 +319,24 @@ static void stepper_handler(sched_task *task) {
 
 
 // ---<<< Entry Point and Initializers >>>---
+static void init_adc(void) {
+	ADMUX = BV(MUX2);  // Input from PA4.
+	// Enable interrupt, prescaler 8 (Fadc=125 kHz @ Fcpu=1 MHz).
+	ADCSRA = BV(ADIE) | BV(ADPS1) | BV(ADPS0);
+	ADCSRB = 0;
+	DIDR0 = BV(ADC4D);  // Disable digital input on PA4.
+	
+	ADCSRA |= BV(ADEN); // Enable ADC.
+	
+	// Do a warm-up conversion.
+	ADCSRA |= BV(ADSC); // Start conversion.
+	
+	while (BV(ADSC) & ADCSRA)  // Wait for conversion to finish.
+		;
+	
+	ADCSRA |= BV(ADIF); // Clear interrupt flag.
+}
+
 static void init_pwm_generator(void) {
 	//uint16_t top = hz_to_top(PWM_FREQ_INIT);
 	
@@ -275,7 +368,8 @@ static void init_tasks(void) {
 int main(void) __attribute__ ((OS_main));
 
 int main(void) {
-	// Initialize the PWM generator.
+	// Initialize the ADC and PWM generator.
+	init_adc();
 	init_pwm_generator();
 	
 	// Other I/O initialization.
@@ -283,8 +377,6 @@ int main(void) {
 	
 	ENABLE_PORT |= ENABLE_PORT_PIN;  // Enable pull-up on output-enable input pin.
 	DIRECTION_PORT |= DIRECTION_PORT_PIN;  // Enable pull-up on output direction input pin.
-	
-	// TODO: Initialize the ADC.
 	
 	sched_init();
 	TBOUNCER_INIT(

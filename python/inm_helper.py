@@ -18,26 +18,26 @@ import inm
 #         msg setvar 0x43                    # Message type 0x43.
 #         data var_h [id:2, index:1]         # Data type, 2 fields, 2-byte, 1-byte.
 #         data var8 [head:var_h, val:1]      # Data type, 2 fields: var_h, 1-byte.
-#         val var8_t:var8 [[_, _], _]        # Equivalent to implicit template.
-#         val led0:var8 [0x0100, 0, _]       # Template, type var8, field 2 unspecified.
-#         val led0:var8 [[0x0100, 0], _]     # Equivalent. Matches defined structure.
-#         val led0:var8 [0x0100, [0, _]]     # Error! Violates defined structure.
-#         val led0off := led0 [_, _, 0]      # Value, template led0, field 0 and 1 unspecified.
-#         val led0on:var8 := led0 [_, _, 1]  # Type specifier optional, must match template.
-#         val led0on := led0 1  # Equivalent. Additional args substituted for open template slots
+#         tmpl var8_t:var8 [[_, _], _]        # Equivalent to implicit template.
+#         tmpl led0:var8 [0x0100, 0, _]       # Template, type var8, field 2 unspecified.
+#         tmpl led0:var8 [[0x0100, 0], _]     # Equivalent. Matches defined structure.
+#         tmpl led0:var8 [0x0100, [0, _]]     # Error! Violates defined structure.
+#         led0off := led0 [_, _, 0]      # Value, template led0, field 0 and 1 unspecified.
+#         led0on:var8 := led0 [_, _, 1]  # Type specifier optional, must match template.
+#         led0on := led0 1  # Equivalent. Additional args substituted for open template slots
 #                                 from left to right.
 #         show setvar
 #           msg setvar 0x43
 #         show var_h
 #           data var_h [id:2, index:1]
 #         show led0on     # Show maximally specified, omit template reference.
-#           val led0on:var8 [head:var_h [id:2 0x0100, index:1 0x00], val:1 0x01]
+#           led0on:var8 := [head:var_h [id:2 0x0100, index:1 0x00], val:1 0x01]
 #         show -t led0on  # Show only directly specified fields, include template reference.
-#           val led0on:var8 := led0 [head:var_h _, val:1 0x01]
+#           led0on:var8 := led0 [head:var_h _, val:1 0x01]
 #         show -v led0on  # Show maximally specified, include template reference.
-#           val led0on:var8 := led0 [head:var_h [id:2 0x0100, index:1 0x00], val:1 0x01]
+#           led0on:var8 := led0 [head:var_h [id:2 0x0100, index:1 0x00], val:1 0x01]
 #         show led0
-#           val led0:var8 [head:var_h [id:2 0x0100, index:1 0x00], val:1 _]
+#           tmpl led0:var8 [head:var_h [id:2 0x0100, index:1 0x00], val:1 _]
 #         send uno setvar led0on  # Send message with type setvar and payload led0on.
 #         send uno setvar led0 1  # Equivalent. One-off template substitution.
 #         send uno setvar led0  # Error! Value not fully specified.

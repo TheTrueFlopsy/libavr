@@ -53,13 +53,13 @@ macro_defs := -DF_CPU=1000000L -DLIBAVR_ATTINY -DSCHED_CLOCK_PRESCALE_LOG=3
 #  Code size is smaller."
 # https://gcc.gnu.org/onlinedocs/gcc/AVR-Options.html
 ASFLAGS := $(macro_defs) -mmcu=$(mcu)
-CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os $(idirs)
-# Re: -Wl,-relax
+CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto $(idirs)
+# Re: -Wl,--relax
 # "On some platforms the --relax option performs target specific,
 #  global optimizations that become possible when the linker resolves
 #  addressing in the program"
 # man ld
-LDFLAGS := -Wl,-gc-sections -Wl,-relax
+LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--relax
 
 # Phony targets.
 .PHONY : all clean $(programs) $(targets)

@@ -53,13 +53,13 @@ macro_defs := -DF_CPU=16000000L -DSCHED_CLOCK_PRESCALE_LOG=5  # Good for Arduino
 # "Functions prologues/epilogues are expanded as calls to appropriate subroutines.
 #  Code size is smaller."
 # https://gcc.gnu.org/onlinedocs/gcc/AVR-Options.html
-CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os $(idirs)
+CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto $(idirs)
 # Re: -Wl,-relax
 # "On some platforms the --relax option performs target specific,
 #  global optimizations that become possible when the linker resolves
 #  addressing in the program"
 # man ld
-LDFLAGS := -Wl,-gc-sections -Wl,-relax
+LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--relax
 
 # Phony targets.
 .PHONY : all clean $(programs) $(targets)

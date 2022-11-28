@@ -1,6 +1,7 @@
 
 import datetime
 import enum
+import inspect
 import socket
 import selectors
 
@@ -29,25 +30,26 @@ def map_enum(enum_class, i, defval=None):
 
 @enum.unique
 class StandardTypes(enum.IntEnum):
-	DEFAULT          = 0x00
-	RESULT           = 0x01
-	INM_RESULT       = 0x02
-	REG_READ         = 0x03
-	REG_READ_RES     = 0x04
-	REG_WRITE        = 0x05
-	REG_TOGGLE       = 0x06
-	REG_RW_EXCH      = 0x07
-	REG_WR_EXCH      = 0x08
-	REGPAIR_READ     = 0x09
-	REGPAIR_READ_RES = 0x0a
-	REGPAIR_WRITE    = 0x0b
-	REGPAIR_TOGGLE   = 0x0c
-	REGPAIR_RW_EXCH  = 0x0d
-	REGPAIR_WR_EXCH  = 0x0e
-	MEMMON_DATA      = 0x0f
-	MEMMON_CTRL      = 0x10
-	APPLICATION      = 0x40
-
+	DEFAULT              = 0x00
+	RESULT               = 0x01
+	INM_RESULT           = 0x02
+	REG_READ             = 0x03
+	REG_READ_RES         = 0x04
+	INM_REG_READ_RES     = 0x05
+	REG_WRITE            = 0x06
+	REG_TOGGLE           = 0x07
+	REG_RW_EXCH          = 0x08
+	REG_WR_EXCH          = 0x09
+	REGPAIR_READ         = 0x0a
+	REGPAIR_READ_RES     = 0x0b
+	INM_REGPAIR_READ_RES = 0x0c
+	REGPAIR_WRITE        = 0x0d
+	REGPAIR_TOGGLE       = 0x0e
+	REGPAIR_RW_EXCH      = 0x0f
+	REGPAIR_WR_EXCH      = 0x10
+	MEMMON_DATA          = 0x11
+	MEMMON_CTRL          = 0x12
+	APPLICATION          = 0x40
 
 @enum.unique
 class StandardResults(enum.IntEnum):
@@ -59,7 +61,8 @@ class StandardResults(enum.IntEnum):
 	APPLICATION     = 0x40
 	NONE            = 0xff
 
-
+# TODO: Review the standard register set and consider improvements
+#       (e.g. replace the index register with indexed read/write).
 class StandardRegisters(enum.IntEnum):
 	NULL          = 0x00
 	APP_STATUS    = 0x01 # Zero means normal status.
@@ -108,9 +111,45 @@ class ResultCode(enum.Enum):
 	INVALID_ARGUMENT = 7
 	INVALID_STATE    = 8
 
+@enum.unique
+class ValueConversions(enum.Enum):
+	NoConv = enum.auto()
+	Hex    = enum.auto()
+	Bin    = enum.auto()
+	Int    = enum.auto()
+	Str    = enum.auto()
+	Tuple  = enum.auto()
+	List   = enum.auto()
+	Bytes  = enum.auto()
+
+@enum.unique
+class Strictness(enum.IntEnum):
+	Anything   = 0
+	AllWanted  = 1
+	OnlyWanted = 2
+	Exact      = 3
+
 
 class Message:
 	MESSAGE_TYP_SIZE = 1
+	
+	@classmethod
+	def _pretty_typ(cls, f_typ):
+		if isinstance(f_typ, enum.Enum):
+			f_typ = f_typ.name
+		elif isinstance(f_typ, int):
+			f_typ = f'{f_typ:#04x}'
+		
+		return f_typ
+	
+	@classmethod
+	def _pretty_val(cls, f_val):
+		if isinstance(f_val, enum.Enum):
+			f_val = f_val.name
+		elif isinstance(f_val, tuple):
+			f_val = f'({", ".join(str(cls._pretty_val(v)) for v in f_val)})'
+		
+		return f_val
 	
 	def __init__(self, typ, val):
 		if not (self.MIN_TYPE_NUM <= typ <= self.MAX_TYPE_NUM):
@@ -127,16 +166,21 @@ class Message:
 	
 	def __str__(self):
 		length = len(self.val)
-		f_typ, f_val = self.format()
-		return f'Message({f_typ}, {length}, {f_val})' # NOTE: Stupid Raspbian.
-		#return 'Message({0}, {1}, {2})'.format(str(f_typ), length, str(f_val))
+		f_typ, f_val = self.format_str()
+		
+		f_typ = self._pretty_typ(f_typ)
+		f_val = self._pretty_val(f_val)
+		
+		return f'Message({f_typ}, {length}, {f_val})'
 	
 	def __repr__(self):
 		return f'<{str(self)}>'
-		#return '<{0}>'.format(str(self))
 	
 	def check_tl(self, typ, length):
 		return self.typ == typ and len(self) >= length
+	
+	def format_str(self, formatter=None):
+		return self.format_type(formatter), self.format_val_str(formatter)
 	
 	def format(self, formatter=None, conv=None):
 		return self.format_type(formatter), self.format_val(formatter, conv)
@@ -146,16 +190,27 @@ class Message:
 			formatter = default_msg_factory
 		return map_enum(formatter.type_enum_class, self.typ, self.typ)
 	
+	def format_val_str(self, formatter=None):
+		if formatter is None:
+			formatter = default_msg_factory
+		f_typ = self.format_type(formatter)
+		return formatter.format_val_str(self.val, f_typ)
+	
 	def format_val(self, formatter=None, conv=None):
 		if formatter is None:
 			formatter = default_msg_factory
 		f_typ = self.format_type(formatter)
 		return formatter.format_val(self.val, conv, f_typ)
 	
-	def format_mval(self, formatter=None, conv=None, size=None, n_vals=None):
+	def format_mval(self, formatter=None, conv=None, size=None, n_vals=None, strict=None):
 		if formatter is None:
 			formatter = default_msg_factory
-		return formatter.format_mval(self.val, conv, size, n_vals)
+		f_typ = self.format_type(formatter)
+		return formatter.format_mval(self.val, conv, size, f_typ, n_vals, strict)
+	
+	def format_mval_0(self, formatter=None, conv=None, size=None, n_vals=None, strict=None):
+		mval = self.format_mval(formatter, conv, size, n_vals, strict)
+		return mval[0] if mval is not None and len(mval) >= 1 else None
 
 
 class StandardMessage(Message):
@@ -181,26 +236,168 @@ class LargeMessage(Message):
 class MessageFactory:
 	
 	def __init__(self):
-		self.format_hex_str = False
+		self.make_val_hex_str = False
 		self.str_encoding = 'ascii'
 		self.int_size = 1
 		self.int_byteorder = 'little'
-		self.default_val_conv = 'bytes'
+		self.default_val_conv = ValueConversions.Bytes
+		self.str_val_conv = ValueConversions.Hex
 		self.enum_format_val = True
 		self.type_enum_class = StandardTypes
 		self.res_enum_class = StandardResults
 		self.reg_enum_class = StandardRegisters
+		self.default_strictness = Strictness.Exact
+		
+		# NOTE: Centralized mapping of INM message types to value field structure
+		#       and data types. Implemented with lazy evaluation, via the 'make'
+		#       and 'format' methods. Basically lookup tables that provide
+		#       default values for the 'int_size', 'conv' and 'size' arguments.
+		self._typ_to_make_val_int_size = {}
+		self._typ_to_format_val_conv = {}
+		self._typ_to_format_val_size = {}
+		
+		self._populate_type_mapping_tables()
 	
-	def make_val(self, val, int_size=None):
+	def _populate_type_mapping_tables(self):
+		self.set_make_val_int_size(StandardTypes.RESULT, (1,))
+		self.set_make_val_int_size(StandardTypes.INM_RESULT, (1, 2))
+		self.set_make_val_int_size(StandardTypes.REG_READ, (1,))
+		self.set_make_val_int_size(StandardTypes.REG_READ_RES, (1, 1))
+		self.set_make_val_int_size(StandardTypes.INM_REG_READ_RES, (1, 1, 2))
+		self.set_make_val_int_size(StandardTypes.REG_WRITE, (1, 1))
+		self.set_make_val_int_size(StandardTypes.REG_TOGGLE, (1, 1))
+		self.set_make_val_int_size(StandardTypes.REG_RW_EXCH, (1, 1))
+		self.set_make_val_int_size(StandardTypes.REG_WR_EXCH, (1, 1))
+		self.set_make_val_int_size(StandardTypes.REGPAIR_READ, (1,))
+		self.set_make_val_int_size(StandardTypes.REGPAIR_READ_RES, (1, 2))
+		self.set_make_val_int_size(StandardTypes.INM_REGPAIR_READ_RES, (1, 2, 2))
+		self.set_make_val_int_size(StandardTypes.REGPAIR_WRITE, (1, 2))
+		self.set_make_val_int_size(StandardTypes.REGPAIR_TOGGLE, (1, 2))
+		self.set_make_val_int_size(StandardTypes.REGPAIR_RW_EXCH, (1, 2))
+		self.set_make_val_int_size(StandardTypes.REGPAIR_WR_EXCH, (1, 2))
+		self.set_make_val_int_size(StandardTypes.MEMMON_DATA, (1, 2, 1))
+		
+		self.set_format_val_size(StandardTypes.RESULT, (1,))
+		self.set_format_val_size(StandardTypes.INM_RESULT, (1, 2))
+		self.set_format_val_size(StandardTypes.REG_READ, (1,))
+		self.set_format_val_size(StandardTypes.REG_READ_RES, (1, 1))
+		self.set_format_val_size(StandardTypes.INM_REG_READ_RES, (1, 1, 2))
+		self.set_format_val_size(StandardTypes.REG_WRITE, (1, 1))
+		self.set_format_val_size(StandardTypes.REG_TOGGLE, (1, 1))
+		self.set_format_val_size(StandardTypes.REG_RW_EXCH, (1, 1))
+		self.set_format_val_size(StandardTypes.REG_WR_EXCH, (1, 1))
+		self.set_format_val_size(StandardTypes.REGPAIR_READ, (1,))
+		self.set_format_val_size(StandardTypes.REGPAIR_READ_RES, (1, 2))
+		self.set_format_val_size(StandardTypes.INM_REGPAIR_READ_RES, (1, 2, 2))
+		self.set_format_val_size(StandardTypes.REGPAIR_WRITE, (1, 2))
+		self.set_format_val_size(StandardTypes.REGPAIR_TOGGLE, (1, 2))
+		self.set_format_val_size(StandardTypes.REGPAIR_RW_EXCH, (1, 2))
+		self.set_format_val_size(StandardTypes.REGPAIR_WR_EXCH, (1, 2))
+		self.set_format_val_size(StandardTypes.MEMMON_DATA, (1, 2, 1))
+	
+	def get_make_val_int_size(self, tlv_type, default=None):
+		if not isinstance(tlv_type, int):
+			return default
+		
+		return self._typ_to_make_val_int_size.get(int(tlv_type), default)
+	
+	def set_make_val_int_size(self, tlv_type, int_size):
+		if not isinstance(tlv_type, int):
+			return False
+		
+		tlv_type = int(tlv_type)
+		
 		if int_size is None:
-			int_size = self.int_size
+			if tlv_type in self._typ_to_make_val_int_size:
+				del self._typ_to_make_val_int_size[tlv_type]
+			else:
+				return False
+		else:
+			if isinstance(int_size, list):
+				int_size = tuple(int_size)
+			elif not isinstance(int_size, tuple):
+				int_size = (int_size,)
+			
+			if len(int_size) == 0:  # No empty tuples.
+				return False
+			
+			self._typ_to_make_val_int_size[tlv_type] = int_size
+		
+		return True
+	
+	def get_format_val_conv(self, tlv_type, default=None):
+		if not isinstance(tlv_type, int):
+			return default
+		
+		return self._typ_to_format_val_conv.get(int(tlv_type), default)
+	
+	def set_format_val_conv(self, tlv_type, conv):
+		if not isinstance(tlv_type, int):
+			return False
+		
+		tlv_type = int(tlv_type)
+		
+		if conv is None:
+			if tlv_type in self._typ_to_format_val_conv:
+				del self._typ_to_format_val_conv[tlv_type]
+			else:
+				return False
+		else:
+			if isinstance(conv, list):
+				conv = tuple(conv)
+			elif not isinstance(conv, tuple):
+				conv = (conv,)
+			
+			if len(conv) == 0:  # No empty tuples.
+				return False
+			
+			self._typ_to_format_val_conv[tlv_type] = conv
+		
+		return True
+	
+	def get_format_val_size(self, tlv_type, default=None):
+		if not isinstance(tlv_type, int):
+			return default
+		
+		return self._typ_to_format_val_size.get(int(tlv_type), default)
+	
+	def set_format_val_size(self, tlv_type, size):
+		if not isinstance(tlv_type, int):
+			return False
+		
+		tlv_type = int(tlv_type)
+		
+		if size is None:
+			if tlv_type in self._typ_to_format_val_size:
+				del self._typ_to_format_val_size[tlv_type]
+			else:
+				return False
+		else:
+			if isinstance(size, list):
+				size = tuple(size)
+			elif not isinstance(size, tuple):
+				size = (size,)
+			
+			if len(size) == 0:  # No empty tuples.
+				return False
+			
+			self._typ_to_format_val_size[tlv_type] = size
+		
+		return True
+	
+	def make_val(self, val, int_size=None, tlv_type=None):
+		if int_size is None:
+			int_size = self.get_make_val_int_size(tlv_type, self.int_size)
+		
+		if isinstance(int_size, tuple) or isinstance(int_size, list):
+			int_size = int_size[0]  # Only a scalar is wanted.
 		
 		b_val = None
 		
 		if isinstance(val, bytes):
 			b_val = val
 		elif isinstance(val, str):
-			if self.format_hex_str:
+			if self.make_val_hex_str:
 				b_val = bytes.fromhex(val)
 			else:
 				b_val = bytes(val, self.str_encoding)
@@ -218,28 +415,43 @@ class MessageFactory:
 		
 		return b_val
 	
-	def make_mval(self, mval, int_size=None):
-		if int_size is None or isinstance(int_size, int):
+	def make_mval(self, mval, int_size=None, tlv_type=None):
+		if int_size is None:
+			int_size = self.get_make_val_int_size(tlv_type, self.int_size)
+		
+		if isinstance(int_size, int):
 			old_int_size = int_size
 			int_size = (old_int_size for _ in range(len(mval)))
 		
 		b_mval = b''
 		
+		# ISSUE: If len(int_size) < len(mval), then only len(int_size) entries will be
+		#        generated. Is this behavior undesirable (potentially confusing)?
 		for val, val_int_size in zip(mval, int_size):
-			b_val = self.make_val(val, val_int_size)
+			b_val = self.make_val(val, val_int_size, tlv_type)
 			if b_val is None:
 				return None
 			b_mval += b_val
 		
 		return b_mval
 	
+	def format_val_str(self, val, tlv_type=None):
+		return self.format_val(val, self.str_val_conv, tlv_type)
+	
 	def format_val(self, val, conv=None, tlv_type=None):
+		if conv is None:
+			conv = self.get_format_val_conv(tlv_type, self.default_val_conv)
+		
+		if isinstance(conv, tuple) or isinstance(conv, list):
+			conv = conv[0]  # Only a scalar is wanted.
+		
 		if self.enum_format_val and tlv_type is not None and len(val) >= 1:
 			e_val = None
 			
 			if tlv_type in (StandardTypes.RESULT, StandardTypes.INM_RESULT):
 				e_val = map_enum(self.res_enum_class, val[0], val[0])
-			elif tlv_type in (StandardTypes.REG_READ_RES, StandardTypes.REGPAIR_READ_RES):
+			elif tlv_type in (StandardTypes.REG_READ_RES, StandardTypes.INM_REG_READ_RES,
+			                  StandardTypes.REGPAIR_READ_RES, StandardTypes.INM_REGPAIR_READ_RES):
 				e_val = map_enum(self.reg_enum_class, val[0], val[0])
 			
 			if e_val is None:
@@ -247,84 +459,112 @@ class MessageFactory:
 			elif len(val) == 1:
 				return e_val
 			else:
+				# NOTE: Omit tlv_type to prevent re-application of standard enum mapping.
 				i_val = self.format_val(val[1:], conv)
 				return (e_val, i_val)
 		
-		if conv is None:
-			conv = self.default_val_conv
-		
 		f_val = None
 		
-		if conv == 'hex':
+		# ISSUE: Remove the legacy magic strings?
+		if conv == ValueConversions.Hex or conv == 'hex':
 			f_val = val.hex()
-		elif conv == 'bin':
+		elif conv == ValueConversions.Bin or conv == 'bin':
 			f_val = bytes_to_binary(val, True)
-		elif conv == 'int':
+		elif conv == ValueConversions.Int or conv == 'int':
 			f_val = int.from_bytes(val, self.int_byteorder)
-		elif conv == 'str':
+		elif conv == ValueConversions.Str or conv == 'str':
 			f_val = str(val, self.str_encoding)
-		elif conv == 'tuple':
+		elif conv == ValueConversions.Tuple or conv == 'tuple':
 			f_val = tuple(val)
-		elif conv == 'list':
+		elif conv == ValueConversions.List or conv == 'list':
 			f_val = list(val)
-		elif conv == 'bytes':
+		elif conv == ValueConversions.Bytes or conv == 'bytes':
 			f_val = val
+		elif inspect.isclass(conv) and issubclass(conv, enum.Enum):
+			# ISSUE: Does this make the special cases (StandardTypes.RESULT, etc.) above redundant?
+			f_val = map_enum(conv, val, val)
+		#elif callable(conv):  # ISSUE: Is this a good idea?
+		#	f_val = conv(val)
 		else:
-			pass
+			pass  # Unrecognized conversion type, return None.
 		
 		return f_val
 	
-	def format_mval(self, mval, conv=None, size=None, n_vals=None):
+	def format_mval(self, mval, conv=None, size=None, tlv_type=None, n_vals=None, strict=None):
+		if conv is None:
+			conv = self.get_format_val_conv(tlv_type, self.default_val_conv)
+		
+		if size is None:
+			size = self.get_format_val_size(tlv_type, self.int_size)
+		
 		if n_vals is not None:
 			pass
-		elif conv is not None and not isinstance(conv, str):
+		elif isinstance(conv, tuple) or isinstance(conv, list):
 			n_vals = len(conv)
-		elif size is not None and not isinstance(size, int):
+		elif isinstance(size, tuple) or isinstance(size, list):
 			n_vals = len(size)
 		else:
 			n_vals = 1
 		
-		if conv is None or isinstance(conv, str):
+		if strict is None:
+			strict = self.default_strictness
+		
+		if not (isinstance(conv, tuple) or isinstance(conv, list)):
 			old_conv = conv
 			conv = (old_conv for _ in range(n_vals))
 		
-		if size is None:
-			size = self.int_size
-		
-		if isinstance(size, int):
+		if not (isinstance(size, tuple) or isinstance(size, list)):
 			old_size = size
 			size = (old_size for _ in range(n_vals))
 		
 		f_mval = []
 		val_offset = 0
+		
+		# ISSUE: If len(conv) < len(size), then only len(conv) entries will be
+		#        generated. Is this behavior undesirable (potentially confusing)?
 		for val_conv, val_size in zip(conv, size):
-			val = mval[val_offset:val_offset+val_size]
+			val_end_offset = val_offset + val_size
+			
+			if val_end_offset > len(mval):  # No more values present.
+				break
+			
+			val = mval[val_offset:val_end_offset]
+			# NOTE: Omit tlv_type to prevent re-application of standard enum mapping.
 			f_val = self.format_val(val, val_conv)
-			if f_val is None:
+			
+			if f_val is None:  # Conversion failed.
 				#print(f'conv={val_conv} size={val_size}') # DEBUG: 
-				return None
+				break
+			
 			f_mval.append(f_val)
 			val_offset += val_size
+		
+		if strict >= Strictness.AllWanted and len(f_mval) != n_vals:
+			if len(f_mval) < n_vals or strict >= Strictness.OnlyWanted:
+				return None  # Wrong number of fields parsed.
+		
+		if strict >= Strictness.Exact and val_offset != len(mval):
+			return None  # Unparsed bytes at end of input sequence.
 		
 		return f_mval
 	
 	def make_msg(self, typ, val, int_size=None):
-		b_val = self.make_val(val, int_size)
+		b_val = self.make_val(val, int_size, typ)
 		msg = StandardMessage(typ, b_val)
 		return msg
 	
 	def make_msg_mval(self, typ, mval, int_size=None):
-		b_mval = self.make_mval(mval, int_size)
+		b_mval = self.make_mval(mval, int_size, typ)
 		msg = StandardMessage(typ, b_mval)
 		return msg
 	
 	def make_large_msg(self, typ, val, int_size=None):
-		b_val = self.make_val(val, int_size)
+		b_val = self.make_val(val, int_size, typ)
 		msg = LargeMessage(typ, b_val)
 		return msg
 	
 	def make_large_msg_mval(self, typ, mval, int_size=None):
-		b_mval = self.make_mval(mval, int_size)
+		b_mval = self.make_mval(mval, int_size, typ)
 		msg = LargeMessage(typ, b_mval)
 		return msg
 
@@ -337,12 +577,17 @@ class MessageHeader:
 	SRCADR_SIZE = 1
 	HEADER_SIZE = MESSAGE_ID_SIZE + DSTADR_SIZE + SRCADR_SIZE
 	
+	# ISSUE: Are 16-bit per-originating-channel message IDs enough to avoid ambiguity?
+	#        Can we generally assume that any response will be received on the channel
+	#        that originated the corresponding request, and that all requests to a given
+	#        node from a given node will be sent via the same originating channel?
 	MAX_MESSAGE_ID = 0xffff
 	MAX_MESSAGE_ADR = 0xff
 	LOCAL_ADR = 0x00
 	BROADCAST_ADR = MAX_MESSAGE_ADR
 	
 	def __init__(self, msg_id, dstadr, srcadr):
+		# ISSUE: Is this the right place for these range checks? Better in send()?
 		if not (0 <= msg_id <= self.MAX_MESSAGE_ID):
 			raise ValueError()
 		
@@ -358,12 +603,9 @@ class MessageHeader:
 	
 	def __str__(self):
 		return f'MessageHeader({self.msg_id}, {self.dstadr}, {self.srcadr})'
-		#return 'MessageHeader({0}, {1}, {2})'.format(
-		#	self.msg_id, self.dstadr, self.srcadr)
 	
 	def __repr__(self):
 		return f'<{str(self)}>'
-		#return '<{0}>'.format(str(self))
 
 
 class MessageChannelError(Exception):
@@ -383,12 +625,13 @@ class MessageChannel:
 			selector = selectors.DefaultSelector()
 		
 		self.srcadr = srcadr
-		self.next_msg_id = 0
 		self.timeout = timeout
 		self.msg_factory = msg_factory
 		self.selector = selector
 		
 		self._is_open = False
+		self._prev_msg_id = None
+		self._next_msg_id = 0
 	
 	def __str__(self):
 		return f'{type(self).__name__}({self.srcadr})'
@@ -407,12 +650,6 @@ class MessageChannel:
 	def __exit__(self, exc_type, exc_value, traceback):
 		self.close()
 		return False
-	
-	# CAUTION: This is not any sort of thread safe.
-	def _get_next_msg_id(self):
-		msg_id = self.next_msg_id
-		self.next_msg_id = (msg_id + 1) % (MessageHeader.MAX_MESSAGE_ID + 1)
-		return msg_id
 	
 	def _register_selectable(self, selectable):
 		if self.selector is None:
@@ -440,6 +677,20 @@ class MessageChannel:
 		
 		selected = self.selector.select(timeout)
 		return any((k, selectors.EVENT_READ) in selected for k in selector_keys)
+	
+	# CAUTION: This is not any sort of thread safe.
+	def peek_prev_msg_id(self):
+		return self._prev_msg_id
+	
+	# CAUTION: This is not any sort of thread safe.
+	def peek_next_msg_id(self):
+		return self._next_msg_id
+	
+	# CAUTION: This is not any sort of thread safe.
+	def get_next_msg_id(self):
+		msg_id = self._next_msg_id
+		self._next_msg_id = (msg_id + 1) % (MessageHeader.MAX_MESSAGE_ID + 1)
+		return msg_id
 	
 	def is_open(self):
 		return self._is_open
@@ -473,21 +724,14 @@ class MessageChannel:
 		raise NotImplementedError()
 
 def format_msg_info(obj, event=None, header=None, link_adr=None, event_colw=0):
-	event_field = '' if event is None else f'{event:>{event_colw:d}} '
-	#event_field = '' if event is None else '{1:>{0:d}} '.format(event_colw, event)
-	
-	header_field = '' if header is None else f'[{header.srcadr}.{header.msg_id} => {header.dstadr}]'
-	#header_field = '' if header is None else '[{0}.{1} => {2}]'.format(
-	#	, header.msg_id, header.dstadr)
-	
-	if isinstance(link_adr, tuple) and len(link_adr) > 1 \
-	and isinstance(link_adr[0], MessageChannel):
+	if isinstance(link_adr, tuple) and len(link_adr) > 1 and isinstance(link_adr[0], MessageChannel):
 		link_adr = link_adr[1]
 	
+	event_field = '' if event is None else f'{event:>{event_colw:d}} '
+	header_field = '' if header is None else f'[{header.srcadr}.{header.msg_id} => {header.dstadr}]'
 	link_adr_field = '' if link_adr is None else link_adr
 	
 	return f'{event_field}{header_field}{link_adr_field}: {str(obj)}'
-	#return '{0}{1}{2}: {3}'.format(event_field, header_field, link_adr_field, str(obj))
 
 
 class RoutingMessageChannel(MessageChannel):
@@ -556,7 +800,7 @@ class RoutingMessageChannel(MessageChannel):
 	
 	def send(self, dstadr, msg, msg_id=None, srcadr=None, link_adr=None, in_link_adr=None):
 		if msg_id is None:
-			msg_id = self._get_next_msg_id()
+			msg_id = self.get_next_msg_id()
 		
 		if srcadr is None:
 			srcadr = self.srcadr
@@ -564,7 +808,7 @@ class RoutingMessageChannel(MessageChannel):
 		if link_adr is None:
 			link_adr = self.rtab.get(dstadr)
 		elif link_adr is not None and not isinstance(link_adr, list):
-			link_adr = [link_adr]
+			link_adr = (link_adr,)
 		
 		if link_adr is None:
 			return ResultCode.UNROUTABLE
@@ -579,10 +823,14 @@ class RoutingMessageChannel(MessageChannel):
 			#print(f'{dstadr} {ch} {ch_link_adr}') # DEBUG: 
 			
 			ch_res = ch.send(dstadr, msg, msg_id, srcadr, ch_link_adr)
+			
 			if ch_res != ResultCode.SUCCESS:
 				res = ch_res
 			elif res == ResultCode.UNROUTABLE:
 				res = ResultCode.SUCCESS
+		
+		# ISSUE: Is updating self._prev_msg_id here meaningful for a routing channel?
+		self._prev_msg_id = msg_id
 		
 		return res
 	
@@ -646,7 +894,7 @@ class BinaryMessageChannel(MessageChannel):
 	# CAUTION: This is not any sort of thread safe.
 	def _prepare_send_buffer(self, dstadr, srcadr, msg, msg_id=None):
 		if msg_id is None:
-			msg_id = self._get_next_msg_id()
+			msg_id = self.get_next_msg_id()
 		
 		msg_id_b = self.msg_factory.make_val(msg_id, int_size=2)
 		dstadr_b = self.msg_factory.make_val(dstadr, int_size=1)
@@ -661,6 +909,9 @@ class BinaryMessageChannel(MessageChannel):
 		self.send_buffer.extend(msg_typ_b)
 		self.send_buffer.extend(msg_len_b)
 		self.send_buffer.extend(msg.val)
+		
+		# NOTE: Done for the benefit of calling code, which might want to call peek_prev_msg_id().
+		self._prev_msg_id = msg_id
 	
 	def _parse_recv_header(self, n_bytes):
 		if n_bytes < MessageHeader.HEADER_SIZE:
@@ -672,11 +923,11 @@ class BinaryMessageChannel(MessageChannel):
 			return ResultCode.INVALID_MESSAGE, None, None, None, None
 		
 		#print(n_bytes) # DEBUG: 
-		#print(self.msg_factory.format_val(self.recv_buffer[:n_bytes], 'hex')) # DEBUG: 
+		#print(self.msg_factory.format_val(self.recv_buffer[:n_bytes], ValueConversions.Hex)) # DEBUG: 
 		
 		i = 0
 		msg_id = self.msg_factory.format_val(
-			self.recv_buffer[i:i+MessageHeader.MESSAGE_ID_SIZE], 'int')
+			self.recv_buffer[i:i+MessageHeader.MESSAGE_ID_SIZE], ValueConversions.Int)
 		i += MessageHeader.MESSAGE_ID_SIZE
 		dstadr = self.recv_buffer[i]
 		i += 1
@@ -689,7 +940,7 @@ class BinaryMessageChannel(MessageChannel):
 		
 		if msg_typ >= LargeMessage.MIN_TYPE_NUM:
 			msg_len = self.msg_factory.format_val(
-				self.recv_buffer[i:i+LargeMessage.MESSAGE_LEN_SIZE], 'int')
+				self.recv_buffer[i:i+LargeMessage.MESSAGE_LEN_SIZE], ValueConversions.Int)
 			i += LargeMessage.MESSAGE_LEN_SIZE
 		else:
 			msg_len = self.recv_buffer[i]

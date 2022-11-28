@@ -9,9 +9,10 @@ enum {
 	REMTCAM_MSG_T_GET_VAR       = 0x01 + TTLV_MSG_T_APPLICATION,
 	REMTCAM_MSG_T_GET_VAR_RES   = 0x02 + TTLV_MSG_T_APPLICATION,
 	REMTCAM_MSG_T_SET_VAR       = 0x03 + TTLV_MSG_T_APPLICATION,
-	REMTCAM_MSG_T_SENSOR_EVENT  = 0x04 + TTLV_MSG_T_APPLICATION,
-	REMTCAM_MSG_T_SENSOR_SAMPLE = 0x05 + TTLV_MSG_T_APPLICATION,
-	REMTCAM_MSG_T_ALERT_EVENT   = 0x06 + TTLV_MSG_T_APPLICATION
+	REMTCAM_MSG_T_HEARTBEAT     = 0x04 + TTLV_MSG_T_APPLICATION,
+	REMTCAM_MSG_T_SENSOR_EVENT  = 0x05 + TTLV_MSG_T_APPLICATION,
+	REMTCAM_MSG_T_SENSOR_SAMPLE = 0x06 + TTLV_MSG_T_APPLICATION,
+	REMTCAM_MSG_T_ALERT_EVENT   = 0x07 + TTLV_MSG_T_APPLICATION
 };
 
 enum {
@@ -50,6 +51,12 @@ typedef struct __attribute__ ((__packed__)) remtcam_var_header {
 	remtcam_var_index index;
 } remtcam_var_header;
 
+typedef struct __attribute__ ((__packed__)) remtcam_var_res_header {
+	remtcam_var_id id;
+	remtcam_var_index index;
+	uint16_t request_id;
+} remtcam_var_res_header;
+
 typedef uint8_t remtcam_sensor_t;
 
 typedef uint8_t remtcam_sensor_id;
@@ -59,27 +66,33 @@ typedef uint8_t remtcam_sensor_event_t;
 typedef uint8_t remtcam_sensor_value;
 
 enum {
-	REMTCAM_SENSOR_T_ANY       = 0x00,
-	REMTCAM_SENSOR_T_LIGHT     = 0x01,
-	REMTCAM_SENSOR_T_SOUND     = 0x02,
-	REMTCAM_SENSOR_T_MOTION    = 0x03,
-	REMTCAM_SENSOR_T_PRESSURE  = 0x04,
-	REMTCAM_SENSOR_T_PROXIMITY = 0x05
+	REMTCAM_SENSOR_T_ANY         = 0x00,
+	REMTCAM_SENSOR_T_LIGHT       = 0x01,
+	REMTCAM_SENSOR_T_SOUND       = 0x02,
+	REMTCAM_SENSOR_T_MOTION      = 0x03,
+	REMTCAM_SENSOR_T_PRESSURE    = 0x04,
+	REMTCAM_SENSOR_T_PROXIMITY   = 0x05,
+	REMTCAM_SENSOR_T_TEMPERATURE = 0x06
 };
 
 enum {
-	REMTCAM_SENSOR_VAR_T_ANY       = REMTCAM_SENSOR_T_ANY | REMTCAM_VAR_SENSOR_PREFIX,
-	REMTCAM_SENSOR_VAR_T_LIGHT     = REMTCAM_SENSOR_T_LIGHT | REMTCAM_VAR_SENSOR_PREFIX,
-	REMTCAM_SENSOR_VAR_T_SOUND     = REMTCAM_SENSOR_T_SOUND | REMTCAM_VAR_SENSOR_PREFIX,
-	REMTCAM_SENSOR_VAR_T_MOTION    = REMTCAM_SENSOR_T_MOTION | REMTCAM_VAR_SENSOR_PREFIX,
-	REMTCAM_SENSOR_VAR_T_PRESSURE  = REMTCAM_SENSOR_T_PRESSURE | REMTCAM_VAR_SENSOR_PREFIX,
-	REMTCAM_SENSOR_VAR_T_PROXIMITY = REMTCAM_SENSOR_T_PROXIMITY | REMTCAM_VAR_SENSOR_PREFIX
+	REMTCAM_SENSOR_VAR_T_ANY         = REMTCAM_SENSOR_T_ANY | REMTCAM_VAR_SENSOR_PREFIX,
+	REMTCAM_SENSOR_VAR_T_LIGHT       = REMTCAM_SENSOR_T_LIGHT | REMTCAM_VAR_SENSOR_PREFIX,
+	REMTCAM_SENSOR_VAR_T_SOUND       = REMTCAM_SENSOR_T_SOUND | REMTCAM_VAR_SENSOR_PREFIX,
+	REMTCAM_SENSOR_VAR_T_MOTION      = REMTCAM_SENSOR_T_MOTION | REMTCAM_VAR_SENSOR_PREFIX,
+	REMTCAM_SENSOR_VAR_T_PRESSURE    = REMTCAM_SENSOR_T_PRESSURE | REMTCAM_VAR_SENSOR_PREFIX,
+	REMTCAM_SENSOR_VAR_T_PROXIMITY   = REMTCAM_SENSOR_T_PROXIMITY | REMTCAM_VAR_SENSOR_PREFIX,
+	REMTCAM_SENSOR_VAR_T_TEMPERATURE = REMTCAM_SENSOR_T_TEMPERATURE | REMTCAM_VAR_SENSOR_PREFIX
 };
 
 enum {
-	REMTCAM_SENSOR_EVENT_T_ANY  = 0x00,
-	REMTCAM_SENSOR_EVENT_T_HIGH = 0x01, // Stimuli (e.g. light) over high trigger level.
-	REMTCAM_SENSOR_EVENT_T_LOW  = 0x02  // Stimuli (e.g. light) under low trigger level.
+	REMTCAM_SENSOR_EVENT_T_ANY     = 0x00,
+	REMTCAM_SENSOR_EVENT_T_HIGH    = 0x01,  // Stimuli (e.g. light) over high trigger level.
+	REMTCAM_SENSOR_EVENT_T_LOW     = 0x02,  // Stimuli (e.g. light) under low trigger level.
+	REMTCAM_SENSOR_EVENT_T_RISE    = 0x03,  // Stimuli rising significantly.
+	REMTCAM_SENSOR_EVENT_T_FALL    = 0x04,  // Stimuli falling significantly.
+	REMTCAM_SENSOR_EVENT_T_SILENT  = 0x05,  // Sensor sample not received within expected time.
+	REMTCAM_SENSOR_EVENT_T_CONTACT = 0x06   // Sensor sample received after silence.
 };
 
 typedef struct __attribute__ ((__packed__)) remtcam_sensor_event {
@@ -97,7 +110,7 @@ typedef struct __attribute__ ((__packed__)) remtcam_sensor_sample {
 enum {
 	REMTCAM_MSG_L_GET_VAR       = sizeof(remtcam_var_header),
 	// NOTE: The actual message length is this plus the size of the variable value.
-	REMTCAM_MSG_L_GET_VAR_RES   = sizeof(remtcam_var_header),
+	REMTCAM_MSG_L_GET_VAR_RES   = sizeof(remtcam_var_res_header),
 	// NOTE: The actual message length is this plus the size of the variable value.
 	REMTCAM_MSG_L_SET_VAR       = sizeof(remtcam_var_header),
 	REMTCAM_MSG_L_SENSOR_EVENT  = sizeof(remtcam_sensor_event),

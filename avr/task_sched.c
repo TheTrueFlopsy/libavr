@@ -22,6 +22,13 @@
 
 #endif
 
+#ifdef LIBAVR_ATMEGA_U
+
+// NOTE: No Timer2 on the ATmegaU either.
+#define SCHED_USE_TIMER0
+
+#endif
+
 #ifdef SCHED_USE_TIMER0
 
 #define SCHED_CLOCK_PRESCALE_1    (BV(CS00))
@@ -339,6 +346,12 @@ void sched_run(void) {
 		// (i.e. the ones that were ready at the start of this
 		// scheduler iteration):
 		for (i = 0; i < n_ready; i++) {
+			// ISSUE: Pointer + index arithmetic is slow on an ATtiny, since it has to do a software
+			//        (sizeof * index) multiplication. Consider a solution where a byte pointer
+			//        is incremented by the array element size.
+			// IDEA: An alternative would be to add another two bytes to the sched_task structs,
+			//       giving them a power-of-two size and hopefully letting the compiler do the
+			//       multiplication as a simple bit shift.
 			task_k1_p = task_list + i;
 			task_i = *task_k1_p;
 			

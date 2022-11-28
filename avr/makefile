@@ -6,9 +6,22 @@ natural := naturaldocs
 doc_dir := docs/natural
 doc_conf_dir := docs/natural-config
 
+ifdef build
+ifeq ($(build),attiny)
+libavr_attiny := yes
+else ifeq ($(build),atmega_u)
+libavr_atmega_u := yes
+else ifneq ($(build),atmega)
+$(error Unrecognized build type: $(build))
+endif
+endif
+
 ifdef libavr_attiny
 device ?= attiny84
 avrdude_device ?= t84
+else ifdef libavr_atmega_u
+device ?= atmega32u4
+avrdude_device ?= m32u4
 else
 device ?= atmega328p
 avrdude_device ?= m328p
@@ -24,6 +37,10 @@ warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
 ifdef libavr_attiny
 # 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
 macro_defs := -DF_CPU=1000000L -DLIBAVR_ATTINY -DSCHED_CLOCK_PRESCALE_LOG=3
+else ifdef libavr_atmega_u
+# 16 MHz MCU clock, 64 clock cycles per scheduler tick.
+# Good for Arduino Leonardo.
+macro_defs := -DF_CPU=16000000L -DLIBAVR_ATMEGA_U -DSCHED_CLOCK_PRESCALE_LOG=6
 else
 # 16 MHz MCU clock, 32 clock cycles per scheduler tick.
 # Good for Arduino Uno.
@@ -33,15 +50,22 @@ macro_defs := -DF_CPU=16000000L -DSCHED_CLOCK_PRESCALE_LOG=5
 #macro_defs := -DF_CPU=1000000L -DSCHED_CLOCK_PRESCALE_LOG=3
 endif
 
-# Re: -mcall-prologues
+ASFLAGS := $(macro_defs) -mmcu=$(mcu)
+# NOTE: about -mcall-prologues
 # "Functions prologues/epilogues are expanded as calls to appropriate subroutines.
 #  Code size is smaller."
 # https://gcc.gnu.org/onlinedocs/gcc/AVR-Options.html
-ASFLAGS := $(macro_defs) -mmcu=$(mcu)
-CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os
+# NOTE: -flto enables Link-Time Optimization, which among other things lets the compiler
+#       exclude unused library functions from the linked binary. Note that this leads to
+#       specialized LTO data being added to object files.
+CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto -ffat-lto-objects
 testflags := $(macro_defs) -g $(warnings)
 CC := avr-gcc
 testcc := gcc
+# NOTE: Apparently 'gcc-ar' is better than plain 'ar' for creating LTO-enabled
+#       static libraries:
+# https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
+AR = avr-gcc-ar
 
 # Directory variables.
 ifdef debug
@@ -55,6 +79,9 @@ endif
 ifdef libavr_attiny
 odir := $(odir)_attiny
 bdir := $(bdir)_attiny
+else ifdef libavr_atmega_u
+odir := $(odir)_atmega_u
+bdir := $(bdir)_atmega_u
 endif
 
 todir := $(odir)/tests

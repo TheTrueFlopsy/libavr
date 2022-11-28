@@ -7,14 +7,67 @@
 
 #include "task_tlv.h"
 
-#define USART_ERROR_BITS (BV(UPE0) | BV(DOR0) | BV(FE0))
+
+#ifdef LIBAVR_ATMEGA_U
+
+#define TTLV_RX_VECT USART1_RX_vect
+#define TTLV_UDRE_VECT USART1_UDRE_vect
+
+#define TTLV_U2X U2X1
+#define TTLV_UPE UPE1
+#define TTLV_DOR DOR1
+#define TTLV_FE FE1
+
+#define TTLV_TXEN TXEN1
+#define TTLV_RXEN RXEN1
+#define TTLV_UDRIE UDRIE1
+#define TTLV_RXCIE RXCIE1
+
+#define TTLV_UCSZ0 UCSZ10
+#define TTLV_UCSZ1 UCSZ11
+#define TTLV_UPM0 UPM10
+
+#define TTLV_UBRR UBRR1
+#define TTLV_UCSRA UCSR1A
+#define TTLV_UCSRB UCSR1B
+#define TTLV_UCSRC UCSR1C
+#define TTLV_UDR UDR1
+
+#else
+
+#define TTLV_RX_VECT USART_RX_vect
+#define TTLV_UDRE_VECT USART_UDRE_vect
+
+#define TTLV_U2X U2X0
+#define TTLV_UPE UPE0
+#define TTLV_DOR DOR0
+#define TTLV_FE FE0
+
+#define TTLV_TXEN TXEN0
+#define TTLV_RXEN RXEN0
+#define TTLV_UDRIE UDRIE0
+#define TTLV_RXCIE RXCIE0
+
+#define TTLV_UCSZ0 UCSZ00
+#define TTLV_UCSZ1 UCSZ01
+#define TTLV_UPM0 UPM00
+
+#define TTLV_UBRR UBRR0
+#define TTLV_UCSRA UCSR0A
+#define TTLV_UCSRB UCSR0B
+#define TTLV_UCSRC UCSR0C
+#define TTLV_UDR UDR0
+
+#endif
+
+#define USART_ERROR_BITS (BV(TTLV_UPE) | BV(TTLV_DOR) | BV(TTLV_FE))
 
 enum {
 	BFR_FLAG_DATA      = BV(0),    // Bytes have been successfully received or transmitted.
 	BFR_FLAG_DONE      = BV(1),    // Transmit ISR disabled itself due to an empty buffer.
-	BFR_FLAG_E_PARITY  = BV(UPE0), // Received byte with parity error.
-	BFR_FLAG_E_OVERRUN = BV(DOR0), // Received bytes were dropped due to a full USART buffer.
-	BFR_FLAG_E_FRAME   = BV(FE0),  // Received invalid byte frame.
+	BFR_FLAG_E_PARITY  = BV(TTLV_UPE), // Received byte with parity error.
+	BFR_FLAG_E_OVERRUN = BV(TTLV_DOR), // Received bytes were dropped due to a full USART buffer.
+	BFR_FLAG_E_FRAME   = BV(TTLV_FE),  // Received invalid byte frame.
 	BFR_FLAG_E_DROP    = BV(5)     // Received bytes were dropped due to a full TTLV buffer.
 };
 
@@ -117,9 +170,9 @@ static uint8_t buffer_write(
 }
 
 
-ISR(USART_RX_vect) { // USART has received and buffered a data byte.
-	uint8_t csra = UCSR0A; // Read USART status flags BEFORE the data byte.
-	uint8_t data = UDR0; // Always read UDR0 to clear the RxC interrupt.
+ISR(TTLV_RX_VECT) { // USART has received and buffered a data byte.
+	uint8_t csra = TTLV_UCSRA; // Read USART status flags BEFORE the data byte.
+	uint8_t data = TTLV_UDR; // Always read TTLV_UDR to clear the RxC interrupt.
 	
 	// IDEA: Add 9th bit message synchronization check.
 	
@@ -145,7 +198,7 @@ ISR(USART_RX_vect) { // USART has received and buffered a data byte.
 	sched_isr_tcww |= ttlv_man_cat_bv; // Notify the TTLV receiver about this event.
 }
 
-ISR(USART_UDRE_vect) { // USART is ready to receive a data byte for transmission.
+ISR(TTLV_UDRE_VECT) { // USART is ready to receive a data byte for transmission.
 	uint8_t n = xmit_bfr_n;
 	
 	if (n > 0) {
@@ -155,12 +208,12 @@ ISR(USART_UDRE_vect) { // USART is ready to receive a data byte for transmission
 		xmit_bfr_start = buffer_index(start + 1, TTLV_XMIT_BFR_SIZE);
 		xmit_bfr_n = n - 1;
 		
-		UDR0 = data; // Transmit data byte.
+		TTLV_UDR = data; // Transmit data byte.
 		
 		xmit_bfr_flags |= BFR_FLAG_DATA; // Inform the TTLV transmitter about transmitted byte.
 	}
 	else { // No more bytes to send.
-		UCSR0B &= ~BV(UDRIE0); // Disable the UDRE interrupt (or it would just be re-triggered).
+		TTLV_UCSRB &= ~BV(TTLV_UDRIE); // Disable the UDRE interrupt (or it would just be re-triggered).
 		
 		xmit_bfr_flags |= BFR_FLAG_DONE; // Inform the TTLV transmitter about being done.
 	}
@@ -323,13 +376,13 @@ void ttlv_init(
 	sched_task task;
 	
 	// Configure the USART.
-	UBRR0 = ubrr; // Set baud rate. BAUD = Fosc / ((u2x ? 8 : 16)*(UBRR + 1)).
-	UCSR0A = 0; // Clear UCSR0A.
-	UCSR0A |= (0x1 & u2x) << U2X0; // Set double-speed mode.
-	UCSR0B = 0; // Clear UCSR0B.
-	UCSR0C = 0; // Clear UCSR0C.
-	UCSR0C |= (0x3 & parity) << UPM00; // Set parity checking mode.
-	UCSR0C |= BV(UCSZ00) | BV(UCSZ01); // Enable 8-bit serial data bytes.
+	TTLV_UBRR = ubrr; // Set baud rate. BAUD = Fosc / ((u2x ? 8 : 16)*(UBRR + 1)).
+	TTLV_UCSRA = 0; // Clear TTLV_UCSRA.
+	TTLV_UCSRA |= (0x1 & u2x) << TTLV_U2X; // Set double-speed mode.
+	TTLV_UCSRB = 0; // Clear TTLV_UCSRB.
+	TTLV_UCSRC = 0; // Clear TTLV_UCSRC.
+	TTLV_UCSRC |= (0x3 & parity) << TTLV_UPM0; // Set parity checking mode.
+	TTLV_UCSRC |= BV(TTLV_UCSZ0) | BV(TTLV_UCSZ1); // Enable 8-bit serial data bytes.
 	
 	ttlv_mode_flags = mode;
 	ttlv_xmit_task_cats = xmit_task_cats;
@@ -371,8 +424,8 @@ void ttlv_init(
 	sched_add(&task);
 	
 	// Enable the USART and the RX interrupt.
-	UCSR0B |= BV(RXEN0) | BV(TXEN0);
-	UCSR0B |= BV(RXCIE0);
+	TTLV_UCSRB |= BV(TTLV_RXEN) | BV(TTLV_TXEN);
+	TTLV_UCSRB |= BV(TTLV_RXCIE);
 }
 
 uint8_t ttlv_put_byte(uint8_t data) {
@@ -412,7 +465,7 @@ uint8_t ttlv_put_bytes(uint8_t n, const uint8_t *data_p) {
 			// Don't clobber updates made by the ISR.
 			xmit_bfr_n += xmit_n_uncommitted;
 			
-			UCSR0B |= BV(UDRIE0); // Enable the UDRE interrupt.
+			TTLV_UCSRB |= BV(TTLV_UDRIE); // Enable the UDRE interrupt.
 		}
 		
 		// Update buffer counters.
@@ -508,7 +561,7 @@ ttlv_state ttlv_begin_xmit(void) {
 		// ISSUE: Do we need to keep turning the USART transmitter on and off, or does it
 		//        suffice to enable/disable the UDRE interrupt?
 		
-		UCSR0B |= BV(UDRIE0); // Enable the UDRE interrupt.
+		TTLV_UCSRB |= BV(TTLV_UDRIE); // Enable the UDRE interrupt.
 	}
 	
 	// Update buffer counters.
@@ -635,8 +688,8 @@ ttlv_state ttlv_recv(uint8_t *data_p) {
 
 void ttlv_shutdown(void) {
 	// Disable the USART and the RX and UDRE interrupts.
-	UCSR0B &= ~(BV(RXCIE0) | BV(UDRIE0));
-	UCSR0B &= ~(BV(RXEN0) | BV(TXEN0));
+	TTLV_UCSRB &= ~(BV(TTLV_RXCIE) | BV(TTLV_UDRIE));
+	TTLV_UCSRB &= ~(BV(TTLV_RXEN) | BV(TTLV_TXEN));
 	
 	// Remove the receiver/transmitter task.
 	sched_remove(TASK_ST_NUM_CAT_MASK, ttlv_man_num_cat, 0);

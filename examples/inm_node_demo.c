@@ -36,9 +36,9 @@
 #define INM_SRC_ADR 1
 
 // TODO: This should perhaps not be hard-coded in the finished system.
-#define INM_DST_ADR 12
+#define INM_DST_ADR 106
 
-//#define INM_DST_ADR_MEMMON 17
+//#define INM_DST_ADR_MEMMON 107
 //#define MAX_MEMORY_MONITORS 4
 
 #define REMTCAM_MAX_MSG_LEN 16
@@ -57,8 +57,8 @@ enum {
 };
 
 enum {
-	ID_MICROPHONE  = 0, // fast sensor
-	ID_LIGHT_METER = 1, // slow sensors
+	ID_MICROPHONE  = 0,  // fast sensor
+	ID_LIGHT_METER = 1,  // slow sensors
 	// etc.
 	//ID_SENSOR7 = 7,
 	
@@ -103,9 +103,9 @@ static uint16_t light_meter_state = 0;
 static union {
 	uint8_t b[REMTCAM_MAX_MSG_LEN];
 	//ttlv_msg_inm_result res;
-	ttlv_msg_reg r;
-	ttlv_msg_regpair rp;
-	remtcam_var_header v;
+	ttlv_msg_inm_reg r;
+	ttlv_msg_inm_regpair rp;
+	remtcam_var_res_header v;
 	remtcam_sensor_event e;
 	remtcam_sensor_sample s;
 } msg_data_out;
@@ -253,22 +253,24 @@ static void command_handler(sched_task *task) {
 	ttlv_result res = TTLV_RES_NONE;
 	
 	if (!TTLV_HAS_MESSAGE) {
-		task->st |= TASK_ST_SLP(1); // Set sleep flag.
+		task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 		return;
 	}
 	
-	if (TTLV_CHECK_INM_RESULT) { // Received an INM result response.
+	if (TTLV_CHECK_INM_RESULT) {  // Received an INM result response.
 		ttlv_finish_recv();
-		LED_PINR = BV(LED_PIN_DEBUG); // Helpfully toggle the debug LED.
+		LED_PINR = BV(LED_PIN_DEBUG);  // DEBUG: Helpfully toggle the debug LED.
 	}
 	else if (TTLV_CHECK_REG_READ) {
 		ttlv_recv(msg_data_in.b);
 		
 		msg_data_out.r.index = msg_data_in.b[0];
+		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+		
 		res = ttlv_reg_read(msg_data_out.r.index, &msg_data_out.r.value);
 		
 		if (res == TTLV_RES_OK) {
-			ttlv_xmit_response(TTLV_MSG_T_REG_READ_RES, TTLV_MSG_L_REG_READ_RES, msg_data_out.b);
+			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
 			res = TTLV_RES_NONE;
 		}
 	}
@@ -280,33 +282,42 @@ static void command_handler(sched_task *task) {
 	else if (TTLV_CHECK_REG_TOGGLE) {
 		ttlv_recv(msg_data_in.b);
 		
-		msg_data_out.r = msg_data_in.r;
+		msg_data_out.r.index = msg_data_in.r.index;
+		msg_data_out.r.value = msg_data_in.r.value;
+		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+		
 		res = ttlv_reg_toggle(msg_data_out.r.index, &msg_data_out.r.value);
 		
 		if (res == TTLV_RES_OK) {
-			ttlv_xmit_response(TTLV_MSG_T_REG_READ_RES, TTLV_MSG_L_REG_READ_RES, msg_data_out.b);
+			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
 			res = TTLV_RES_NONE;
 		}
 	}
 	else if (TTLV_CHECK_REG_RW_EXCH) {
 		ttlv_recv(msg_data_in.b);
 		
-		msg_data_out.r = msg_data_in.r;
+		msg_data_out.r.index = msg_data_in.r.index;
+		msg_data_out.r.value = msg_data_in.r.value;
+		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+		
 		res = ttlv_reg_rw_exch(msg_data_out.r.index, &msg_data_out.r.value);
 		
 		if (res == TTLV_RES_OK) {
-			ttlv_xmit_response(TTLV_MSG_T_REG_READ_RES, TTLV_MSG_L_REG_READ_RES, msg_data_out.b);
+			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
 			res = TTLV_RES_NONE;
 		}
 	}
 	else if (TTLV_CHECK_REG_WR_EXCH) {
 		ttlv_recv(msg_data_in.b);
 		
-		msg_data_out.r = msg_data_in.r;
+		msg_data_out.r.index = msg_data_in.r.index;
+		msg_data_out.r.value = msg_data_in.r.value;
+		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+		
 		res = ttlv_reg_wr_exch(msg_data_out.r.index, &msg_data_out.r.value);
 		
 		if (res == TTLV_RES_OK) {
-			ttlv_xmit_response(TTLV_MSG_T_REG_READ_RES, TTLV_MSG_L_REG_READ_RES, msg_data_out.b);
+			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
 			res = TTLV_RES_NONE;
 		}
 	}
@@ -314,10 +325,12 @@ static void command_handler(sched_task *task) {
 		ttlv_recv(msg_data_in.b);
 		
 		msg_data_out.rp.index = msg_data_in.b[0];
+		msg_data_out.rp.request_id = ttlv_recv_inm_header.h.msg_id;
+		
 		res = ttlv_regpair_read(msg_data_out.rp.index, &msg_data_out.rp.value);
 		
 		if (res == TTLV_RES_OK) {
-			ttlv_xmit_response(TTLV_MSG_T_REGPAIR_READ_RES, TTLV_MSG_L_REGPAIR_READ_RES, msg_data_out.b);
+			ttlv_xmit_response(TTLV_MSG_T_INM_REGPAIR_READ_RES, TTLV_MSG_L_INM_REGPAIR_READ_RES, msg_data_out.b);
 			res = TTLV_RES_NONE;
 		}
 	}
@@ -326,7 +339,10 @@ static void command_handler(sched_task *task) {
 		
 		ttlv_recv(msg_data_in.b);
 		
-		msg_data_out.v = msg_data_in.v;
+		msg_data_out.v.id = msg_data_in.v.id;
+		msg_data_out.v.index = msg_data_in.v.index;
+		msg_data_out.v.request_id = ttlv_recv_inm_header.h.msg_id;
+		
 		res = remtcam_get_var(
 			msg_data_out.v.id, msg_data_out.v.index, &value_len,
 			msg_data_out.b + REMTCAM_MSG_L_GET_VAR_RES);
@@ -346,7 +362,7 @@ static void command_handler(sched_task *task) {
 			msg_data_in.v.id, msg_data_in.v.index, value_len,
 			msg_data_in.b + REMTCAM_MSG_L_SET_VAR);
 	}
-	else { // Unrecognized message.
+	else {  // Unrecognized message.
 		// NOTE: Probably not a good idea to always send error messages in
 		//       response to unrecognized messages. Doing so can easily
 		//       trigger self-sustaining message cascades.
@@ -361,8 +377,8 @@ static void led_handler(sched_task *task) {
 	uint8_t tmp_led_states;
 	
 	// Update LED 0.
-	if (LED_INPUT_RISING & BV(LED_INPUT_PIN0)) { // Detect input event.
-		led_states ^= BV(LED_PIN0); // Change LED state.
+	if (LED_INPUT_RISING & BV(LED_INPUT_PIN0)) {  // Detect input event.
+		led_states ^= BV(LED_PIN0);  // Change LED state.
 		tmp_led_states = 1 & (led_states >> LED_PIN0);
 		
 		// Send blink state update.
@@ -375,8 +391,8 @@ static void led_handler(sched_task *task) {
 	}
 	
 	// Update LED 1.
-	if (LED_INPUT_RISING & BV(LED_INPUT_PIN1)) { // Detect input event.
-		led_states ^= BV(LED_PIN1); // Change LED state.
+	if (LED_INPUT_RISING & BV(LED_INPUT_PIN1)) {  // Detect input event.
+		led_states ^= BV(LED_PIN1);  // Change LED state.
 		tmp_led_states = 1 & (led_states >> LED_PIN1);
 		
 		// Send blink state update.
@@ -390,7 +406,7 @@ static void led_handler(sched_task *task) {
 	
 	LED_PORT = led_states | (LED_PORT & ~LED_PIN_MASK);
 	
-	task->st |= TASK_ST_SLP(1); // Set sleep flag.
+	task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 }
 
 static remtcam_sensor_id select_sensor(uint8_t count, uint8_t flags) {
@@ -509,7 +525,7 @@ static void sensor_handler(sched_task *task) {
 		// Start a new ADC conversion.
 		ADCSRA |= BV(ADSC);
 		
-		task->st |= TASK_ST_SLP(1); // Set the task sleep flag.
+		task->st |= TASK_ST_SLP(1);  // Set the task sleep flag.
 	}
 	else {
 		// IDEA: Power (and wear?) optimize by disabling the ADC?
@@ -610,7 +626,7 @@ int main(void) {
 	// Set blinky LED pins as outputs.
 	LED_DDR |= BV(LED_PIN0) | BV(LED_PIN1);
 	
-	LED_DDR |= BV(LED_PIN_DEBUG); // DEBUG: Debugging indicator LED.
+	LED_DDR |= BV(LED_PIN_DEBUG);  // DEBUG: Debugging indicator LED.
 	
 	// Enable pull-ups on input pins.
 	LED_INPUT_PORT |= BV(LED_INPUT_PIN0) | BV(LED_INPUT_PIN1);
@@ -631,7 +647,7 @@ int main(void) {
 		TASK_ST_MAKE(1, NOAWAKE_TASK_CAT, 0), MAX_MEMORY_MONITORS, memory_monitors,
 		SCHED_TIME_MS(100), TTLV_MSG_T_MEMMON_DATA, INM_DST_ADR_MEMMON);*/
 	
-	ttlv_xmit_inm_header.h.srcadr = INM_SRC_ADR; // Set INM source address.
+	ttlv_xmit_inm_header.h.srcadr = INM_SRC_ADR;  // Set INM source address.
 	
 	init_tasks();
 	
