@@ -6,9 +6,9 @@ import logging.handlers
 import selectors
 import sys
 
-import inm
-from inm import ValueConversions as _VC
-from inm import StandardTypes as _ST, StandardResults as _SRes, StandardRegisters as _SR
+import inm.inm as inm
+from inm.inm import ValueConversions as _VC
+from inm.inm import StandardTypes as _ST, StandardResults as _SRes, StandardRegisters as _SR
 
 _DEFAULT_UDP_PORT = inm.InetMessageChannel.DEFAULT_UDP_PORT
 _MAX_INM_ADR = inm.MessageHeader.MAX_MESSAGE_ADR

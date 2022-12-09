@@ -40,7 +40,7 @@
 //          It MUST also be true (with integer division) that
 //            1 <= (10^6 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU <= 255.
 #ifndef SCHED_CLOCK_PRESCALE_LOG
-#if defined(SCHED_USE_TIMER0) || defined(LIBAVR_ATTINY)
+#if defined(SCHED_USE_TIMER0) || defined(LIBAVR_ATTINY) || defined(LIBAVR_ATMEGA_U)
 #define SCHED_CLOCK_PRESCALE_LOG 6
 #else
 #define SCHED_CLOCK_PRESCALE_LOG 5

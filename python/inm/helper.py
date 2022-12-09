@@ -1,5 +1,5 @@
 
-import inm
+from . import inm
 
 # ISSUE: Correctly entering INM commands at the Python prompt is still
 #        tedious and error-prone. For example, to turn on a LED via the

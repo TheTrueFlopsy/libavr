@@ -12,7 +12,6 @@
 
 NAME="inm_router"
 COMMAND_NAME="inm_router.py"
-#DAEMON="/usr/local/bin/start_inm_router.sh"
 DAEMON="/usr/local/bin/$COMMAND_NAME"
 
 # These are arguments for the daemon process.

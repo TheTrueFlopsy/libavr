@@ -167,6 +167,11 @@ typedef union ttlv_inm_header {
 	uint8_t b[sizeof(ttlv_s_inm_header)];
 } ttlv_inm_header;
 
+#define TTLV_MAX_MESSAGE_ID 0xffff
+#define TTLV_MAX_MESSAGE_ADR 0xff
+#define TTLV_LOCAL_ADR 0x00
+#define TTLV_BROADCAST_ADR TTLV_MAX_MESSAGE_ADR
+
 /**
 	Struct: ttlv_s_header
 	Specifies the byte format of a TLV header.
@@ -190,6 +195,15 @@ typedef union ttlv_header {
 	ttlv_s_header h;
 	uint8_t b[sizeof(ttlv_s_header)];
 } ttlv_header;
+
+#define TTLV_MIN_TYPE_NUM 0x00
+#define TTLV_MAX_TYPE_NUM 0x7f
+#define TTLV_MAX_MESSAGE_LEN 0xff
+#define TTLV_PROTOCOL_TYPE_NUM TTLV_MAX_TYPE_NUM
+
+#define TTLV_MIN_LARGE_TYPE_NUM 0x08
+#define TTLV_MAX_LARGE_TYPE_NUM 0xff
+#define TTLV_MAX_LARGE_MESSAGE_LEN 0xffffffffL
 
 
 /// Section: Header and Message Sizes

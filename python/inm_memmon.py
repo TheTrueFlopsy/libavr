@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-import inm
+import inm.inm
 
 # TODO: Figure out how to support color output.
 #       Go full ncurses (probably the best bet)?
