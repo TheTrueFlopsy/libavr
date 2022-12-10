@@ -1,7 +1,9 @@
 
 service_name := inm_router
 executables := inm_router.py inm_memmon.py
-library_code := inm/__init__.py inm/inm.py inm/helper.py
+pkg_name := inm
+mod_names := __init__ inm helper
+library_code := $(addprefix $(pkg_name)/, $(addsuffix .py, $(mod_names)))
 init_script := inm_router.sh
 config_file := router_args
 defaults_file := inm_router.defaults
@@ -11,7 +13,7 @@ defaults_dir := /etc/default/
 install_dir := /usr/local/
 bin_dir := $(install_dir)bin/
 lib_dir := $(install_dir)lib/inm/
-pkg_dir := $(lib_dir)inm/
+pkg_dir := $(lib_dir)$(pkg_name)/
 config_dir := $(install_dir)etc/inm/
 
 
@@ -23,6 +25,7 @@ clean :
 $(defaults_file) :
 	echo 'PYTHONPATH="$$PYTHONPATH:$(lib_dir)"' > $(defaults_file)
 
+# TODO: Precompile the installed Python source?
 install : $(config_file) $(defaults_file)
 	install -d $(bin_dir) $(pkg_dir) $(config_dir)
 	install -m 644 $(library_code) $(pkg_dir)

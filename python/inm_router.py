@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 import argparse
+import enum
+import importlib
 import logging
 import logging.handlers
 import selectors
@@ -10,16 +12,19 @@ import inm.inm as inm
 from inm.inm import ValueConversions as _VC
 from inm.inm import StandardTypes as _ST, StandardResults as _SRes, StandardRegisters as _SR
 
+
 _DEFAULT_UDP_PORT = inm.InetMessageChannel.DEFAULT_UDP_PORT
 _MAX_INM_ADR = inm.MessageHeader.MAX_MESSAGE_ADR
 _BROADCAST_ADR = inm.MessageHeader.BROADCAST_ADR
+
+_DEFAULT_HOOK_INTERVAL = 1.0  # 1 second between main loop hook invocations
 
 # TODO: Implement a TLV/INM console.
 
 _prog_title = 'INM Router Script'
 # 0xAABBCCDD
 # A: major version, B: minor version, C: revision, D: build.
-_prog_version = 0x01_00_02_02  # 1.0.2.2
+_prog_version = 0x01_00_04_01  # 1.0.4.1
 
 _firmware_id_l = 0x01
 _firmware_id_h = 0x03
@@ -85,24 +90,32 @@ def _parse_args(args=None, namespace=None):
 	arg_p.add_argument('-A', '--inm-adr',
 		help='INM address of router', metavar='INMADR',
 		default=0, type=int, dest='inm_adr')
+	arg_p.add_argument('-C', '--cc-to',
+		help='INM address of CC destination', metavar='INMADR',
+		type=int, action='append', dest='cc_to')
 	arg_p.add_argument('-D', '--debug-log',
 		help='use debug log format', action='store_true', dest='debug_log')
-	arg_p.add_argument('-L', '--loglevel',
-		help='set numeric log level', default=_def_loglevel, type=int,
-		metavar='LOGLEVEL', dest='loglevel')
+	arg_p.add_argument('-H', '--hook-module',
+		help='name of application hook module', metavar='NAME', dest='hook_module')
 	arg_p.add_argument('-I', '--ip-ch',
 		help='<channel number> <IP address> <UDP port>', metavar=('CH', 'IPADR', 'PORT'),
 		nargs=3, action='append', dest='ip_channels')
+	arg_p.add_argument('-L', '--loglevel',
+		help='set numeric log level', default=_def_loglevel, type=int,
+		metavar='LOGLEVEL', dest='loglevel')
 	arg_p.add_argument('-R', '--relay',
 		help='relay mode, route messages even when the router is the destination',
 		action='store_true', dest='relay')
 	arg_p.add_argument('-S', '--serial-ch',
 		help='<channel number> <serial port>', metavar=('CH', 'PORT'),
 		nargs=2, action='append', dest='serial_channels')
+	arg_p.add_argument('-T', '--hook-interval',
+		help='seconds between main loop hook invocations', metavar='SECS',
+		default=_DEFAULT_HOOK_INTERVAL, type=float, dest='hook_interval')
 	arg_p.add_argument('-V', '--version',
 		help='print version number and exit', action='store_true', dest='print_version')
 	arg_p.add_argument('-r', '--route',
-		help='<INM destination> <channel number> <link address ...>', metavar=('INMADR', 'ARG'),
+		help='<INM destination> <channel number> <option,...> <link address ...>', metavar=('INMADR', 'ARG'),
 		nargs='+', action='append', dest='routes')
 	arg_p.add_argument('-v', '--verbose',
 		help='increase log verbosity', action='count', default=0, dest='verbosity')
@@ -152,30 +165,51 @@ def _parse_ip_link_adr(link_adr):
 		_log.error(f'Invalid IP link address {link_adr} specified. Exiting.')
 		sys.exit(7)
 
+class RouteOptions(enum.Flag):
+	NONE = 0
+	NO_BROADCAST = enum.auto()
+
+def _parse_route_options(option_str):
+	option_list = [s.strip() for s in option_str.split(',')]
+	options = RouteOptions.NONE
+	
+	for option_name in option_list:
+		if option_name == '-':
+			pass  # NOPtion
+		elif option_name == 'no-broadcast':
+			options |= RouteOptions.NO_BROADCAST
+		else:
+			_log.error(f'Invalid route option {option_name} specified. Exiting.')
+			sys.exit(8)
+	
+	return options
+
 def _init_channels(args, inm_adr, def_selector):
 	channels = {}
 	
 	if args.ip_channels is not None:
-		for ch_num, ip_adr, udp_port in args.ip_channels:
-			ch_num = _parse_ch_num(ch_num, channels)
+		for ch_num_, ip_adr, udp_port in args.ip_channels:
+			ch_num_ = _parse_ch_num(ch_num_, channels)
 			udp_port = _parse_port_num(udp_port)
-			ch = inm.InetMessageChannel(inm_adr, ip_adr, udp_port, selector=def_selector)
-			channels[ch_num] = ch
+			ch = inm.InetMessageChannel(inm_adr, ip_adr, udp_port, selector=def_selector, ch_num=ch_num_)
+			channels[ch_num_] = ch
 	
 	if args.serial_channels is not None:
-		for ch_num, serial_port in args.serial_channels:
-			ch_num = _parse_ch_num(ch_num, channels)
-			ch = inm.SerialMessageChannel(inm_adr, serial_port, selector=def_selector)
-			channels[ch_num] = ch
+		for ch_num_, serial_port in args.serial_channels:
+			ch_num_ = _parse_ch_num(ch_num_, channels)
+			ch = inm.SerialMessageChannel(inm_adr, serial_port, selector=def_selector, ch_num=ch_num_)
+			channels[ch_num_] = ch
 	
 	return channels
 
 def _init_routes(args, channels):
 	rtab = {}
 	
-	for inm_adr, ch_num, *link_adr in args.routes:
+	# TODO: Better error reporting (not just a stack trace) when a "routes" entry is malformed.
+	for inm_adr, ch_num, options, *link_adr in args.routes:
 		inm_adr = _parse_inm_adr(inm_adr)
 		ch_num = _parse_ch_num(ch_num)
+		options = _parse_route_options(options)
 		
 		if ch_num not in channels:
 			_log.error(f'Routing channel number {ch_num} not found. Exiting.')
@@ -199,11 +233,12 @@ def _init_routes(args, channels):
 		# ISSUE: Should duplicate routes be filtered out?
 		rtab[inm_adr].append(rentry)
 		
-		if _BROADCAST_ADR not in rtab:
-			rtab[_BROADCAST_ADR] = []
-		
-		if rentry not in rtab[_BROADCAST_ADR]:
-			rtab[_BROADCAST_ADR].append(rentry)
+		if not options & RouteOptions.NO_BROADCAST:
+			if _BROADCAST_ADR not in rtab:
+				rtab[_BROADCAST_ADR] = []
+			
+			if rentry not in rtab[_BROADCAST_ADR]:
+				rtab[_BROADCAST_ADR].append(rentry)
 	
 	return rtab
 
@@ -251,6 +286,7 @@ def _handle_msg(header, msg, link_adr):
 	response = None
 	res = None
 	
+	# IDEA: Add a message handling hook.
 	if msg.typ == _ST.REG_READ:
 		response, res = _handle_reg_read(header, msg, link_adr)
 	elif msg.typ == _ST.REGPAIR_READ:
@@ -258,7 +294,7 @@ def _handle_msg(header, msg, link_adr):
 	# NOTE: Ignore unrecognized message types.
 	
 	if response is None and res != None and res != _SRes.OK:
-		response = _msg_factory.make_msg(_ST.RESULT, res, 1)
+		response = _msg_factory.make_msg_mval(_ST.INM_RESULT, (res, header.msg_id))
 	
 	return response
 
@@ -267,8 +303,14 @@ def _dotted_byte_format(i):
 	a, b, c, d = 0xff & (i >> 24), 0xff & (i >> 16), 0xff & (i >> 8), 0xff & i
 	return f'{a}.{b}.{c}.{d}'
 
+def _default_loop_hook_init(msg_factory, rch):
+	pass
+
+def _default_loop_hook(rch):
+	pass
+
 def main():
-	inm.default_msg_factory.default_val_conv = 'hex'
+	inm.default_msg_factory.default_val_conv = inm.ValueConversions.Hex
 	
 	args = _parse_args()
 	version_str = _dotted_byte_format(_prog_version)
@@ -283,6 +325,19 @@ def main():
 	_log.info(f'Version {version_str}')
 	
 	inm_adr = _parse_inm_adr(args.inm_adr)
+	cc_to = tuple(_parse_inm_adr(cc_arg) for cc_arg in args.cc_to)
+	hook_module_name = args.hook_module
+	hook_interval = inm.get_timedelta(args.hook_interval)
+	
+	loop_hook_init = _default_loop_hook_init
+	loop_hook =_default_loop_hook
+	
+	if hook_module_name is not None:
+		hook_module = importlib.import_module(hook_module_name)
+		loop_hook_init = hook_module.loop_hook_init
+		loop_hook = hook_module.loop_hook
+	
+	# IDEA: Add a startup hook.
 	
 	with selectors.DefaultSelector() as selector:
 		channels = _init_channels(args, inm_adr, selector)
@@ -291,18 +346,30 @@ def main():
 			sys.exit(1)
 		
 		rtab = _init_routes(args, channels)
-		channel_list = list(channels.values())
 		
 		try:
-			with inm.RoutingMessageChannel(inm_adr, rtab, channel_list) as rch:
+			with inm.RoutingMessageChannel(inm_adr, rtab, channels, hook_interval, None, selector) as rch:
 				rch.relay_messages = args.relay
 				
+				for cc_adr in cc_to:
+					rch.add_cc_adr(cc_adr)
+				
+				latest_hook_call_t = inm.get_timestamp()
+				loop_hook_init(_msg_factory, rch)
+				
 				while True:
+					#t0 = inm.get_timestamp()  # DEBUG: 
+					
 					msg_for_me, res, header, msg, link_adr = rch.route()
+					
+					#t1 = inm.get_timestamp()  # DEBUG:
+					#t_d_r = int(1.0e6 * (t1 - t0).total_seconds())
+					#_log.info(f'Musecs in route():             {t_d_r: 8d}')
+					#t0 = inm.get_timestamp()
 					
 					if res == inm.ResultCode.SUCCESS:
 						if msg_for_me:
-							_log.info(inm.format_msg_info(msg, 'ACCEPT', header, link_adr, 8))
+							_log.debug(inm.format_msg_info(msg, 'RECV', header, link_adr, 8))
 							
 							response = _handle_msg(header, msg, link_adr)
 							
@@ -310,13 +377,28 @@ def main():
 								res = rch.send(header.srcadr, response, link_adr=link_adr)
 								
 								if res != inm.ResultCode.SUCCESS:
-									_log.info(inm.format_msg_info(res.name, 'REPL_ERR', header, link_adr, 8))
+									_log.info(inm.format_msg_info(res.name, 'REPLY_E', header, link_adr, 8))
 						else:
-							_log.info(inm.format_msg_info(msg, 'ROUTE', header, link_adr, 8))
-					else:
+							# IDEA: Add a "message routed" hook.
+							_log.debug(inm.format_msg_info(msg, 'ROUTE', header, link_adr, 8))
+					elif res != inm.ResultCode.RECV_TIMEOUT:
+						# IDEA: Add a "routing error" hook.
 						_log.info(inm.format_msg_info(res.name, 'ERROR', header, link_adr, 8))
+					
+					now = inm.get_timestamp()
+					if now - latest_hook_call_t >= hook_interval:
+						latest_hook_call_t = now
+						loop_hook(rch)
+					
+					#t1 = inm.get_timestamp()  # DEBUG:
+					#t_d_nr = int(1.0e6 * (t1 - t0).total_seconds())
+					#t_d = t_d_r + t_d_nr
+					#_log.info(f'Musecs outside route():        {t_d_nr: 8d}')
+					#_log.info(f'Total lap time (% in route()): {t_d: 8d} ({100.0*(t_d_r/t_d):0.3f}%)')
 		except KeyboardInterrupt:
 			_log.info('Interrupted. Cleaning up and exiting.')
+	
+	# IDEA: Add a shutdown hook.
 
 if __name__ == '__main__':
 	_init_logger(_def_loglevel)

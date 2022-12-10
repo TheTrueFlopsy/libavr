@@ -9,8 +9,9 @@ import serial
 
 # TODO: Document this module.
 
-_now = datetime.datetime.today
 ZERO_DURATION = datetime.timedelta(0)
+
+get_timestamp = datetime.datetime.now
 
 def get_timedelta(secs=0, musecs=0):
 	return datetime.timedelta(seconds=secs, microseconds=musecs)
@@ -221,7 +222,7 @@ class StandardMessage(Message):
 	MAX_TYPE_NUM = 0x7f
 	MAX_MESSAGE_LEN = 0xff
 	
-	PROTOCOL_TYPE_NUM = 0x7f
+	PROTOCOL_TYPE_NUM = MAX_TYPE_NUM
 
 
 class LargeMessage(Message):
@@ -235,6 +236,24 @@ class LargeMessage(Message):
 
 class MessageFactory:
 	
+	DEFAULT_RES_ENUM_MSG_TYPES = (StandardTypes.RESULT, StandardTypes.INM_RESULT)
+	
+	DEFAULT_REG_ENUM_MSG_TYPES = (
+		StandardTypes.REG_READ,
+		StandardTypes.REG_READ_RES,
+		StandardTypes.INM_REG_READ_RES,
+		StandardTypes.REG_WRITE,
+		StandardTypes.REG_TOGGLE,
+		StandardTypes.REG_RW_EXCH,
+		StandardTypes.REG_WR_EXCH,
+		StandardTypes.REGPAIR_READ,
+		StandardTypes.REGPAIR_READ_RES,
+		StandardTypes.INM_REGPAIR_READ_RES,
+		StandardTypes.REGPAIR_WRITE,
+		StandardTypes.REGPAIR_TOGGLE,
+		StandardTypes.REGPAIR_RW_EXCH,
+		StandardTypes.REGPAIR_WR_EXCH)
+	
 	def __init__(self):
 		self.make_val_hex_str = False
 		self.str_encoding = 'ascii'
@@ -245,7 +264,9 @@ class MessageFactory:
 		self.enum_format_val = True
 		self.type_enum_class = StandardTypes
 		self.res_enum_class = StandardResults
+		self.res_enum_msg_types = self.DEFAULT_RES_ENUM_MSG_TYPES
 		self.reg_enum_class = StandardRegisters
+		self.reg_enum_msg_types = self.DEFAULT_REG_ENUM_MSG_TYPES
 		self.default_strictness = Strictness.Exact
 		
 		# NOTE: Centralized mapping of INM message types to value field structure
@@ -448,10 +469,9 @@ class MessageFactory:
 		if self.enum_format_val and tlv_type is not None and len(val) >= 1:
 			e_val = None
 			
-			if tlv_type in (StandardTypes.RESULT, StandardTypes.INM_RESULT):
+			if tlv_type in self.res_enum_msg_types:
 				e_val = map_enum(self.res_enum_class, val[0], val[0])
-			elif tlv_type in (StandardTypes.REG_READ_RES, StandardTypes.INM_REG_READ_RES,
-			                  StandardTypes.REGPAIR_READ_RES, StandardTypes.INM_REGPAIR_READ_RES):
+			elif tlv_type in self.reg_enum_msg_types:
 				e_val = map_enum(self.reg_enum_class, val[0], val[0])
 			
 			if e_val is None:
@@ -615,7 +635,7 @@ class MessageChannel:
 	
 	make_default_selector = True
 	
-	def __init__(self, srcadr, timeout=None, msg_factory=None, selector=None):
+	def __init__(self, srcadr, timeout=None, msg_factory=None, selector=None, ch_num=None):
 		if msg_factory is None:
 			msg_factory = default_msg_factory
 		
@@ -628,6 +648,7 @@ class MessageChannel:
 		self.timeout = timeout
 		self.msg_factory = msg_factory
 		self.selector = selector
+		self.ch_num = ch_num
 		
 		self._is_open = False
 		self._prev_msg_id = None
@@ -651,12 +672,12 @@ class MessageChannel:
 		self.close()
 		return False
 	
-	def _register_selectable(self, selectable):
+	def _register_selectable(self, selectable, ch_num=None):
 		if self.selector is None:
 			return None
 		
 		try:
-			selector_key = self.selector.register(selectable, selectors.EVENT_READ)
+			selector_key = self.selector.register(selectable, selectors.EVENT_READ, ch_num)
 		except Exception:
 			return None
 		
@@ -671,12 +692,21 @@ class MessageChannel:
 		except Exception:
 			pass  # TODO: Report this error.
 	
-	def _selectable_readable(self, selector_keys, timeout=0.0):
+	def _readable_selectables(self, timeout_secs=0.0):
+		if self.selector is None:
+			return None
+		
+		selected = self.selector.select(timeout_secs)
+		return (k for k, e in selected if e & selectors.EVENT_READ)
+	
+	#def _selectable_is_readable(self, selector_keys, timeout=0.0):
+	def _selectable_is_readable(self, timeout_secs=0.0):
 		if self.selector is None:
 			return False
 		
-		selected = self.selector.select(timeout)
-		return any((k, selectors.EVENT_READ) in selected for k in selector_keys)
+		selected = self.selector.select(timeout_secs)
+		#return any((k, selectors.EVENT_READ) in selected for k in selector_keys)
+		return any(e & selectors.EVENT_READ for k, e in selected)
 	
 	# CAUTION: This is not any sort of thread safe.
 	def peek_prev_msg_id(self):
@@ -708,8 +738,9 @@ class MessageChannel:
 		if not self.is_open():
 			return False
 		
-		selector_keys = self.get_selector_keys()
-		return self._selectable_readable(selector_keys)
+		#selector_keys = self.get_selector_keys()
+		#return self._selectable_is_readable(selector_keys)
+		return self._selectable_is_readable()
 	
 	def get_selector_keys(self):
 		return ()
@@ -723,15 +754,21 @@ class MessageChannel:
 	def recv(self): # Returns (res, header, msg, link_adr).
 		raise NotImplementedError()
 
-def format_msg_info(obj, event=None, header=None, link_adr=None, event_colw=0):
+def format_msg_info(obj, event=None, header=None, link_adr=None, event_colw=0, timestamp=False):
 	if isinstance(link_adr, tuple) and len(link_adr) > 1 and isinstance(link_adr[0], MessageChannel):
 		link_adr = link_adr[1]
 	
+	timestamp_fmt = '%Y-%m-%dT%H:%M:%S.%f'
+	if timestamp and isinstance(timestamp, str):
+		timestamp_fmt = timestamp
+	
+	#time_field = '' if not timestamp else f'{get_timestamp().isoformat(timespec="milliseconds")} '
+	time_field = '' if not timestamp else f'{get_timestamp():{timestamp_fmt}} '
 	event_field = '' if event is None else f'{event:>{event_colw:d}} '
 	header_field = '' if header is None else f'[{header.srcadr}.{header.msg_id} => {header.dstadr}]'
 	link_adr_field = '' if link_adr is None else link_adr
 	
-	return f'{event_field}{header_field}{link_adr_field}: {str(obj)}'
+	return f'{time_field}{event_field}{header_field}{link_adr_field}: {str(obj)}'
 
 
 class RoutingMessageChannel(MessageChannel):
@@ -739,17 +776,34 @@ class RoutingMessageChannel(MessageChannel):
 	TIMEOUT_DIVISOR = 10.0
 	DEFAULT_CH_TIMEOUT = get_timedelta(musecs=10000)
 	
-	def __init__(self, srcadr, rtab, recv_channels, timeout=None, msg_factory=None):
-		super().__init__(srcadr, timeout, msg_factory, False)
+	def __init__(self, srcadr, rtab, recv_channels, timeout=None, msg_factory=None, selector=None, ch_num=None):
+		super().__init__(srcadr, timeout, msg_factory, selector, ch_num)
 		
 		self.rtab = rtab
 		self.recv_channels = recv_channels
+		self.cc_to = []
 		self.close_recv_channels = True
 		
 		# NOTE: Set this to True to apply routing even to messages where the
 		#       destination address equals the source address of the
 		#       RoutingMessageChannel.
 		self.relay_messages = False
+		
+		self._selector_key_cache = None  # Cache of readable selector keys, used by recv().
+	
+	def add_cc_adr(self, cc_adr):
+		if cc_adr in self.cc_to:
+			return False
+		
+		self.cc_to.append(cc_adr)
+		return True
+	
+	def remove_cc_adr(self, cc_adr):
+		if cc_adr not in self.cc_to:
+			return False
+		
+		self.cc_to.remove(cc_adr)
+		return True
 	
 	def open(self):
 		if self.is_open():
@@ -757,7 +811,7 @@ class RoutingMessageChannel(MessageChannel):
 		
 		self.set_timeout(self.timeout) # NOTE: Update timeouts in child channels.
 		
-		for ch in self.recv_channels:
+		for ch in self.recv_channels.values():
 			res = ch.open()
 			if res not in (ResultCode.SUCCESS, ResultCode.INVALID_STATE):
 				return res
@@ -772,33 +826,41 @@ class RoutingMessageChannel(MessageChannel):
 		self._is_open = False
 		
 		if self.close_recv_channels:
-			for ch in self.recv_channels:
+			for ch in self.recv_channels.values():
 				ch.close()
 		
 		self.rtab = None
 		self.recv_channels = None
+		
+		self._selector_key_cache = None
 	
 	# NOTE: The default implementation works for all currently defined
 	#       MessageChannel types, and is more efficient.
 	#def readable(self):
-	#	return any(ch.readable() for ch in self.recv_channels)
+	#	return any(ch.readable() for ch in self.recv_channels.values())
 	
 	def get_selector_keys(self):
-		return (k for ch in self.recv_channels for k in ch.get_selector_keys())
+		return (k for ch in self.recv_channels.values() for k in ch.get_selector_keys())
 	
 	def set_timeout(self, timeout):
 		self.timeout = timeout
 		
 		if self.timeout is None:
+			# NOTE: Set a receive channel timeout even when there is no timeout for
+			#       the RoutingMessageChannel itself. This prevents recv() from
+			#       blocking forever on one receive channel while another receive
+			#       channel has data available.
 			ch_timeout = self.DEFAULT_CH_TIMEOUT
 		else:
 			n_ch = max(1, len(self.recv_channels))
 			ch_timeout = self.timeout / (self.TIMEOUT_DIVISOR * n_ch)
 		
-		for ch in self.recv_channels:
-			ch.set_timeout(ch_timeout)
+		for ch in self.recv_channels.values():
+			#ch.set_timeout(ch_timeout)
+			ch.set_timeout(ZERO_DURATION)
 	
-	def send(self, dstadr, msg, msg_id=None, srcadr=None, link_adr=None, in_link_adr=None):
+	def send(self, dstadr, msg, msg_id=None, srcadr=None, link_adr=None, in_link_adr=None,
+	               envelope_dstadr=None, send_cc=True):
 		if msg_id is None:
 			msg_id = self.get_next_msg_id()
 		
@@ -813,6 +875,9 @@ class RoutingMessageChannel(MessageChannel):
 		if link_adr is None:
 			return ResultCode.UNROUTABLE
 		
+		if envelope_dstadr is None:
+			envelope_dstadr = dstadr
+		
 		res = ResultCode.UNROUTABLE
 		
 		for link_adr_pair in link_adr:
@@ -822,47 +887,81 @@ class RoutingMessageChannel(MessageChannel):
 			ch, ch_link_adr = link_adr_pair
 			#print(f'{dstadr} {ch} {ch_link_adr}') # DEBUG: 
 			
-			ch_res = ch.send(dstadr, msg, msg_id, srcadr, ch_link_adr)
+			ch_res = ch.send(envelope_dstadr, msg, msg_id, srcadr, ch_link_adr)
 			
 			if ch_res != ResultCode.SUCCESS:
 				res = ch_res
 			elif res == ResultCode.UNROUTABLE:
 				res = ResultCode.SUCCESS
 		
+		if send_cc and dstadr != MessageHeader.BROADCAST_ADR:  # Don't CC broadcast messages.
+			for cc_adr in (adr for adr in self.cc_to if adr != dstadr):  # Don't CC to original destination.
+				# ISSUE: Do something with the CC result?
+				cc_res = self.send(cc_adr, msg, msg_id, srcadr, envelope_dstadr=dstadr, send_cc=False)
+		
 		# ISSUE: Is updating self._prev_msg_id here meaningful for a routing channel?
 		self._prev_msg_id = msg_id
 		
 		return res
 	
-	# ISSUE: Should this poll readable() (or use a selector) instead of relying
-	#        on channel timeouts?
 	def recv(self):
-		avail_timeout = self.timeout
+		timeout = self.timeout
+		timeout_remaining = timeout
+		if timeout_remaining is not None:
+			timeout_remaining_secs = timeout_remaining.total_seconds()
+		else:
+			timeout_remaining_secs = None
 		
-		while True:
-			if self.timeout is not None:
-				t0 = _now()
+		selector_keys = self._selector_key_cache  # Attempt to get selector key from cache.
+		selector_key = None if selector_keys is None else next(selector_keys, None)
+		
+		res, header, msg, link_adr = None, None, None, None
+		
+		if timeout is not None:
+			t0 = get_timestamp()
+		
+		while res is None:  # Not done yet.
+			if selector_key is None:  # Attempt to get more readable selector keys.
+				selector_keys = self._readable_selectables(timeout_remaining_secs)
+				selector_key = next(selector_keys, None)
 			
-			for ch in self.recv_channels:
-				ch_res, header, msg, ch_link_adr = ch.recv()
+			while selector_key:  # We have a readable selector key.
+				ch_num = selector_key.data  # Get channel number from readable selector key.
+				ch = self.recv_channels[ch_num]  # Map channel number to receive channel.
+				
+				# NOTE: _readable_selectables() reports low-level internal channel readability,
+				#       so ch.recv() may not have a complete message to return.
+				ch_res, header, msg, ch_link_adr = ch.recv()  # Attempt to receive a message.
 				
 				if ch_res == ResultCode.SUCCESS:
-					return ResultCode.SUCCESS, header, msg, (ch, ch_link_adr)
+					res, link_adr = ResultCode.SUCCESS, (ch, ch_link_adr)
+					break  # Done (success).
 				elif ch_res != ResultCode.RECV_TIMEOUT:
-					return ResultCode.LINK_FAILURE, None, None, (ch, ch_link_adr)
+					res, link_adr = ResultCode.LINK_FAILURE, (ch, ch_link_adr)
+					break  # Done (failure).
+				
+				selector_key = next(selector_keys, None)  # Try the next selector key.
 			
-			if self.timeout is not None:
-				t1 = _now()
+			if res is None and timeout is not None:  # Not done, timeout elapsing.
+				t1 = get_timestamp()  # Update receive timeout.
 				dt = t1 - t0
-				avail_timeout -= dt
+				timeout_remaining -= dt
+				timeout_remaining_secs = timeout_remaining.total_seconds()
 				t0 = t1
 				
-				if avail_timeout <= ZERO_DURATION:
-					return ResultCode.RECV_TIMEOUT, None, None, None
+				if timeout_remaining <= ZERO_DURATION:  # Timed out.
+					res = ResultCode.RECV_TIMEOUT
+		
+		if selector_key:  # Is selector_keys worth caching?
+			self._selector_key_cache = selector_keys  # This one might have more life in it.
+		else:
+			self._selector_key_cache = None  # Start over with new keys at the next invocation.
+		
+		return res, header, msg, link_adr
 	
 	# Returns (delivery_flag, res, dstadr, srcadr, msg, link_adr).
 	def route(self):
-		delivery_flag = False
+		delivery_flag = False  # True iff the returned message should be processed by the router node.
 		res, header, msg, link_adr = self.recv()
 		
 		if res == ResultCode.SUCCESS:
@@ -883,10 +982,10 @@ class RoutingMessageChannel(MessageChannel):
 
 
 class BinaryMessageChannel(MessageChannel):
-	def __init__(self, srcadr, timeout=None, msg_factory=None, selector=None,
+	def __init__(self, srcadr, timeout=None, msg_factory=None, selector=None, ch_num=None,
 	             send_bfr_size=0, recv_bfr_size=0):
 		
-		super().__init__(srcadr, timeout, msg_factory, selector)
+		super().__init__(srcadr, timeout, msg_factory, selector, ch_num)
 		
 		self.send_buffer = bytearray(send_bfr_size)
 		self.recv_buffer = bytearray(recv_bfr_size)
@@ -981,7 +1080,7 @@ class InetMessageChannel(BinaryMessageChannel):
 	MAX_DATAGRAM_SIZE = 0xffff
 	
 	def __init__(self, srcadr, ip_adr=None, udp_port=None, tcp_port=None,
-		timeout=None, msg_factory=None, selector=None):
+		timeout=None, msg_factory=None, selector=None, ch_num=None):
 		
 		if ip_adr is None:
 			ip_adr = self.DEFAULT_IP_ADR
@@ -990,7 +1089,7 @@ class InetMessageChannel(BinaryMessageChannel):
 		if tcp_port is None or tcp_port == 0:
 			tcp_port = self.DEFAULT_TCP_PORT
 		
-		super().__init__(srcadr, timeout, msg_factory, selector, 0, self.MAX_DATAGRAM_SIZE)
+		super().__init__(srcadr, timeout, msg_factory, selector, ch_num, 0, self.MAX_DATAGRAM_SIZE)
 		
 		self.ip_adr = ip_adr
 		self.udp_port = udp_port
@@ -1025,7 +1124,7 @@ class InetMessageChannel(BinaryMessageChannel):
 		# TODO: Implement TCP transport for large messages.
 		
 		self.udp_socket = udp_socket
-		self.udp_selector_key = self._register_selectable(self.udp_socket)
+		self.udp_selector_key = self._register_selectable(self.udp_socket, self.ch_num)
 		
 		self._is_open = True
 		return ResultCode.SUCCESS
@@ -1048,7 +1147,7 @@ class InetMessageChannel(BinaryMessageChannel):
 	def get_selector_keys(self):
 		if self.udp_selector_key is None:
 			return ()
-		return self.udp_selector_key,
+		return (self.udp_selector_key,)
 	
 	def set_timeout(self, timeout):
 		self.timeout = timeout
@@ -1116,11 +1215,11 @@ class SerialMessageChannel(BinaryMessageChannel):
 	
 	TIMEOUT_DIVISOR = 10.0
 	
-	def __init__(self, srcadr, port, baudrate=None, timeout=None, msg_factory=None, selector=None):
+	def __init__(self, srcadr, port, baudrate=None, timeout=None, msg_factory=None, selector=None, ch_num=None):
 		if baudrate is None:
 			baudrate = self.DEFAULT_BAUDRATE
 		
-		super().__init__(srcadr, timeout, msg_factory, selector, 0, 0)
+		super().__init__(srcadr, timeout, msg_factory, selector, ch_num, 0, 0)
 		
 		self.port = port
 		self.baudrate = baudrate
@@ -1154,7 +1253,7 @@ class SerialMessageChannel(BinaryMessageChannel):
 			return ResultCode.LINK_FAILURE
 		
 		self.serial_dev = serial_dev
-		self.serial_selector_key = self._register_selectable(self.serial_dev)
+		self.serial_selector_key = self._register_selectable(self.serial_dev, self.ch_num)
 		
 		self._is_open = True
 		return ResultCode.SUCCESS
@@ -1175,7 +1274,7 @@ class SerialMessageChannel(BinaryMessageChannel):
 	def get_selector_keys(self):
 		if self.serial_selector_key is None:
 			return ()
-		return self.serial_selector_key,
+		return (self.serial_selector_key,)
 	
 	def set_timeout(self, timeout):
 		self.timeout = timeout
@@ -1215,8 +1314,8 @@ class SerialMessageChannel(BinaryMessageChannel):
 	
 	def recv(self):
 		if self.timeout is not None:
-			avail_timeout = self.timeout
-			t0 = _now()
+			timeout_remaining = self.timeout
+			t0 = get_timestamp()
 		
 		while True:
 			if len(self.recv_buffer) < self.N_HEADER_BYTES: # Receive header.
@@ -1265,10 +1364,10 @@ class SerialMessageChannel(BinaryMessageChannel):
 			#print(f'{len(self.recv_buffer)} {self.recv_buffer.hex()}') # DEBUG: 
 			
 			if self.timeout is not None:
-				t1 = _now()
+				t1 = get_timestamp()
 				dt = t1 - t0
-				avail_timeout -= dt
+				timeout_remaining -= dt
 				t0 = t1
 				
-				if avail_timeout <= ZERO_DURATION:
+				if timeout_remaining <= ZERO_DURATION:
 					return ResultCode.RECV_TIMEOUT, None, None, None
