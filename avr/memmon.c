@@ -100,15 +100,14 @@ void memmon_init(
 }
 
 uint8_t memmon_add(const memmon_spec *mon) {
-	uint8_t mon_i;
-	
 	if (memmon_n_monitors >= memmon_max_monitors)
 		return memmon_max_monitors;
 	
 	if (mon->size > MEMMON_MAX_SIZE)
 		return memmon_max_monitors;
 	
-	mon_i = memmon_n_monitors;
+	uint8_t mon_i = memmon_n_monitors;
+	
 	monitors[mon_i] = *mon;
 	monitors[mon_i].delay_count = 0;
 	memmon_n_monitors++;
@@ -117,12 +116,10 @@ uint8_t memmon_add(const memmon_spec *mon) {
 }
 
 uint8_t memmon_remove(uint8_t mon_i) {
-	uint8_t prev_mon_i;
-	
 	if (mon_i >= memmon_n_monitors)
 		return 0;
 	
-	prev_mon_i = mon_i;
+	uint8_t prev_mon_i = mon_i;
 	
 	for (mon_i++; mon_i < memmon_n_monitors; mon_i++) {
 		monitors[prev_mon_i] = monitors[mon_i];
@@ -135,9 +132,7 @@ uint8_t memmon_remove(uint8_t mon_i) {
 }
 
 uint8_t memmon_remove_ptr(const uint8_t *mon_ptr) {
-	uint8_t mon_i;
-	
-	for (mon_i = 0; mon_i < memmon_n_monitors; mon_i++)
+	for (uint8_t mon_i = 0; mon_i < memmon_n_monitors; mon_i++)
 		if (monitors[mon_i].ptr == mon_ptr)
 			return memmon_remove(mon_i);
 	

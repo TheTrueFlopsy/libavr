@@ -1,6 +1,6 @@
-__pycache__
-bin
-obj
-var
-**/docs/natural
-**/docs/natural-config/Data
+__pycache__/
+bin/
+obj/
+var/
+**/docs/natural/
+**/docs/natural-config/Data/

@@ -50,6 +50,8 @@ macro_defs := -DF_CPU=16000000L -DSCHED_CLOCK_PRESCALE_LOG=5
 #macro_defs := -DF_CPU=1000000L -DSCHED_CLOCK_PRESCALE_LOG=3
 endif
 
+macro_defs += -DTBOUNCER_DISABLE_PORT_C -DTBOUNCER_DISABLE_PORT_D
+
 ASFLAGS := $(macro_defs) -mmcu=$(mcu)
 # NOTE: about -mcall-prologues
 # "Functions prologues/epilogues are expanded as calls to appropriate subroutines.
@@ -58,8 +60,8 @@ ASFLAGS := $(macro_defs) -mmcu=$(mcu)
 # NOTE: -flto enables Link-Time Optimization, which among other things lets the compiler
 #       exclude unused library functions from the linked binary. Note that this leads to
 #       specialized LTO data being added to object files.
-CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto -ffat-lto-objects
-testflags := $(macro_defs) -g $(warnings)
+CFLAGS := -std=c11 $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto -ffat-lto-objects
+testflags := $(macro_defs) -DLIBAVR_TEST_BUILD -g $(warnings)
 CC := avr-gcc
 testcc := gcc
 # NOTE: Apparently 'gcc-ar' is better than plain 'ar' for creating LTO-enabled
@@ -94,7 +96,8 @@ common := task_sched tbouncer
 else
 common := task_sched tbouncer task_tlv std_tlv memmon spihelper i2chelper mcp4x mcp23018
 endif
-test_targets := task_sched_test
+test_common := tbouncer
+test_targets := task_sched_test tbouncer_test
 
 test_runs := $(addprefix run-, $(test_targets))
 
@@ -102,6 +105,7 @@ headers := *.h
 
 common_o        := $(addprefix $(odir)/, $(addsuffix .o, $(common)))
 libname_a       := $(addprefix $(bdir)/lib, $(addsuffix .a, $(libname)))
+test_common_o   := $(addprefix $(todir)/, $(addsuffix .o, $(test_common)))
 test_target_o   := $(addprefix $(todir)/, $(addsuffix .o, $(test_targets)))
 test_target_exe := $(addprefix $(tbdir)/, $(test_targets))
 
@@ -147,8 +151,8 @@ $(odir)/%.o : %.S
 
 .PRECIOUS : $(todir)/%.o
 
-$(tbdir)/% : $(todir)/%.o
-	$(testcc) $(testflags) -o $@ $< $(lnames)
+$(tbdir)/% : $(todir)/%.o $(test_common_o)
+	$(testcc) $(testflags) -o $@ $^ $(lnames)
 
 $(todir)/%.o : %.c $(headers)
 	$(testcc) -c $(testflags) -o $@ $<

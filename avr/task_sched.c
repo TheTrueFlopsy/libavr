@@ -178,14 +178,12 @@ void sched_init(void) {
 }
 
 uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
-	uint8_t i;
-	
 	if (st_val == TASK_ST_GARBAGE && st_mask == 0xff)
 		return SCHED_MAX_TASKS;
 	
 	st_val &= st_mask;
 	
-	for (i = start_i; i < sched_list_size; i++) {
+	for (uint8_t i = start_i; i < sched_list_size; i++) {
 		uint8_t masked_st = st_mask & task_list[i].st;
 		if (masked_st == st_val)
 			return i;
@@ -397,7 +395,7 @@ void sched_run(void) {
 			delta.h = ((uint16_t)sched_delay.l << (SCHED_CLOCK_PRESCALE_LOG - 2));
 #endif
 			delta.h += sched_delay.h << (SCHED_CLOCK_PRESCALE_LOG + 6); // 8 - 2 = 6.
-			_delay_loop_2(delta.h); // Four cycles per step.
+			_delay_loop_2(delta.h); // Four (i.e. 1 << 2) cycles per step.
 		}
 		else // No delay.
 			sched_delay = SCHED_TIME_ZERO;

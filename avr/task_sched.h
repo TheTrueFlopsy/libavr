@@ -262,7 +262,7 @@ typedef uint16_t sched_catflags;
 */
 #define SCHED_CATFLAG(N) ((sched_catflags)1 << (N))
 
-#ifndef SCHED_HEADER_TEST
+#ifndef LIBAVR_TEST_BUILD
 
 /**
 	Variable: sched_isr_tcww

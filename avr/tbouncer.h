@@ -13,6 +13,26 @@
 	TBOUNCER_DISABLE_PORT_{x}, where {x} is "A", "B", "C" or "D".
 */
 
+// TODO: Explain these definitions.
+#ifndef TBOUNCER_TICK_COUNT_BITS
+#define TBOUNCER_TICK_COUNT_BITS 5
+#endif
+
+#ifndef TBOUNCER_NEQ_COUNT_BITS
+#define TBOUNCER_NEQ_COUNT_BITS 3
+#endif
+
+#define TBOUNCER_TICKS_FOR_UPDATE_MAX (1 << TBOUNCER_TICK_COUNT_BITS)
+#define TBOUNCER_NEQ_FOR_UPDATE_MAX (1 << TBOUNCER_NEQ_COUNT_BITS)
+
+#ifndef TBOUNCER_TICKS_FOR_UPDATE
+#define TBOUNCER_TICKS_FOR_UPDATE 5
+#endif
+
+#ifndef TBOUNCER_NEQ_FOR_UPDATE
+#define TBOUNCER_NEQ_FOR_UPDATE 2
+#endif
+
 /**
 	Macro: TBOUNCER_ALL
 	This value can be given to the pin change notification mask arguments of
@@ -21,7 +41,7 @@
 */
 #define TBOUNCER_ALL 0xff
 
-#ifdef LIBAVR_ATTINY
+#if defined(LIBAVR_ATTINY)
 
 #ifndef TBOUNCER_DISABLE_PORT_C
 #define TBOUNCER_DISABLE_PORT_C
@@ -33,6 +53,11 @@
 
 #define TBOUNCER_INIT(TNC, PD, AM, BM, AC, IM, IS) \
 	tbouncer_init((TNC), (PD), (AM), (BM), 0, 0, (AC), (IM), (IS))
+
+#elif defined(LIBAVR_ATMEGA_U)
+
+#define TBOUNCER_INIT(TNC, PD, AM, BM, CM, DM, AC, IM, IS) \
+	tbouncer_init((TNC), (PD), (AM), (BM), (CM), (DM), (AC), (IM), (IS))
 
 #else
 
@@ -272,5 +297,9 @@ void tbouncer_init(
 	Shuts down the debouncer module. Stops the debouncer task.
 */
 void tbouncer_shutdown(void);
+
+#ifdef LIBAVR_TEST_BUILD
+void tbouncer_update(uint8_t pina, uint8_t pinb, uint8_t pinc, uint8_t pind, uint8_t pinf);
+#endif
 
 #endif

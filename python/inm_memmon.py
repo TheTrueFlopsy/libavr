@@ -3,7 +3,8 @@
 import argparse
 import sys
 
-import inm.inm
+import inm.inm as inm
+
 
 # TODO: Figure out how to support color output.
 #       Go full ncurses (probably the best bet)?
@@ -11,6 +12,8 @@ import inm.inm
 DEFAULT_IP_ADR_VAL = inm.InetMessageChannel.DEFAULT_IP_ADR
 DEFAULT_UDP_PORT_VAL = inm.InetMessageChannel.DEFAULT_UDP_PORT
 DEFAULT_SERIAL_PORT_VAL = '/dev/ttyUSB0'
+
+DEFAULT_TLV_TYPE = inm.StandardTypes.MEMMON_DATA
 
 class Visualizer:
 	MEMMON_HEADER_SIZE = 3
@@ -104,7 +107,7 @@ class Visualizer:
 		return self._make_val_label()
 	
 	def visualize(self, msg):
-		mon_i, ptr, val = msg.format_mval(conv='int', size=(1, 2, len(msg)-3))
+		mon_i, ptr, val = msg.format_mval(conv=inm.ValueConversions.Int, size=(1, 2, len(msg)-3))
 		
 		if mon_i != self.mon_i:
 			return
@@ -210,7 +213,10 @@ def _parse_args(args=None, namespace=None):
 	
 	arg_p.add_argument('-t', '--tlv-type',
 		help='TLV message type of monitor data messages', metavar='TYPE',
-		default=3, type=int, dest='mon_msg_typ')
+		default=DEFAULT_TLV_TYPE, type=int, dest='mon_msg_typ')
+	arg_p.add_argument('-T', '--text-vis',
+		help='output non-monitor messages as text',
+		action='store_true', dest='text_vis')
 	# TODO: Add support for several visualized monitors in the same console window.
 	arg_p.add_argument('-i', '--index',
 		help='monitor index to visualize', metavar='INDEX',
@@ -242,15 +248,13 @@ def main():
 	
 	# TODO: Add argument validation (negative values, etc.).
 	
-	inm.default_msg_factory.default_val_conv = 'hex'
+	inm.default_msg_factory.default_val_conv = inm.ValueConversions.Hex
 	
 	if viz.ip_adr is not None:
-		print('Opening IP message channel: ip_adr={0} udp_port={1}'.format(
-			viz.ip_adr, viz.udp_port))
+		print(f'Opening IP message channel: ip_adr={viz.ip_adr} udp_port={viz.udp_port}')
 		ch = inm.InetMessageChannel(viz.inm_adr, viz.ip_adr, viz.udp_port)
 	elif viz.serial_port is not None:
-		print('Opening serial message channel: serial_port={0}'.format(
-			viz.serial_port))
+		print(f'Opening serial message channel: {viz.serial_port}')
 		ch = inm.SerialMessageChannel(viz.inm_adr, viz.serial_port)
 	else:
 		print('No message channel specified. Exiting.')
@@ -262,11 +266,12 @@ def main():
 				res, header, msg, link_adr = ch.recv()
 				
 				if res == inm.ResultCode.SUCCESS:
-					#print(inm.format_msg_info(msg, 'ACCEPT', header, link_adr, 8))
 					if msg.typ == viz.mon_msg_typ:
 						viz.visualize(msg)
+					elif viz.text_vis:
+						print(inm.format_msg_info(msg, 'RECV', header, link_adr, 8, '%H:%M:%S.%f'))
 				else:
-					print(inm.format_msg_info(res.name, 'ERROR', header, link_adr, 8))
+					print(inm.format_msg_info(res.name, 'ERROR', header, link_adr, 8, '%H:%M:%S.%f'))
 	except KeyboardInterrupt:
 		print('Interrupted. Cleaning up and exiting.')
 

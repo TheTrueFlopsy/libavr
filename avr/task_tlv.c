@@ -145,8 +145,7 @@ static uint8_t buffer_read(
 	uint8_t *to, volatile const uint8_t *bfr_from,
 	uint8_t bfr_size, uint8_t bfr_i, uint8_t n)
 {
-	uint8_t i;
-	for (i = 0; i < n; i++) {
+	for (uint8_t i = 0; i < n; i++) {
 		to[i] = bfr_from[bfr_i];
 		if (++bfr_i == bfr_size)
 			bfr_i = 0;
@@ -159,8 +158,7 @@ static uint8_t buffer_write(
 	volatile uint8_t *bfr_to, const uint8_t *from,
 	uint8_t bfr_size, uint8_t bfr_i, uint8_t n)
 {
-	uint8_t i;
-	for (i = 0; i < n; i++) {
+	for (uint8_t i = 0; i < n; i++) {
 		bfr_to[bfr_i] = from[i];
 		if (++bfr_i == bfr_size)
 			bfr_i = 0;
