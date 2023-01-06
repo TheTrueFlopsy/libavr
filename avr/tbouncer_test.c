@@ -22,7 +22,8 @@ static void print_digital(uint8_t prev, uint8_t curr) {
 }
 
 int main(int argc, char **argv) {
-	int n_samples = -1;
+	//int n_samples = -1;
+	int n_samples = 256;
 	long repeat_max = 8;
 	long sleep_ns = 100000000;
 	uint8_t prev_x = 0, x = 0, y = 0;

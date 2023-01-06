@@ -105,17 +105,17 @@ static sched_time tbouncer_poll_delay;
 // NOTE: The combined M/N counting technique provides quick reactions
 //       (via a short polling interval), dodges switch bounce (via M)
 //       and filters out most spikes (via N).
-static uint8_t tbouncer_pin_update(tbouncer_pin_data *data_p, uint8_t curr_neq_in) {
+static uint8_t tbouncer_pin_update(tbouncer_pin_data *data_p, uint8_t out_neq_in) {
 	//tbouncer_pin_data data = *data_p;
 	uint8_t tick_count = data_p->tick_count;
 	uint8_t out_change = 0;
 	
 	// NOTE: Require M ticks between output changes.
 	if (tick_count >= TBOUNCER_TICKS_FOR_UPDATE - 1) {
-		if (curr_neq_in) {
+		if (out_neq_in) {
 			uint8_t neq_count = data_p->neq_count;
 			
-			// NOTE: Require N consecutive samples to be different from current output
+			// NOTE: Require N consecutive input samples to be different from current output
       //       to change current output.
 			if (neq_count >= TBOUNCER_NEQ_FOR_UPDATE - 1) {
 				*data_p = (tbouncer_pin_data) { .tick_count=0, .neq_count=0 };
@@ -135,18 +135,18 @@ static uint8_t tbouncer_pin_update(tbouncer_pin_data *data_p, uint8_t curr_neq_i
 
 static void tbouncer_handler(sched_task *task) {
 	uint8_t diff = 0;
-	uint8_t curr_neq_in, i, bit_i;
+	uint8_t out_neq_in, i, bit_i;
 	
 	task->delay = tbouncer_poll_delay; // Refresh polling delay.
 	
 #ifndef TBOUNCER_DISABLE_PORT_A
 	tbouncer_a_prev = tbouncer_a;
-	curr_neq_in = tbouncer_a ^ TBOUNCER_PINA;
+	out_neq_in = tbouncer_a ^ TBOUNCER_PINA;
 	
 	for (i = 0, bit_i = 1; i < 8; i++, bit_i <<= 1) {
-		if ((tbouncer_a_mask & bit_i) && tbouncer_pin_update(tbouncer_a_pin_data + i, 1 & curr_neq_in))
+		if ((tbouncer_a_mask & bit_i) && tbouncer_pin_update(tbouncer_a_pin_data + i, 1 & out_neq_in))
 			tbouncer_a ^= bit_i;
-		curr_neq_in >>= 1;
+		out_neq_in >>= 1;
 	}
 	
 	tbouncer_a_diff = tbouncer_a ^ tbouncer_a_prev;
@@ -155,12 +155,12 @@ static void tbouncer_handler(sched_task *task) {
 	
 #ifndef TBOUNCER_DISABLE_PORT_B
 	tbouncer_b_prev = tbouncer_b;
-	curr_neq_in = tbouncer_b ^ TBOUNCER_PINB;
+	out_neq_in = tbouncer_b ^ TBOUNCER_PINB;
 	
 	for (i = 0, bit_i = 1; i < 8; i++, bit_i <<= 1) {
-		if ((tbouncer_b_mask & bit_i) && tbouncer_pin_update(tbouncer_b_pin_data + i, 1 & curr_neq_in))
+		if ((tbouncer_b_mask & bit_i) && tbouncer_pin_update(tbouncer_b_pin_data + i, 1 & out_neq_in))
 			tbouncer_b ^= bit_i;
-		curr_neq_in >>= 1;
+		out_neq_in >>= 1;
 	}
 	
 	tbouncer_b_diff = tbouncer_b ^ tbouncer_b_prev;
@@ -169,12 +169,12 @@ static void tbouncer_handler(sched_task *task) {
 	
 #ifndef TBOUNCER_DISABLE_PORT_C
 	tbouncer_c_prev = tbouncer_c;
-	curr_neq_in = tbouncer_c ^ TBOUNCER_PINC;
+	out_neq_in = tbouncer_c ^ TBOUNCER_PINC;
 	
 	for (i = 0, bit_i = 1; i < 8; i++, bit_i <<= 1) {
-		if ((tbouncer_c_mask & bit_i) && tbouncer_pin_update(tbouncer_c_pin_data + i, 1 & curr_neq_in))
+		if ((tbouncer_c_mask & bit_i) && tbouncer_pin_update(tbouncer_c_pin_data + i, 1 & out_neq_in))
 			tbouncer_c ^= bit_i;
-		curr_neq_in >>= 1;
+		out_neq_in >>= 1;
 	}
 	
 	tbouncer_c_diff = tbouncer_c ^ tbouncer_c_prev;
@@ -183,12 +183,12 @@ static void tbouncer_handler(sched_task *task) {
 	
 #ifndef TBOUNCER_DISABLE_PORT_D
 	tbouncer_d_prev = tbouncer_d;
-	curr_neq_in = tbouncer_d ^ TBOUNCER_PIND;
+	out_neq_in = tbouncer_d ^ TBOUNCER_PIND;
 	
 	for (i = 0, bit_i = 1; i < 8; i++, bit_i <<= 1) {
-		if ((tbouncer_d_mask & bit_i) && tbouncer_pin_update(tbouncer_d_pin_data + i, 1 & curr_neq_in))
+		if ((tbouncer_d_mask & bit_i) && tbouncer_pin_update(tbouncer_d_pin_data + i, 1 & out_neq_in))
 			tbouncer_d ^= bit_i;
-		curr_neq_in >>= 1;
+		out_neq_in >>= 1;
 	}
 	
 	tbouncer_d_diff = tbouncer_d ^ tbouncer_d_prev;

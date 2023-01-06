@@ -10,8 +10,8 @@ ext_modules = [  # List of modules to compile
 		include_dirs=['..'],
 		define_macros=[
 			('LIBAVR_TEST_BUILD', None),
-			('TBOUNCER_DISABLE_PORT_C', None),
-			('TBOUNCER_DISABLE_PORT_D', None),
+#			('TBOUNCER_DISABLE_PORT_C', None),
+#			('TBOUNCER_DISABLE_PORT_D', None),
 			('F_CPU', '16000000L'),
 			('SCHED_CLOCK_PRESCALE_LOG', '5')])]
 

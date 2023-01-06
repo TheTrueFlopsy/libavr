@@ -13,6 +13,16 @@ cdef extern from "tbouncer.h":
 	uint8_t tbouncer_b_prev
 	uint8_t tbouncer_b_diff
 	
+	uint8_t tbouncer_c_mask
+	uint8_t tbouncer_c
+	uint8_t tbouncer_c_prev
+	uint8_t tbouncer_c_diff
+	
+	uint8_t tbouncer_d_mask
+	uint8_t tbouncer_d
+	uint8_t tbouncer_d_prev
+	uint8_t tbouncer_d_diff
+	
 	void tbouncer_init(
 		uint8_t task_num_cat, sched_time poll_delay,
 		uint8_t a_mask, uint8_t b_mask, uint8_t c_mask, uint8_t d_mask,

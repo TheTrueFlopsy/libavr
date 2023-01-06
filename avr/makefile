@@ -98,8 +98,10 @@ common := task_sched tbouncer task_tlv std_tlv memmon spihelper i2chelper mcp4x 
 endif
 test_common := tbouncer
 test_targets := task_sched_test tbouncer_test
+cytest_targets := tbouncer_test
 
 test_runs := $(addprefix run-, $(test_targets))
+cytest_runs := $(addprefix cyrun-, $(cytest_targets))
 
 headers := *.h
 
@@ -110,13 +112,18 @@ test_target_o   := $(addprefix $(todir)/, $(addsuffix .o, $(test_targets)))
 test_target_exe := $(addprefix $(tbdir)/, $(test_targets))
 
 # Phony targets.
-.PHONY : all $(test_runs) $(libname) $(test_targets) clean doc tests run-tests
+.PHONY : all $(test_runs) $(cytest_runs) $(libname) $(test_targets) \
+         clean doc tests cytests run-tests cyrun-tests
 
 all : $(libname)
 
 $(test_runs) : run-% : %
 $(test_runs) : run-% : $(tbdir)/%
 	$<
+
+$(cytest_runs) : cytests
+$(cytest_runs) : cyrun-% : cython/%.py
+	cd cython && ./$(notdir $<)
 
 $(libname) : $(builddirs) $(libname_a)
 
@@ -130,9 +137,14 @@ doc : $(headers)
 	mkdir -p $(doc_dir) $(doc_conf_dir)
 	$(natural) -i . -o HTML $(doc_dir) -p $(doc_conf_dir)
 
-tests : $(test_targets)
+tests : $(test_targets) cytests
 
-run-tests : $(test_runs)
+cytests :
+	cd cython && ./setup.py build_ext --inplace
+
+run-tests : $(test_runs) cyrun-tests
+
+cyrun-tests : $(cytest_runs)
 
 # File targets.
 $(builddirs) :
