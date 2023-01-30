@@ -28,6 +28,11 @@
 // for as long as it pleases, use Timer2 and the task list memory
 // for other things, etc., and then hand control back to the scheduler.
 
+// IDEA: Should there be a convenient way for a task to find out why its
+//       handler is being invoked (e.g. notified, delay elapsed, running,
+//       invoked via sched_invoke())?
+//       What would the best way to implement this be?
+
 // TODO: Document all these macros.
 #define BV(N) (1 << (N))
 
@@ -196,6 +201,7 @@ typedef void (*sched_task_handler)(struct sched_task *task);
 	Represents an instance of a task that can be scheduled for execution.
 */
 typedef struct sched_task {
+	// IDEA: Use bit fields in the task control and status byte?
 	/**
 		Field: st
 		Task control and status byte (TCSB) of the task instance. The control
@@ -224,6 +230,11 @@ typedef struct sched_task {
 		elapsed time deltas from this field, and will execute the task
 		when the value of the field is zero. If the time delta is greater
 		than the value of the field, the field will be set to zero.
+		
+		NOTE: When a task's handler is invoked for any reason, including
+		the task being notified or invoked via <sched_invoke>, any currently
+		elapsing delay is canceled. The *delay* field always starts out
+		zeroed when the handler is invoked.
 		
 		NOTE: If a task should execute periodically, then that task is
 		responsible for re-assigning the period to the *delay* field upon
@@ -418,8 +429,8 @@ uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
 	in *st_val*. The search starts at index *start_i* in the task list. If no
 	matching task is found, then <SCHED_MAX_TASKS> is returned.
 	
-	NOTE: Sleeping tasks are awakened (i.e. have their 'sleep' status bit
-	      cleared) before being invoked.
+	NOTE: Before handler invocation, sleeping tasks are awakened (i.e. have their
+	      'sleep' status bit cleared) and elapsing delays canceled.
 	
 	NOTE: The task handler function is invoked synchronously.
 	
@@ -440,8 +451,8 @@ uint8_t sched_invoke(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
 	where the TCSB bits selected (i.e. set to one) in *st_mask* are equal
 	to the corresponding bits in *st_val*.
 	
-	NOTE: Sleeping tasks are awakened (i.e. have their 'sleep' status bit
-	      cleared) before being invoked.
+	NOTE: Before handler invocation, sleeping tasks are awakened (i.e. have their
+	      'sleep' status bit cleared) and elapsing delays canceled.
 	
 	NOTE: The task handler functions are invoked synchronously.
 	

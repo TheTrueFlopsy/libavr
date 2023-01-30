@@ -197,7 +197,8 @@ uint8_t sched_invoke(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
 	
 	if (i < SCHED_MAX_TASKS) {
 		sched_task *task = task_list + i;
-		task->st &= ~TASK_ST_SLP_MASK;
+		task->st &= ~TASK_ST_SLP_MASK;  // You are being invoked, wakey wakey.
+		task->delay = SCHED_TIME_ZERO;  // Delay always zero at handler invocation.
 		task->handler(task);
 	}
 	

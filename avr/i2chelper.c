@@ -5,7 +5,12 @@
 
 #include "i2chelper.h"
 
-#define BV(N) (1 << (N))
+//#define BV(N) (1 << (N))
+
+#ifndef I2C_TWSR_INIT
+// TWPS[1..0]=0 - prescaler divisor 4^0 == 1
+#define I2C_TWSR_INIT 0
+#endif
 
 #define TWISC_BITMASK 0xf8
 
@@ -137,8 +142,8 @@ ISR(TWI_vect) {
 }
 
 void i2chelper_mstr_init(uint8_t twbr, sched_catflags task_cats) {
-	// Set clock rate (prescaler + TWBR).
-	TWSR = BV(TWPS1); // Prescaler divisor 16.
+	// Set clock rate (via prescaler and TWBR).
+	TWSR = I2C_TWSR_INIT;
 	TWBR = twbr;
 	i2c_task_cats = task_cats;
 	i2c_request_state = I2C_READY;

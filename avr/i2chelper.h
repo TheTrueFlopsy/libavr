@@ -10,6 +10,46 @@
 
 #include "task_sched.h"
 
+
+#ifdef LIBAVR_ATMEGA_U
+
+#define I2C_SCL_DDR  DDRD
+#define I2C_SCL_PORT PORTD
+#define I2C_SCL_PIN  PIND
+
+#define I2C_SCL_DDR_PIN  BV(DDD0)
+#define I2C_SCL_PORT_PIN BV(PORTD0)
+#define I2C_SCL_PIN_PIN  BV(PIND0)
+
+#define I2C_SDA_DDR  DDRD
+#define I2C_SDA_PORT PORTD
+#define I2C_SDA_PIN  PIND
+
+#define I2C_SDA_DDR_PIN  BV(DDD1)
+#define I2C_SDA_PORT_PIN BV(PORTD1)
+#define I2C_SDA_PIN_PIN  BV(PIND1)
+
+#else
+
+#define I2C_SCL_DDR  DDRC
+#define I2C_SCL_PORT PORTC
+#define I2C_SCL_PIN  PINC
+
+#define I2C_SCL_DDR_PIN  BV(DDC5)
+#define I2C_SCL_PORT_PIN BV(PORTC5)
+#define I2C_SCL_PIN_PIN  BV(PINC5)
+
+#define I2C_SDA_DDR  DDRC
+#define I2C_SDA_PORT PORTC
+#define I2C_SDA_PIN  PINC
+
+#define I2C_SDA_DDR_PIN  BV(DDC4)
+#define I2C_SDA_PORT_PIN BV(PORTC4)
+#define I2C_SDA_PIN_PIN  BV(PINC4)
+
+#endif
+
+
 /**
 	Enum: I2C Module State/Result Codes
 	
@@ -99,8 +139,8 @@ void i2chelper_mstr_init(uint8_t twbr, sched_catflags task_cats);
 	omitted, but not both.
 	
 	Completion of an I2C request initiated by this function can be
-	detected either by polling <i2c_request_state> (e.g. via the <I2C_IS_ACTIVE>
-	macro) or by specifying task categories to be awakened via <i2c_task_cats>.
+	detected by polling <i2c_request_state> (e.g. via the <I2C_IS_ACTIVE>
+	macro) and by specifying task categories to be awakened via <i2c_task_cats>.
 	
 	Parameters:
 		addr - 7-bit I2C slave address of the target device. The address MUST

@@ -42,7 +42,7 @@ i2c_state mcp23018_poll_read(uint8_t *v) {
 
 i2c_state mcp23018_read(i2c_slave_addr addr, mcp23018_reg r, uint8_t *v) {
 	i2c_state res = mcp23018_begin_read(addr, r);
-	if (res >= I2C_E_UNSPECIFIED)
+	if (res != I2C_ACTIVE)
 		return res;
 	
 	while (1) {
@@ -69,7 +69,7 @@ i2c_state mcp23018_begin_write(i2c_slave_addr addr, mcp23018_reg r, uint8_t v) {
 
 i2c_state mcp23018_write(i2c_slave_addr addr, mcp23018_reg r, uint8_t v) {
 	i2c_state res = mcp23018_begin_write(addr, r, v);
-	if (res >= I2C_E_UNSPECIFIED)
+	if (res != I2C_ACTIVE)
 		return res;
 	
 	while (1) {
