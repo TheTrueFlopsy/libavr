@@ -2,104 +2,123 @@
 ### SOURCE DEPENDENCIES: libavr/avr
 ### BINARY DEPENDENCIES: libavr/avr
 
-# Toolchain config.
+# --- Toolchain Config ---
 CC := avr-gcc
 testcc := gcc
 OBJ2HEX := avr-objcopy
 
+# 16 MHz MCU clock, 32 clock cycles per scheduler tick.
+# Good for Arduino Uno.
+f_cpu := 16000000
+f_cpu_prescale := 5
+# 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
+# Good for ATmega out-of-the-box.
+#f_cpu := 1000000
+#f_cpu_prescale := 3
+
 device := atmega328p
 mcu := atmega328p
-avrdude_device := m328p
-
-port ?= /dev/ttyUSB0  # Good for Arduino and Bus Pirate.
-#port ?= /dev/ttyACM0  # Good for Pololu programmer.
 
 avrdude := avrdude
 
-# Directory variables.
+avrdude_port ?= /dev/ttyUSB0  # Good for Arduino Uno and Bus Pirate.
+#avrdude_port ?= /dev/ttyACM0  # Good for Arduino Leonardo and Pololu programmer.
+avrdude_device := m328p
+avrdude_prog := arduino
+avrdude_baud := 115200
+
+# --- Directory Variables ---
+out_dir := .
+lib_out_dir := $(out_dir)/lib
+libavr_dir := ../avr
+custom_libavr := yes
+
 ifdef debug
-odir := obj/debug
-bdir := bin/debug
+odir := $(out_dir)/obj/debug
+bdir := $(out_dir)/bin/debug
 else
-odir := obj/dist
-bdir := bin/dist
+odir := $(out_dir)/obj/dist
+bdir := $(out_dir)/bin/dist
 endif
 
 builddirs := $(odir) $(bdir)
 
-idirs := -I../avr
-ldirs := -L../avr/$(bdir)
+idirs := -I$(libavr_dir)
 lnames := -lavrtask -lm
 
-# Filename variables.
-targets := sched_blinker inm_node_demo
+ifeq ($(custom_libavr),yes)
+ldirs := -L$(lib_out_dir)/$(bdir)
+else
+ldirs := -L$(libavr_dir)/$(bdir)
+endif
 
+# --- Filename Variables ---
+targets := sched_blinker inm_node_demo
 programs := $(addprefix prog-, $(targets))
 
-headers    := *.h
+headers := *.h
+
 target_o   := $(addprefix $(odir)/, $(addsuffix .o, $(targets)))
 target_obj := $(addprefix $(odir)/, $(addsuffix .obj, $(targets)))
 target_hex := $(addprefix $(bdir)/, $(addsuffix .hex, $(targets)))
 
-# Command option variables.
+# --- Command Option Variables ---
 warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
+macro_defs := -DF_CPU=$(f_cpu)L -DSCHED_CLOCK_PRESCALE_LOG=$(f_cpu_prescale)
 
-# 16 MHz MCU clock, 32 clock cycles per scheduler tick.
-macro_defs := -DF_CPU=16000000L -DSCHED_CLOCK_PRESCALE_LOG=5  # Good for Arduino Uno.
-# 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
-#macro_defs := -DF_CPU=1000000L -DSCHED_CLOCK_PRESCALE_LOG=3  # Good for ATmega out-of-the-box.
-
-# Re: -mcall-prologues
-# "Functions prologues/epilogues are expanded as calls to appropriate subroutines.
-#  Code size is smaller."
-# https://gcc.gnu.org/onlinedocs/gcc/AVR-Options.html
-CFLAGS := $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto $(idirs)
-# Re: -Wl,-relax
-# "On some platforms the --relax option performs target specific,
-#  global optimizations that become possible when the linker resolves
-#  addressing in the program"
-# man ld
+CFLAGS := -std=c11 $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto
 LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--relax
 
-# Phony targets.
-.PHONY : all clean $(programs) $(targets)
+# --- Phony Targets ---
+.PHONY : all $(programs) $(targets) clean clean-libavr libavr
 
 all : $(targets)
 
-clean :
-	rm -f $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex
-
-# CAUTION: The -D option disables automatic chip erase before programming.
-#          Not including that option might have unpleasant consequences.
 $(programs) : prog-% : %
 $(programs) : prog-% : $(bdir)/%.hex
-	$(avrdude) -v -p $(avrdude_device) -c arduino -P $(port) -b 115200 -D -U flash:w:$<
+	$(avrdude) -v -p $(avrdude_device) -c $(avrdude_prog) -P $(avrdude_port) -b $(avrdude_baud) -D -U flash:w:$<
 
 # Bus Pirate settings:
-#$(avrdude) -v -p $(avrdude_device) -c buspirate -x spifreq=1 -P $(port) -U flash:w:$<
+#$(avrdude) -v -p $(avrdude_device) -c buspirate -x spifreq=1 -P $(avrdude_port) -U flash:w:$<
 # Pololu programmer settings:
-#$(avrdude) -v -p $(avrdude_device) -c avrisp2 -B 100kHz -P $(port) -U flash:w:$<
+#$(avrdude) -v -p $(avrdude_device) -c avrisp2 -B 100kHz -P $(avrdude_port) -U flash:w:$<
+# CAUTION: The -D option disables automatic chip erase before programming.
+#          Not including that option might have unpleasant consequences.
 # Arduino settings:
-#$(avrdude) -v -p $(avrdude_device) -c arduino -P $(port) -b 115200 -D -U flash:w:$<
+#$(avrdude) -v -p $(avrdude_device) -c arduino -P $(avrdude_port) -b $(avrdude_baud) -D -U flash:w:$<
 
 # TODO: Add a command that programs the EEPROM (with a hex file that only
 #       contains the .eeprom section).
 
-$(targets) : % : $(builddirs) $(bdir)/%.hex
+ifeq ($(custom_libavr),yes)
+$(targets) : libavr
+clean : clean-libavr
+endif
 
-# File targets.
-$(builddirs) :
+$(targets) : % : $(bdir)/%.hex
+
+clean :
+	rm -f $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex
+
+clean-libavr : | $(lib_out_dir)
+	$(MAKE) -C $(libavr_dir) build=atmega out_dir=$(realpath $(lib_out_dir)) clean
+
+libavr : | $(lib_out_dir)
+	$(MAKE) -C $(libavr_dir) build=atmega out_dir=$(realpath $(lib_out_dir)) CFLAGS="$(CFLAGS)"
+
+# --- File Targets ---
+$(builddirs) $(lib_out_dir) :
 	mkdir -p $@
 
-$(bdir)/%.hex : $(odir)/%.obj
+$(bdir)/%.hex : $(odir)/%.obj | $(bdir)
 	$(OBJ2HEX) -R .eeprom -O ihex $< $@
 
-.PRECIOUS : $(odir)/%.obj  # Don't touch my precious object files make you beast.
+.PRECIOUS : $(odir)/%.obj
 
-$(odir)/%.obj : $(odir)/%.o
-	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(ldirs) $< $(lnames)
+$(odir)/%.obj : $(odir)/%.o | $(odir)
+	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(idirs) $(ldirs) $< $(lnames)
 
 .PRECIOUS : $(odir)/%.o
 
-$(odir)/%.o : %.c  $(headers)
-	$(CC) -o $@ -c $(CFLAGS) $<
+$(odir)/%.o : %.c $(headers) | $(odir)
+	$(CC) -o $@ -c $(CFLAGS) $(idirs) $<

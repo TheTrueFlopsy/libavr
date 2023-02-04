@@ -7,6 +7,8 @@
 	Depends on the <i2chelper.h> module.
 */
 
+// TODO: Fully implement 23017 and 23008 compatibility.
+
 #include <stdint.h>
 
 #include "i2chelper.h"
@@ -100,6 +102,8 @@ enum {
 	MCP23018_INTCC  = 0,
 	MCP23018_INTPOL = 1,
 	MCP23018_ODR    = 2,
+	MCP23018_HAEN   = 3,  // Enables address select pins. Only used on SPI parts (23S17, 23S08).
+	MCP23018_DISSLW = 4,  // Disables slew rate control on SDA (only on 23017, 23008).
 	MCP23018_SEQOP  = 5,
 	MCP23018_MIRROR = 6,
 	MCP23018_BANK   = 7

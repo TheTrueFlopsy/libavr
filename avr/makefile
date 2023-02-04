@@ -1,10 +1,15 @@
 
 libname := avrtask
 
-# Toolchain config.
+# --- Toolchain Config ---
+CC := avr-gcc
+testcc := gcc
+# NOTE: Apparently 'gcc-ar' is better than plain 'ar' for creating LTO-enabled
+#       static libraries:
+# https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
+AR := avr-gcc-ar
+
 natural := naturaldocs
-doc_dir := docs/natural
-doc_conf_dir := docs/natural-config
 
 ifdef build
 ifeq ($(build),attiny)
@@ -17,65 +22,39 @@ endif
 endif
 
 ifdef libavr_attiny
-device ?= attiny84
-avrdude_device ?= t84
-else ifdef libavr_atmega_u
-device ?= atmega32u4
-avrdude_device ?= m32u4
-else
-device ?= atmega328p
-avrdude_device ?= m328p
-endif
-
-mcu ?= $(device)
-
-warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
-
-# IDEA: Let each project build its own custom copy of the library, with all the right
-#       macro defs, etc.
-
-ifdef libavr_attiny
 # 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
-macro_defs := -DF_CPU=1000000L -DLIBAVR_ATTINY -DSCHED_CLOCK_PRESCALE_LOG=3
+f_cpu := 1000000
+f_cpu_prescale := 3
+device := attiny84
 else ifdef libavr_atmega_u
 # 16 MHz MCU clock, 64 clock cycles per scheduler tick.
 # Good for Arduino Leonardo.
-macro_defs := -DF_CPU=16000000L -DLIBAVR_ATMEGA_U -DSCHED_CLOCK_PRESCALE_LOG=6
+f_cpu := 16000000
+f_cpu_prescale := 6
+device := atmega32u4
 else
 # 16 MHz MCU clock, 32 clock cycles per scheduler tick.
 # Good for Arduino Uno.
-macro_defs := -DF_CPU=16000000L -DSCHED_CLOCK_PRESCALE_LOG=5
+f_cpu := 16000000
+f_cpu_prescale := 5
 # 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
 # Good for ATmega out-of-the-box.
-#macro_defs := -DF_CPU=1000000L -DSCHED_CLOCK_PRESCALE_LOG=3
+#f_cpu := 1000000
+#f_cpu_prescale := 3
+device := atmega328p
 endif
 
-macro_defs += -DTBOUNCER_DISABLE_PORT_C -DTBOUNCER_DISABLE_PORT_D
+mcu := $(device)
 
-ASFLAGS := $(macro_defs) -mmcu=$(mcu)
-# NOTE: about -mcall-prologues
-# "Functions prologues/epilogues are expanded as calls to appropriate subroutines.
-#  Code size is smaller."
-# https://gcc.gnu.org/onlinedocs/gcc/AVR-Options.html
-# NOTE: -flto enables Link-Time Optimization, which among other things lets the compiler
-#       exclude unused library functions from the linked binary. Note that this leads to
-#       specialized LTO data being added to object files.
-CFLAGS := -std=c11 $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto -ffat-lto-objects
-testflags := $(macro_defs) -DLIBAVR_TEST_BUILD -g $(warnings)
-CC := avr-gcc
-testcc := gcc
-# NOTE: Apparently 'gcc-ar' is better than plain 'ar' for creating LTO-enabled
-#       static libraries:
-# https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
-AR = avr-gcc-ar
+# --- Directory Variables ---
+out_dir := .
 
-# Directory variables.
 ifdef debug
-odir := obj/debug
-bdir := bin/debug
+odir := $(out_dir)/obj/debug
+bdir := $(out_dir)/bin/debug
 else
-odir := obj/dist
-bdir := bin/dist
+odir := $(out_dir)/obj/dist
+bdir := $(out_dir)/bin/dist
 endif
 
 ifdef libavr_attiny
@@ -90,7 +69,10 @@ todir := $(odir)/tests
 tbdir := $(bdir)/tests
 builddirs := $(odir) $(bdir) $(todir) $(tbdir)
 
-# Filename variables.
+doc_dir := docs/natural
+doc_conf_dir := docs/natural-config
+
+# --- Filename Variables ---
 ifdef libavr_attiny
 common := task_sched tbouncer
 else
@@ -111,7 +93,30 @@ test_common_o   := $(addprefix $(todir)/, $(addsuffix .o, $(test_common)))
 test_target_o   := $(addprefix $(todir)/, $(addsuffix .o, $(test_targets)))
 test_target_exe := $(addprefix $(tbdir)/, $(test_targets))
 
-# Phony targets.
+# --- Command Option Variables ---
+warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
+macro_defs := -DF_CPU=$(f_cpu) -DSCHED_CLOCK_PRESCALE_LOG=$(f_cpu_prescale)
+
+ifdef libavr_attiny
+macro_defs += -DLIBAVR_ATTINY
+else ifdef libavr_atmega_u
+macro_defs += -DLIBAVR_ATMEGA_U
+endif
+
+# NOTE: about -mcall-prologues
+# "Functions prologues/epilogues are expanded as calls to appropriate subroutines.
+#  Code size is smaller."
+# https://gcc.gnu.org/onlinedocs/gcc/AVR-Options.html
+# NOTE: -flto enables Link-Time Optimization, which among other things lets the compiler
+#       exclude unused library functions from the linked binary. Note that this leads to
+#       specialized LTO data being added to object files.
+CFLAGS := -std=c11 $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto
+override CFLAGS += -ffat-lto-objects
+#ASFLAGS := $(macro_defs) -mmcu=$(mcu)
+
+testflags := $(macro_defs) -DLIBAVR_TEST_BUILD -g $(warnings)
+
+# --- Phony Targets ---
 .PHONY : all $(test_runs) $(cytest_runs) $(libname) $(test_targets) \
          clean doc tests cytests run-tests cyrun-tests
 
@@ -125,9 +130,9 @@ $(cytest_runs) : cytests
 $(cytest_runs) : cyrun-% : cython/%.py
 	cd cython && ./$(notdir $<)
 
-$(libname) : $(builddirs) $(libname_a)
+$(libname) : $(libname_a)
 
-$(test_targets) : % : $(builddirs) $(tbdir)/%
+$(test_targets) : % : $(tbdir)/% | $(builddirs)
 
 clean :
 	rm -f $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex $(todir)/*.o  $(tbdir)/*_test
@@ -146,25 +151,22 @@ run-tests : $(test_runs) cyrun-tests
 
 cyrun-tests : $(cytest_runs)
 
-# File targets.
+# --- File Targets ---
 $(builddirs) :
 	mkdir -p $@
 
-$(libname_a) : $(common_o)
+$(libname_a) : $(common_o) | $(bdir)
 	$(AR) -rcs $@ $^
 
-.PRECIOUS : $(odir)/%.o
+.PRECIOUS : $(odir)/%.o  # Don't touch my precious object files make you beast.
 
-$(odir)/%.o : %.c $(headers)
+$(odir)/%.o : %.c $(headers) | $(odir)
 	$(CC) -c $(CFLAGS) -o $@ $<
-
-$(odir)/%.o : %.S
-	$(CC) -c $(ASFLAGS) -o $@ $<
 
 .PRECIOUS : $(todir)/%.o
 
-$(tbdir)/% : $(todir)/%.o $(test_common_o)
+$(tbdir)/% : $(todir)/%.o $(test_common_o) | $(tbdir)
 	$(testcc) $(testflags) -o $@ $^ $(lnames)
 
-$(todir)/%.o : %.c $(headers)
+$(todir)/%.o : %.c $(headers) | $(todir)
 	$(testcc) -c $(testflags) -o $@ $<
