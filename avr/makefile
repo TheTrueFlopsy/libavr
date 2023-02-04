@@ -21,30 +21,25 @@ $(error Unrecognized build type: $(build))
 endif
 endif
 
-ifdef libavr_attiny
-# 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
+ifdef libavr_attiny  # Good settings for ATtiny84 out-of-the-box
+# 1 MHz MCU clock (factory default: 8 MHz osc. / MCU prescale 8), 8 clock cycles per scheduler tick
 f_cpu := 1000000
 f_cpu_prescale := 3
-device := attiny84
-else ifdef libavr_atmega_u
-# 16 MHz MCU clock, 64 clock cycles per scheduler tick.
-# Good for Arduino Leonardo.
+mcu := attiny84
+else ifdef libavr_atmega_u  # Good settings for Arduino Leonardo
+# 16 MHz MCU clock, 64 clock cycles per scheduler tick
 f_cpu := 16000000
 f_cpu_prescale := 6
-device := atmega32u4
-else
-# 16 MHz MCU clock, 32 clock cycles per scheduler tick.
-# Good for Arduino Uno.
+mcu := atmega32u4
+else  # Good settings for Arduino Uno / ATmega328 out-of-the-box
+# 16 MHz MCU clock, 32 clock cycles per scheduler tick
 f_cpu := 16000000
 f_cpu_prescale := 5
-# 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
-# Good for ATmega out-of-the-box.
+# 1 MHz MCU clock (factory default: 8 MHz osc. / MCU prescale 8), 8 clock cycles per scheduler tick
 #f_cpu := 1000000
 #f_cpu_prescale := 3
-device := atmega328p
+mcu := atmega328p
 endif
-
-mcu := $(device)
 
 # --- Directory Variables ---
 out_dir := .
@@ -71,6 +66,7 @@ builddirs := $(odir) $(bdir) $(todir) $(tbdir)
 
 doc_dir := docs/natural
 doc_conf_dir := docs/natural-config
+docdirs := $(doc_dir) $(doc_conf_dir)
 
 # --- Filename Variables ---
 ifdef libavr_attiny
@@ -78,11 +74,12 @@ common := task_sched tbouncer
 else
 common := task_sched tbouncer task_tlv std_tlv memmon spihelper i2chelper mcp4x mcp23018
 endif
-test_common := tbouncer
-test_targets := task_sched_test tbouncer_test
+
+test_common    := tbouncer
+test_targets   := task_sched_test tbouncer_test
 cytest_targets := tbouncer_test
 
-test_runs := $(addprefix run-, $(test_targets))
+test_runs   := $(addprefix run-, $(test_targets))
 cytest_runs := $(addprefix cyrun-, $(cytest_targets))
 
 headers := *.h
@@ -138,8 +135,7 @@ clean :
 	rm -f $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex $(todir)/*.o  $(tbdir)/*_test
 
 # NOTE: Output dirs are automatically excluded from doc generation.
-doc : $(headers)
-	mkdir -p $(doc_dir) $(doc_conf_dir)
+doc : $(headers) | $(docdirs)
 	$(natural) -i . -o HTML $(doc_dir) -p $(doc_conf_dir)
 
 tests : $(test_targets) cytests
@@ -152,7 +148,7 @@ run-tests : $(test_runs) cyrun-tests
 cyrun-tests : $(cytest_runs)
 
 # --- File Targets ---
-$(builddirs) :
+$(builddirs) $(docdirs) :
 	mkdir -p $@
 
 $(libname_a) : $(common_o) | $(bdir)

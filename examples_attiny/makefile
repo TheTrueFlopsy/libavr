@@ -7,17 +7,15 @@ CC := avr-gcc
 testcc := gcc
 OBJ2HEX := avr-objcopy
 
-# 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
+# 1 MHz MCU clock (factory default: 8 MHz osc. / MCU prescale 8), 8 clock cycles per scheduler tick
 f_cpu := 1000000
 f_cpu_prescale := 3
-
-device := attiny84
 mcu := attiny84
 
 avrdude := avrdude
 
-avrdude_port ?= /dev/ttyUSB0  # Good for Bus Pirate.
-#avrdude_port ?= /dev/ttyACM0  # Good for Pololu programmer.
+avrdude_port ?= /dev/ttyUSB0
+#avrdude_port ?= /dev/ttyACM0
 avrdude_device := t84
 avrdude_prog := buspirate
 
@@ -105,7 +103,7 @@ $(bdir)/%.hex : $(odir)/%.obj | $(bdir)
 
 .PRECIOUS : $(odir)/%.obj
 
-$(odir)/%.obj : $(odir)/%.o | $(odir)
+$(odir)/%.obj : $(odir)/%.o
 	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(idirs) $(ldirs) $< $(lnames)
 
 .PRECIOUS : $(odir)/%.o

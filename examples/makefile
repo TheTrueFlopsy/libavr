@@ -7,22 +7,20 @@ CC := avr-gcc
 testcc := gcc
 OBJ2HEX := avr-objcopy
 
-# 16 MHz MCU clock, 32 clock cycles per scheduler tick.
-# Good for Arduino Uno.
+# Good settings for Arduino Uno
+# 16 MHz MCU clock, 32 clock cycles per scheduler tick
 f_cpu := 16000000
 f_cpu_prescale := 5
-# 1 MHz MCU clock (factory default: 8 MHz osc / prescale 8), 8 clock cycles per scheduler tick.
-# Good for ATmega out-of-the-box.
+# Good settings for ATmega328 out-of-the-box
+# 1 MHz MCU clock (factory default: 8 MHz osc. / MCU prescale 8), 8 clock cycles per scheduler tick
 #f_cpu := 1000000
 #f_cpu_prescale := 3
-
-device := atmega328p
 mcu := atmega328p
 
 avrdude := avrdude
 
-avrdude_port ?= /dev/ttyUSB0  # Good for Arduino Uno and Bus Pirate.
-#avrdude_port ?= /dev/ttyACM0  # Good for Arduino Leonardo and Pololu programmer.
+avrdude_port ?= /dev/ttyUSB0
+#avrdude_port ?= /dev/ttyACM0
 avrdude_device := m328p
 avrdude_prog := arduino
 avrdude_baud := 115200
@@ -115,7 +113,7 @@ $(bdir)/%.hex : $(odir)/%.obj | $(bdir)
 
 .PRECIOUS : $(odir)/%.obj
 
-$(odir)/%.obj : $(odir)/%.o | $(odir)
+$(odir)/%.obj : $(odir)/%.o
 	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(idirs) $(ldirs) $< $(lnames)
 
 .PRECIOUS : $(odir)/%.o

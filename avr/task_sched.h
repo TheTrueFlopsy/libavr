@@ -5,9 +5,9 @@
 
 /**
 	File: task_sched.h
-	A task scheduler for ATmega microcontrollers.
+	A task scheduler for AVR microcontrollers.
 	
-	NOTE: The scheduler uses the ATmega's Timer2 (or Timer0)
+	NOTE: The scheduler uses the MCU's Timer2 (or Timer0)
 	to implement the scheduling clock, so programs that use
 	the scheduler must be carefully written if they also use
 	that timer for other purposes.
