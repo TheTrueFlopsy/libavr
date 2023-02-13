@@ -103,7 +103,7 @@ static void blink_handler(sched_task *task) {
 	}
 	else { // Disabled
 		BLINK_PORT &= ~blink_pins[num]; // Turn off LED.
-		task->st |= TASK_ST_SLP(1); // Set sleep flag.
+		task->st |= TASK_SLEEP_BIT; // Set sleep flag.
 	}
 }
 
@@ -111,19 +111,22 @@ static void init_tasks(void) {
 	sched_task task;
 	
 	task = (sched_task) {
-		.st = TASK_ST_CAT(BLINKER_TASK_CAT) | TASK_ST_NUM(0),
+		.st = TASK_ST_MAKE(0, BLINKER_TASK_CAT, 0),
 		.delay = SCHED_TIME_ZERO,
 		.handler = blink_handler
 	};
 	sched_add(&task);
 	
 	task = (sched_task) {
-		.st = TASK_ST_CAT(BLINKER_TASK_CAT) | TASK_ST_NUM(1),
+		.st = TASK_ST_MAKE(1, BLINKER_TASK_CAT, 0),
 		.delay = SCHED_TIME_ZERO,
 		.handler = blink_handler
 	};
 	sched_add(&task);
 }
+
+// NOTE: This is the entry point, tell compiler not to save/restore registers.
+int main(void) __attribute__ ((OS_main));
 
 int main(void) {
 	// Set blinky LED pins as outputs.
@@ -137,12 +140,12 @@ int main(void) {
 	sched_init();
 	
 	TBOUNCER_INIT(
-		TASK_ST_CAT(TBOUNCER_TASK_CAT) | TASK_ST_NUM(0), SCHED_TIME_MS(10),
+		TASK_ST_MAKE(0, TBOUNCER_TASK_CAT, 0), SCHED_TIME_MS(10),
 		BV(BLINK_INPUT_PIN0) | BV(BLINK_INPUT_PIN1), 0, 0,
 		0, TASK_ST_CAT_MASK, TASK_ST_CAT(BLINKER_TASK_CAT));
 	
 	ttlv_init(
-		TASK_ST_CAT(TTLV_TASK_CAT) | TASK_ST_NUM(0),
+		TASK_ST_MAKE(0, TTLV_TASK_CAT, 0),
 		BAUD_TO_UBRR(BAUD_RATE, USE_U2X), TTLV_PARITY_NONE, USE_U2X,
 		TTLV_MODE_INM, 0, SCHED_CATFLAG(BLINKER_TASK_CAT));
 	ttlv_xmit_inm_header.h.srcadr = 0x20; // Set INM source address.

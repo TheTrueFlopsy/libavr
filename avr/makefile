@@ -113,9 +113,11 @@ override CFLAGS += -ffat-lto-objects
 
 testflags := $(macro_defs) -DLIBAVR_TEST_BUILD -g $(warnings)
 
+natural_flags := -s Default MyStyle
+
 # --- Phony Targets ---
 .PHONY : all $(test_runs) $(cytest_runs) $(libname) $(test_targets) \
-         clean doc tests cytests run-tests cyrun-tests
+         clean doc doc-rebuild tests cytests run-tests cyrun-tests
 
 all : $(libname)
 
@@ -132,11 +134,14 @@ $(libname) : $(libname_a)
 $(test_targets) : % : $(tbdir)/% | $(builddirs)
 
 clean :
-	rm -f $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex $(todir)/*.o  $(tbdir)/*_test
+	$(RM) $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex $(todir)/*.o  $(tbdir)/*_test
+
+doc-rebuild : natural_flags += --rebuild
+doc-rebuild : doc
 
 # NOTE: Output dirs are automatically excluded from doc generation.
 doc : $(headers) | $(docdirs)
-	$(natural) -i . -o HTML $(doc_dir) -p $(doc_conf_dir)
+	$(natural) -i . -o HTML $(doc_dir) -p $(doc_conf_dir) $(natural_flags)
 
 tests : $(test_targets) cytests
 

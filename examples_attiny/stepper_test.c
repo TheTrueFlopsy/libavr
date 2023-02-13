@@ -255,7 +255,7 @@ static void stepper_handler(sched_task *task) {
 		ADCSRA |= BV(ADSC);
 		
 		pulse_state = STATE_STARTUP;
-		task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
+		task->st |= TASK_SLEEP_BIT;  // Put the task to sleep.
 	}
 	else if (stopping) {
 		if (pulse_state == STATE_STARTED) {
@@ -267,7 +267,7 @@ static void stepper_handler(sched_task *task) {
 		}
 		else if (pulse_state == STATE_STARTUP) {
 			pulse_state = STATE_CANCELED;
-			task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
+			task->st |= TASK_SLEEP_BIT;  // Put the task to sleep.
 		}
 	}
 	else if (pulse_state == STATE_STARTUP) {
@@ -289,7 +289,7 @@ static void stepper_handler(sched_task *task) {
 			pulse_state = STATE_STARTED;
 		}
 		
-		task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
+		task->st |= TASK_SLEEP_BIT;  // Put the task to sleep.
 	}
 	else if (pulse_state == STATE_CANCELED) {
 		uint16_t adc_input_val = adc_input;
@@ -297,7 +297,7 @@ static void stepper_handler(sched_task *task) {
 		if (adc_input_val != INVALID_ADC_INPUT)  // ADC conversion finished.
 			pulse_state = STATE_STOPPED;
 		
-		task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
+		task->st |= TASK_SLEEP_BIT;  // Put the task to sleep.
 	}
 	else if (shutdown_ready) {
 		// Stopped, turn off the indicator LED.
@@ -310,10 +310,10 @@ static void stepper_handler(sched_task *task) {
 		pulse_output_off();
 		
 		pulse_state = STATE_STOPPED;
-		task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
+		task->st |= TASK_SLEEP_BIT;  // Put the task to sleep.
 	}
 	else {  // Nothing of interest happening.
-		task->st |= TASK_ST_SLP(1);  // Put the task to sleep.
+		task->st |= TASK_SLEEP_BIT;  // Put the task to sleep.
 	}
 }
 
@@ -382,7 +382,7 @@ int main(void) {
 	TBOUNCER_INIT(
 		TASK_ST_MAKE(0, TBOUNCER_TASK_CAT, 0), SCHED_TIME_MS(TBOUNCER_DELAY_MS),
 		ENABLE_PIN_PIN, 0,
-		0, TASK_ST_CAT_MASK, TASK_ST_MAKE(0, STEPPER_TASK_CAT, 0));
+		0, TASK_ST_CAT_MASK, TASK_ST_CAT(STEPPER_TASK_CAT));
 	
 	init_tasks();
 	

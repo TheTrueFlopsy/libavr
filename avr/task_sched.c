@@ -170,7 +170,7 @@ void sched_init(void) {
 	sched_delay = SCHED_TIME_ZERO;
 #endif
 	
-	// Configure the scheduler's tick counter.
+	// Configure the scheduler's tick counter timer.
 	SCHED_TCNT = 0; // Clear the count.
 	SCHED_TIMSK = SCHED_TIMSK_INIT_VAL; // Enable overflow interrupt.
 	SCHED_TCCRA = SCHED_TCCRA_INIT_VAL; // No waveform generation, normal mode.

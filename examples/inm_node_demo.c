@@ -253,7 +253,7 @@ static void command_handler(sched_task *task) {
 	ttlv_result res = TTLV_RES_NONE;
 	
 	if (!TTLV_HAS_MESSAGE) {
-		task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+		task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
 		return;
 	}
 	
@@ -406,7 +406,7 @@ static void led_handler(sched_task *task) {
 	
 	LED_PORT = led_states | (LED_PORT & ~LED_PIN_MASK);
 	
-	task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+	task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
 }
 
 static remtcam_sensor_id select_sensor(uint8_t count, uint8_t flags) {
@@ -525,7 +525,7 @@ static void sensor_handler(sched_task *task) {
 		// Start a new ADC conversion.
 		ADCSRA |= BV(ADSC);
 		
-		task->st |= TASK_ST_SLP(1);  // Set the task sleep flag.
+		task->st |= TASK_SLEEP_BIT;  // Set the task sleep flag.
 	}
 	else {
 		// IDEA: Power (and wear?) optimize by disabling the ADC?

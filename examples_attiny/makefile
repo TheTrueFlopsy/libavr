@@ -26,22 +26,24 @@ libavr_dir := ../avr
 custom_libavr := yes
 
 ifdef debug
-odir := $(out_dir)/obj/debug
-bdir := $(out_dir)/bin/debug
+rel_odir := obj/debug
+rel_bdir := bin/debug
 else
-odir := $(out_dir)/obj/dist
-bdir := $(out_dir)/bin/dist
+rel_odir := obj/dist
+rel_bdir := bin/dist
 endif
 
+odir := $(out_dir)/$(rel_odir)
+bdir := $(out_dir)/$(rel_bdir)
 builddirs := $(odir) $(bdir)
 
 idirs := -I$(libavr_dir)
 lnames := -lavrtask -lm
 
 ifeq ($(custom_libavr),yes)
-ldirs := -L$(lib_out_dir)/$(bdir)_attiny
+ldirs := -L$(lib_out_dir)/$(rel_bdir)_attiny
 else
-ldirs := -L$(libavr_dir)/$(bdir)_attiny
+ldirs := -L$(libavr_dir)/$(rel_bdir)_attiny
 endif
 
 # --- Filename Variables ---
@@ -86,7 +88,7 @@ endif
 $(targets) : % : $(bdir)/%.hex
 
 clean :
-	rm -f $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex
+	$(RM) $(odir)/*.o $(odir)/*.obj $(bdir)/*.hex
 
 clean-libavr : | $(lib_out_dir)
 	$(MAKE) -C $(libavr_dir) build=attiny out_dir=$(realpath $(lib_out_dir)) clean

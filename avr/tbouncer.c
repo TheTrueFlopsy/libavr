@@ -21,19 +21,29 @@ static uint16_t sched_task_tcww;
 #endif
 
 
-// ---<<< Data Types >>>---
+// ---<<< Compile-time checks >>>---
+#if TBOUNCER_TICK_COUNT_BITS < 1 || TBOUNCER_TICK_COUNT_BITS > 7
+#error "TBOUNCER_TICK_COUNT_BITS has an illegal value."
+#endif
+
+#if TBOUNCER_NEQ_COUNT_BITS < 1 || TBOUNCER_NEQ_COUNT_BITS > 7
+#error "TBOUNCER_NEQ_COUNT_BITS has an illegal value."
+#endif
+
 #if TBOUNCER_TICK_COUNT_BITS + TBOUNCER_NEQ_COUNT_BITS > 8
 #error "Too many debouncer counter bits (max total is 8)."
 #endif
 
 #if TBOUNCER_TICKS_FOR_UPDATE > TBOUNCER_TICKS_FOR_UPDATE_MAX
-#error "Ticks-for-update value above maximum allowed by counter field size."
+#error "TBOUNCER_TICKS_FOR_UPDATE above maximum allowed by TBOUNCER_TICK_COUNT_BITS."
 #endif
 
 #if TBOUNCER_NEQ_FOR_UPDATE > TBOUNCER_NEQ_FOR_UPDATE_MAX
-#error "Inequal-for-update value above maximum allowed by counter field size."
+#error "TBOUNCER_NEQ_COUNT_BITS above maximum allowed by TBOUNCER_NEQ_COUNT_BITS."
 #endif
 
+
+// ---<<< Data Types >>>---
 typedef struct tbouncer_pin_data {
 	uint8_t tick_count : TBOUNCER_TICK_COUNT_BITS;
 	uint8_t neq_count : TBOUNCER_NEQ_COUNT_BITS;
@@ -42,8 +52,7 @@ typedef struct tbouncer_pin_data {
 
 // ---<<< Data >>>---
 // NOTE: Port C sucks on the ATmegaU (only two pins), so we pretend that Port F is Port C
-//       and that Port C is Port A. (Confusing, I know, but /they started it/ with this weird
-//       port layout.)
+//       and that Port C is Port A.
 
 #ifndef TBOUNCER_DISABLE_PORT_A
 #ifdef LIBAVR_ATMEGA_U
