@@ -43,20 +43,17 @@ odir := $(out_dir)/$(rel_odir)
 bdir := $(out_dir)/$(rel_bdir)
 builddirs := $(odir) $(bdir)
 
-idirs := -I$(libavr_dir)
-lnames := -lavrtask -lm
-
 ifeq ($(custom_libavr),yes)
-ldirs := -L$(lib_out_dir)/$(rel_bdir)
+ldirs_paths := $(lib_out_dir)/$(rel_bdir)
 else
-ldirs := -L$(libavr_dir)/$(rel_bdir)
+ldirs_paths := $(libavr_dir)/$(rel_bdir)
 endif
 
 # --- Filename Variables ---
 targets := sched_blinker inm_node_demo
 programs := $(addprefix prog-, $(targets))
 
-headers := *.h
+headers := *.h $(libavr_dir)/*.h
 
 target_o   := $(addprefix $(odir)/, $(addsuffix .o, $(targets)))
 target_obj := $(addprefix $(odir)/, $(addsuffix .obj, $(targets)))
@@ -65,6 +62,10 @@ target_hex := $(addprefix $(bdir)/, $(addsuffix .hex, $(targets)))
 # --- Command Option Variables ---
 warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
 macro_defs := -DF_CPU=$(f_cpu)L -DSCHED_CLOCK_PRESCALE_LOG=$(f_cpu_prescale)
+
+idirs := -I$(libavr_dir)
+ldirs := $(addprefix -L, $(ldirs_paths))
+lnames := -lavrtask -lm
 
 CFLAGS := -std=c11 $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto
 LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--relax
@@ -115,7 +116,7 @@ $(bdir)/%.hex : $(odir)/%.obj | $(bdir)
 
 .PRECIOUS : $(odir)/%.obj
 
-$(odir)/%.obj : $(odir)/%.o
+$(odir)/%.obj : $(odir)/%.o $(ldirs_paths)
 	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(idirs) $(ldirs) $< $(lnames)
 
 .PRECIOUS : $(odir)/%.o

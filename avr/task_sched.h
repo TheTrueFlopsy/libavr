@@ -46,6 +46,9 @@
 		N - A bit number. Should be in the range 0-7 for 8-bit values
 			and 0-15 for 16-bit values. Bit 0 is the least significant
 			and bit 7/15 the most significant.
+	
+	Returns:
+		An integer value with (only) the specified bit set to one (1).
 */
 #define BV(N) (1 << (N))
 
@@ -55,8 +58,15 @@
 	of that many clock cycles at the current clock frequency (given by the *F_CPU*
 	macro). Function-like macro.
 	
+	CAUTION: This macro does 32-bit integer arithmetic that is implemented
+	in software on the MCU (i.e. it will be slow and potentially bloat
+	the compiled program) unless the argument is a compile-time constant.
+	
 	Parameters:
 		N - Number of clock cycles.
+	
+	Returns:
+		Duration in microseconds of *N* clock cycles.
 */
 #define CYCLES_TO_MUSECS(N) ((1000000L * (N)) / F_CPU)
 
@@ -66,8 +76,15 @@
 	performed during that time at the current clock frequency (given by the *F_CPU*
 	macro). Function-like macro.
 	
+	CAUTION: This macro does 32-bit integer arithmetic that is implemented
+	in software on the MCU (i.e. it will be slow and potentially bloat
+	the compiled program) unless the argument is a compile-time constant.
+	
 	Parameters:
 		T - Time in microseconds.
+	
+	Returns:
+		Number of clock cycles performed by the MCU in *T* microseconds.
 */
 #define MUSECS_TO_CYCLES(T) ((F_CPU * (T)) / 1000000L)
 
@@ -77,14 +94,19 @@
 	uses to keep track of elapsed time. Either Timer2 or Timer0 is used, depending on
 	whether *SCHED_USE_TIMER0* is defined. Configuration macro.
 	
-	Default value: 6 if *SCHED_USE_TIMER0*, *LIBAVR_ATTINY* or *LIBAVR_ATMEGA_U* is defined,
-	otherwise 5.
+	Default value: 6 if *SCHED_USE_TIMER0*, *LIBAVR_ATTINY* or *LIBAVR_ATMEGA_U*
+	is defined, otherwise 5.
 	
 	CAUTION: When the scheduler uses Timer2, this macro MUST be defined to be 0, 3, 5,
-	6, 7, 8 or 10. When Timer0 is used, this macro MUST be defined to be 0, 3, 6, 8 or 10.
-	It MUST also be true (with integer division) that:
-	
+	6, 7, 8 or 10. When Timer0 is used, this macro MUST be defined to be 0, 3, 6, 8
+	or 10. It MUST also be true (with integer division) that:
 	> 1 <= (1000000 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU <= 255.
+	
+	CAUTION: This macro SHOULD have a value such that
+	> (1000000 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU
+	is an integer (without integer division). If it isn't, the scheduler's timekeeping,
+	including values produced by the time-related macros in this header, will be very
+	inexact.
 */
 #ifndef SCHED_CLOCK_PRESCALE_LOG
 #if defined(SCHED_USE_TIMER0) || defined(LIBAVR_ATTINY) || defined(LIBAVR_ATMEGA_U)
@@ -105,6 +127,7 @@
 /**
 	Macro: SCHED_TICK_MUSECS
 	The duration in microseconds of a scheduler timer tick. Constant macro.
+	Depends on <SCHED_CLOCK_PRESCALE_LOG> and *F_CPU*.
 */
 #define SCHED_TICK_MUSECS ((uint8_t)CYCLES_TO_MUSECS(SCHED_CLOCK_PRESCALE))
 
@@ -135,6 +158,8 @@
 	and garbage tasks. Configuration macro.
 	
 	Default value: 8 if *LIBAVR_ATTINY* is defined, otherwise 16.
+	
+	CAUTION: This value MUST be in the range 1-254.
 	
 	CAUTION: Increasing this value will increase the amount of statically
 	allocated memory used by the scheduler.
@@ -167,6 +192,9 @@
 	
 	Parameters:
 		NUM - Task instance number in the range 0-7.
+	
+	Returns:
+		A TCSB value with (only) the instance number *NUM* set.
 */
 #define TASK_ST_NUM(NUM) TASK_ST_INIT(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, NUM)
 
@@ -176,6 +204,9 @@
 	
 	Parameters:
 		ST - The TCSB value to get the instance number from.
+	
+	Returns:
+		The instance number from *ST*, right-shifted into the three least significant bits.
 */
 #define TASK_ST_GET_NUM(ST) TASK_ST_GET(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, ST)
 
@@ -186,6 +217,10 @@
 	Parameters:
 		ST - The TCSB value to replace the instance number in.
 		NUM - Task instance number in the range 0-7.
+	
+	Returns:
+		A TCSB value with the category number and sleep bit equal to the ones in *ST* and
+		the instance number set to *NUM*.
 */
 #define TASK_ST_SET_NUM(ST, NUM) TASK_ST_SET(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, ST, NUM)
 
@@ -202,6 +237,9 @@
 	
 	Parameters:
 		CAT - Task category number in the range 0-15.
+	
+	Returns:
+		A TCSB value with (only) the category number *CAT* set.
 */
 #define TASK_ST_CAT(CAT) TASK_ST_INIT(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, CAT)
 
@@ -211,6 +249,9 @@
 	
 	Parameters:
 		ST - The TCSB value to get the category number from.
+	
+	Returns:
+		The category number from *ST*, right-shifted into the four least significant bits.
 */
 #define TASK_ST_GET_CAT(ST) TASK_ST_GET(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, ST)
 
@@ -221,6 +262,10 @@
 	Parameters:
 		ST - The TCSB value to replace the category number in.
 		CAT - Task category number in the range 0-15.
+	
+	Returns:
+		A TCSB value with the instance number and sleep bit equal to the ones in *ST* and
+		the category number set to *CAT*.
 */
 #define TASK_ST_SET_CAT(ST, CAT) TASK_ST_SET(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, ST, CAT)
 
@@ -235,8 +280,14 @@
 	Macro: TASK_ST_GET_SLP
 	Extracts the sleep bit from a TCSB value (see <sched_task>). Function-like macro.
 	
+	NOTE: When only the truth value of the result matters, <TASK_SLEEP_BIT_SET> can
+	be a faster alternative.
+	
 	Parameters:
 		ST - The TCSB value to get the sleep bit from.
+	
+	Returns:
+		The sleep bit from *ST*, right-shifted into the least significant bit.
 */
 #define TASK_ST_GET_SLP(ST) TASK_ST_GET(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, ST)
 
@@ -244,13 +295,31 @@
 
 /**
 	Macro: TASK_SLEEP_BIT
-	Integer value with the TCSB sleep bit (see <sched_task>) set. Constant macro.
-	Can be used to put a task to sleep or awaken it:
+	Integer value with (only) the TCSB sleep bit (see <sched_task>) set.
+	Constant macro. Can be used to put a task to sleep or awaken it:
 	
 	> task->st |= TASK_SLEEP_BIT;   // Sleep now.
 	> task->st &= ~TASK_SLEEP_BIT;  // Awaken!
 */
-#define TASK_SLEEP_BIT TASK_ST_SLP(1)
+#define TASK_SLEEP_BIT TASK_ST_SLP_MASK
+
+/**
+	Macro: TASK_SLEEP_BIT_SET
+	True if and only if the sleep bit is set in the specified TCSB value
+	(see <sched_task>). Function-like macro.
+	
+	NOTE: This macro can be faster than <TASK_ST_GET_SLP>, especially if
+	the argument is not a compile-time constant.
+	
+	Parameters:
+		ST - The TCSB value to check the sleep bit in.
+	
+	Returns:
+		An integer value that is true (i.e. non-zero) if and only if the
+		sleep bit in *ST* is set to one (1). This value is NOT necessarily
+		either 0 or 1.
+*/
+#define TASK_SLEEP_BIT_SET(ST) (TASK_SLEEP_BIT & (ST))
 
 /**
 	Macro: TASK_ST_MAKE
@@ -261,6 +330,10 @@
 		N - Task instance number in the range 0-7.
 		C - Task category number in the range 0-15.
 		S - Task sleep bit, 0 or 1.
+	
+	Returns:
+		A TCSB value with the instance number set to *N*, the category number set
+		to *C* and the sleep bit set to *S*.
 */
 #define TASK_ST_MAKE(N, C, S) (TASK_ST_NUM(N) | TASK_ST_CAT(C) | TASK_ST_SLP(S))
 
@@ -281,8 +354,8 @@
 	Represents either a duration or a scheduler timestamp. Time is measured
 	in scheduler ticks, and the length of a scheduler tick is the reciprocal
 	of the scheduling clock frequency, which depends on the CPU clock
-	frequency and the scheduler's clock prescaler setting (the default is
-	to divide the CPU clock frequency by 32).
+	frequency and the scheduler's clock prescaler setting.
+	See <SCHED_CLOCK_PRESCALE_LOG> and <SCHED_TICK_MUSECS>.
 	
 	Each *sched_time* represents a duration of
 	> SCHED_TICK_MUSECS*(256*h + l)
@@ -322,6 +395,10 @@ typedef struct sched_time {
 	Parameters:
 		L - Unsigned 8-bit smalltick count.
 		H - Unsigned 16-bit bigtick count.
+	
+	Returns:
+		A <sched_time> with the smalltick counter set to *L* and the bigtick counter
+		set to *H*.
 */
 #define SCHED_TIME_LH(L, H) ((sched_time) { .l=(uint8_t)(L), .h=(uint16_t)(H) })
 
@@ -332,6 +409,9 @@ typedef struct sched_time {
 	
 	Parameters:
 		T - A duration in microseconds.
+	
+	Returns:
+		A <sched_time> representing *T* microseconds.
 */
 #define SCHED_TIME_MUSECS(T) SCHED_TIME_LH( \
 	MUSECS_TO_SCHED_SMALLTICKS(T), MUSECS_TO_SCHED_BIGTICKS(T))
@@ -341,8 +421,15 @@ typedef struct sched_time {
 	Constructs a <sched_time> value representing the given duration in milliseconds.
 	Function-like macro.
 	
+	CAUTION: This macro does 32-bit integer arithmetic that is implemented
+	in software on the MCU (i.e. it will be slow and potentially bloat
+	the compiled program) unless the argument is a compile-time constant.
+	
 	Parameters:
 		T - A duration in milliseconds.
+	
+	Returns:
+		A <sched_time> representing *T* milliseconds.
 */
 #define SCHED_TIME_MS(T) SCHED_TIME_MUSECS(1000L*(T))
 
@@ -446,6 +533,9 @@ typedef uint16_t sched_catflags;
 	
 	Parameters:
 		N - A task category number in the range 0-15.
+	
+	Returns:
+		A <sched_catflags> value with (only) bit number *N* set to one (1).
 */
 #define SCHED_CATFLAG(N) ((sched_catflags)1 << (N))
 

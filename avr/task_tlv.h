@@ -22,20 +22,24 @@
 
 /**
 	Macro: TTLV_XMIT_BFR_SIZE
-	Size in bytes of the TTLV transmit buffer.
+	Size in bytes of the TTLV transmit buffer. Configuration macro.
+	
+	Default value: 32
 */
 #define TTLV_XMIT_BFR_SIZE 32
 
 /**
 	Macro: TTLV_RECV_BFR_SIZE
-	Size in bytes of the TTLV receive buffer.
+	Size in bytes of the TTLV receive buffer. Configuration macro.
+	
+	Default value: 32
 */
 #define TTLV_RECV_BFR_SIZE 32
 
 /**
 	Macro: BAUD_TO_UBRR
 	Converts a baud rate to an UBRR register value that can be passed
-	to <ttlv_init>.
+	to <ttlv_init>. Function-like macro.
 	
 	CAUTION: This macro depends on the *F_CPU* macro deing defined
 	as a long integer expression representing the master clock
@@ -51,7 +55,7 @@
 		A nonnegative integer UBRR clock divisor value that may be passed
 		to <ttlv_init>.
 */
-#define BAUD_TO_UBRR(B, X) ((uint16_t)((F_CPU)/(((int32_t)(B)*8)*(2-(X)))-1))
+#define BAUD_TO_UBRR(B, X) ((uint16_t)((F_CPU)/(((int32_t)(B)*8)*(2-!!(X)))-1))
 
 /**
 	Enum: TTLV Module State/Result Codes

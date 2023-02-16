@@ -127,6 +127,10 @@ uint8_t sched_list_size; // Number of scheduled tasks in task_list.
 
 volatile uint16_t sched_tick_count_h; // High bytes of the timer tick count.
 
+#if SCHED_MAX_TASKS < 1 || SCHED_MAX_TASKS > 254
+#error "SCHED_MAX_TASKS has an illegal value."
+#endif
+
 static sched_task task_list[SCHED_MAX_TASKS];
 
 #ifdef SCHED_RATE_LIMITING
@@ -197,7 +201,7 @@ uint8_t sched_invoke(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
 	
 	if (i < SCHED_MAX_TASKS) {
 		sched_task *task = task_list + i;
-		task->st &= ~TASK_ST_SLP_MASK;  // You are being invoked, wakey wakey.
+		task->st &= ~TASK_SLEEP_BIT;  // You are being invoked, wakey wakey.
 		task->delay = SCHED_TIME_ZERO;  // Delay always zero at handler invocation.
 		task->handler(task);
 	}
@@ -239,12 +243,10 @@ uint8_t sched_remove(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
 }
 
 void sched_run(void) {
-	uint16_t tcww;
+	sched_catflags tcww;
 	sched_time delta;
 	uint8_t n_ready, n_garbage;
-	uint8_t i, k;
-	sched_task *task_k1_p, *task_k0_p;
-	sched_task task_i;
+	sched_task *task_p;
 	
 	sei(); // Ensure that interrupts are enabled.
 	
@@ -275,9 +277,9 @@ void sched_run(void) {
 			//       may actually overflow /inside/ the atomic block, and in that case,
 			//       there obviously won't be any update of 'sched_tick_count_h' until after
 			//       it has been read into 'delta.h', and then it will be /too late/.
-			if (SCHED_TIFR_BIT_MASK & SCHED_TIFR) { // A timer overflow has happened sometime /between/ cli() and now.
+			if (SCHED_TIFR_BIT_MASK & SCHED_TIFR) {  // A timer overflow has happened sometime /between/ cli() and now.
 				// Clear the overflow interrupt flag, because we'll update 'sched_tick_count_h' here.
-				SCHED_TIFR = SCHED_TIFR_BIT_MASK; // Clear-by-setting semantics.
+				SCHED_TIFR = SCHED_TIFR_BIT_MASK;  // Clear-by-setting semantics.
 				
 				// Get TCNT as seen /after/ the overflow, hopefully before the next one.
 				delta.l = SCHED_TCNT;
@@ -304,72 +306,71 @@ void sched_run(void) {
 		// Refresh the task list.
 		n_garbage = 0;
 		n_ready = 0;
+		task_p = task_list;
 		
-		for (i = 0; i < sched_list_size; i++) {
-			task_k1_p = task_list + i;
-			task_i = *task_k1_p;
+		for (uint8_t i = 0; i < sched_list_size; i++, task_p++) {
+			sched_task *task_k1_p = task_p;      // Current task record pointer.
+			sched_task task_i = *task_k1_p;      // Current task record.
 			
-			// If bit number 'task_i.st.cat' in 'tcww' is set,
-			//  clear the sleep flag in 'task_i.st'.
+			// If bit number 'task_i.st.cat' in 'tcww' is set, clear the sleep bit in 'task_i.st'.
 			if (tcww & SCHED_CATFLAG(TASK_ST_GET_CAT(task_i.st))) {
-				task_i.st &= ~TASK_ST_SLP_MASK;
+				task_i.st &= ~TASK_SLEEP_BIT;  // Awaken notified task.
 				task_k1_p->st = task_i.st;
 			}
 			
 			if (task_i.st == TASK_ST_GARBAGE)
 				n_garbage++; // Count the number of garbage tasks.
-			else if (!(TASK_ST_SLP_MASK & task_i.st))
-				n_ready++; // Count the number of ready tasks.
+			else if (!TASK_SLEEP_BIT_SET(task_i.st))  // Sleep bit not set.
+				n_ready++; // Count the number of ready (possibly delayed) tasks.
 			
 			// Perform an insertion sort on the task list.
-			// Sort by the unsigned integer value of the status field, in ascending order.
-			for (k = i-1; k < SCHED_MAX_TASKS; k--) {
-				task_k0_p = task_list + k;
-				
-				if (task_i.st < task_k0_p->st) { // 'task_i' goes before 'task_k'.
-					*task_k1_p = *task_k0_p; // Move 'task_k' one step endward.
-					task_k1_p = task_k0_p; // The task list slot that 'task_k' occupied is now available.
+			// Sort by the unsigned integer value of the TCSB field, in ascending order.
+			sched_task *task_k0_p = task_p - 1;  // Preceding task record pointer.
+			uint8_t k;
+			
+			for (k = i-1; k < SCHED_MAX_TASKS; k--, task_k0_p--) {
+				if (task_i.st < task_k0_p->st) {  // 'task_i' goes before 'task_k'.
+					*task_k1_p = *task_k0_p;  // Move 'task_k' one step endward.
+					task_k1_p = task_k0_p;  // The task list slot that 'task_k' occupied is now available.
 				}
-				else // 'task_i' goes after 'task_k'.
-					break;
+				else  // 'task_i' goes after 'task_k'.
+					break;  // Stop.
+				
+				// Continue with the preceding task record.
 			}
 			// NOTE: If the iteration ends because k == (0 - 1), then 'task_i' belongs at task_list[0].
 			
-			if (k+1 != i) // If 'task_i' isn't already in the right place...
-				*task_k1_p = task_i; // ...put it at task_list[k+1].
+			// NOTE: Cast to avoid 16-bit comparison.
+			if ((uint8_t)(k+1) != i)  // If 'task_i' isn't already in the right place...
+				*task_k1_p = task_i;  // ...put it at task_list[k+1].
+			
+			// Continue with the next task record.
 		}
 		
-		sched_list_size -= n_garbage; // Remove any garbage tasks at the end of the list.
+		sched_list_size -= n_garbage;  // Remove any garbage tasks at the end of the list.
 		
-		// For each of the first 'n_ready' tasks on the task list
-		// (i.e. the ones that were ready at the start of this
-		// scheduler iteration):
-		for (i = 0; i < n_ready; i++) {
-			// ISSUE: Pointer + index arithmetic is slow on an ATtiny, since it has to do a software
-			//        (sizeof * index) multiplication. Consider a solution where a byte pointer
-			//        is incremented by the array element size.
-			// IDEA: An alternative would be to add another two bytes to the sched_task structs,
-			//       giving them a power-of-two size and hopefully letting the compiler do the
-			//       multiplication as a simple bit shift.
-			task_k1_p = task_list + i;
-			task_i = *task_k1_p;
+		// For each of the first 'n_ready' tasks on the task list (i.e. the ones that were
+		// ready at the start of this scheduler iteration, they may since have been put
+		// to sleep or marked as garbage (e.g. by another task's handler)):
+		task_p = task_list;
+		
+		for (uint8_t i = 0; i < n_ready; i++, task_p++) {
+			sched_task task_i = *task_p;
 			
-			if (TASK_ST_SLP_MASK & task_i.st) // Task is sleeping.
-				continue; // Let sleeping tasks lie.
+			// NOTE: This check also finds tasks that were marked as garbage after being found ready.
+			if (TASK_SLEEP_BIT_SET(task_i.st))  // This task was put to sleep after being found ready.
+				continue;  // Let sleeping tasks lie.
 			
-			if (sched_time_gt(task_i.delay, delta)) { // Task is delayed.
-				task_k1_p->delay = sched_time_sub(task_i.delay, delta); // Update the task execution delay.
+			if (sched_time_gt(task_i.delay, delta)) {  // Task is delayed.
+				task_p->delay = sched_time_sub(task_i.delay, delta);  // Update the task execution delay.
 				
-				if (!(tcww & SCHED_CATFLAG(TASK_ST_GET_CAT(task_i.st)))) // Task is not notified.
-					continue; // Wait a little longer
+				if (!(tcww & SCHED_CATFLAG(TASK_ST_GET_CAT(task_i.st))))  // Task is not notified.
+					continue;  // Wait a little longer
 			}
 			
 			// Time to run this task.
-			// Clear the task execution delay.
-			task_k1_p->delay = SCHED_TIME_ZERO;
-			
-			// Call the task handler.
-			task_i.handler(task_k1_p);
+			task_p->delay = SCHED_TIME_ZERO;  // Clear the task execution delay.
+			task_i.handler(task_p);  // Call the task handler.
 		}
 		
 #ifdef SCHED_RATE_LIMITING
@@ -395,10 +396,10 @@ void sched_run(void) {
 #else
 			delta.h = ((uint16_t)sched_delay.l << (SCHED_CLOCK_PRESCALE_LOG - 2));
 #endif
-			delta.h += sched_delay.h << (SCHED_CLOCK_PRESCALE_LOG + 6); // 8 - 2 = 6.
-			_delay_loop_2(delta.h); // Four (i.e. 1 << 2) cycles per step.
+			delta.h += sched_delay.h << (SCHED_CLOCK_PRESCALE_LOG + 6);  // 8 - 2 = 6.
+			_delay_loop_2(delta.h);  // Four (i.e. 1 << 2) cycles per step.
 		}
-		else // No delay.
+		else  // No scheduler delay.
 			sched_delay = SCHED_TIME_ZERO;
 #endif
 	}
