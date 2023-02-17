@@ -52,6 +52,61 @@
 */
 #define BV(N) (1 << (N))
 
+
+/// Section: Configuration Macros
+
+/**
+	Macro: SCHED_CLOCK_PRESCALE_LOG
+	The two-logarithm of the MCU clock prescale value of the timer that the scheduler
+	uses to keep track of elapsed time. Either Timer2 or Timer0 is used, depending on
+	whether *SCHED_USE_TIMER0* is defined. Configuration macro.
+	
+	Default value: 6 if *SCHED_USE_TIMER0*, *LIBAVR_ATTINY* or *LIBAVR_ATMEGA_U*
+	is defined, otherwise 5.
+	
+	CAUTION: When the scheduler uses Timer2, this macro MUST be defined to be 0, 3, 5,
+	6, 7, 8 or 10. When Timer0 is used, this macro MUST be defined to be 0, 3, 6, 8
+	or 10. It MUST also be true (with integer division) that:
+	> 1 <= (1000000 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU <= 255.
+	
+	CAUTION: This macro SHOULD have a value such that
+	> (1000000 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU
+	is an integer (without integer division). If it isn't, the scheduler's timekeeping,
+	including values produced by the time-related macros in this header, will be very
+	inexact.
+*/
+#ifndef SCHED_CLOCK_PRESCALE_LOG
+#if defined(SCHED_USE_TIMER0) || defined(LIBAVR_ATTINY) || defined(LIBAVR_ATMEGA_U)
+#define SCHED_CLOCK_PRESCALE_LOG 6
+#else
+#define SCHED_CLOCK_PRESCALE_LOG 5
+#endif
+#endif
+
+/**
+	Macro: SCHED_MAX_TASKS
+	The maximum number of tasks that can be scheduled simultaneously. The limit
+	applies to the total number of tasks on the task list, including sleeping
+	and garbage tasks. Configuration macro.
+	
+	Default value: 8 if *LIBAVR_ATTINY* is defined, otherwise 16.
+	
+	CAUTION: This value MUST be in the range 1-254.
+	
+	CAUTION: Increasing this value will increase the amount of statically
+	allocated memory used by the scheduler.
+*/
+#ifndef SCHED_MAX_TASKS
+#ifdef LIBAVR_ATTINY
+#define SCHED_MAX_TASKS 8
+#else
+#define SCHED_MAX_TASKS 16
+#endif
+#endif
+
+
+/// Section: Timekeeping
+
 /**
 	Macro: CYCLES_TO_MUSECS
 	Converts a given number of MCU clock cycles to the duration in microseconds
@@ -89,34 +144,6 @@
 #define MUSECS_TO_CYCLES(T) ((F_CPU * (T)) / 1000000L)
 
 /**
-	Macro: SCHED_CLOCK_PRESCALE_LOG
-	The two-logarithm of the MCU clock prescale value of the timer that the scheduler
-	uses to keep track of elapsed time. Either Timer2 or Timer0 is used, depending on
-	whether *SCHED_USE_TIMER0* is defined. Configuration macro.
-	
-	Default value: 6 if *SCHED_USE_TIMER0*, *LIBAVR_ATTINY* or *LIBAVR_ATMEGA_U*
-	is defined, otherwise 5.
-	
-	CAUTION: When the scheduler uses Timer2, this macro MUST be defined to be 0, 3, 5,
-	6, 7, 8 or 10. When Timer0 is used, this macro MUST be defined to be 0, 3, 6, 8
-	or 10. It MUST also be true (with integer division) that:
-	> 1 <= (1000000 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU <= 255.
-	
-	CAUTION: This macro SHOULD have a value such that
-	> (1000000 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU
-	is an integer (without integer division). If it isn't, the scheduler's timekeeping,
-	including values produced by the time-related macros in this header, will be very
-	inexact.
-*/
-#ifndef SCHED_CLOCK_PRESCALE_LOG
-#if defined(SCHED_USE_TIMER0) || defined(LIBAVR_ATTINY) || defined(LIBAVR_ATMEGA_U)
-#define SCHED_CLOCK_PRESCALE_LOG 6
-#else
-#define SCHED_CLOCK_PRESCALE_LOG 5
-#endif
-#endif
-
-/**
 	Macro: SCHED_CLOCK_PRESCALE
 	The MCU clock prescale value of the timer that the scheduler uses to keep track
 	of elapsed time. It is usually best to set this via *SCHED_CLOCK_PRESCALE_LOG*.
@@ -150,203 +177,6 @@
 #define SCHED_MIN_DELTA_TICKS MUSECS_TO_SCHED_TICKS(SCHED_MIN_DELTA_MUSECS)
 #define SCHED_MIN_DELTA_L ((uint8_t)MUSECS_TO_SCHED_SMALLTICKS(SCHED_MIN_DELTA_MUSECS))
 #define SCHED_MIN_DELTA_H ((uint16_t)MUSECS_TO_SCHED_BIGTICKS(SCHED_MIN_DELTA_MUSECS))
-
-/**
-	Macro: SCHED_MAX_TASKS
-	The maximum number of tasks that can be scheduled simultaneously. The limit
-	applies to the total number of tasks on the task list, including sleeping
-	and garbage tasks. Configuration macro.
-	
-	Default value: 8 if *LIBAVR_ATTINY* is defined, otherwise 16.
-	
-	CAUTION: This value MUST be in the range 1-254.
-	
-	CAUTION: Increasing this value will increase the amount of statically
-	allocated memory used by the scheduler.
-*/
-#ifndef SCHED_MAX_TASKS
-#ifdef LIBAVR_ATTINY
-#define SCHED_MAX_TASKS 8
-#else
-#define SCHED_MAX_TASKS 16
-#endif
-#endif
-
-#define TASK_ST_N(B) (1 << (B))
-#define TASK_ST_MAX(B) (TASK_ST_N(B) - 1)
-#define TASK_ST_MASK(O, B) (TASK_ST_MAX(B) << (O))
-#define TASK_ST_INIT(O, M, V) ((M) & ((V) << (O)))
-#define TASK_ST_GET(O, M, ST) (((M) & (ST)) >> (O))
-#define TASK_ST_SET(O, M, ST, V) ((~(M) & (ST)) | TASK_ST_INIT(O, M, V))
-
-#define TASK_ST_NUM_OFFS 0
-#define TASK_ST_NUM_BITS 3
-#define TASK_ST_N_NUMS TASK_ST_N(TASK_ST_NUM_BITS)
-#define TASK_ST_MAX_NUM TASK_ST_MAX(TASK_ST_NUM_BITS)
-#define TASK_ST_NUM_MASK TASK_ST_MASK(TASK_ST_NUM_OFFS, TASK_ST_NUM_BITS)
-
-/**
-	Macro: TASK_ST_NUM
-	Constructs a TCSB value (see <sched_task>) with the given instance number set
-	(the category number and sleep bit are zero). Function-like macro.
-	
-	Parameters:
-		NUM - Task instance number in the range 0-7.
-	
-	Returns:
-		A TCSB value with (only) the instance number *NUM* set.
-*/
-#define TASK_ST_NUM(NUM) TASK_ST_INIT(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, NUM)
-
-/**
-	Macro: TASK_ST_GET_NUM
-	Extracts the instance number from a TCSB value (see <sched_task>). Function-like macro.
-	
-	Parameters:
-		ST - The TCSB value to get the instance number from.
-	
-	Returns:
-		The instance number from *ST*, right-shifted into the three least significant bits.
-*/
-#define TASK_ST_GET_NUM(ST) TASK_ST_GET(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, ST)
-
-/**
-	Macro: TASK_ST_SET_NUM
-	Replaces the instance number in a TCSB value (see <sched_task>). Function-like macro.
-	
-	Parameters:
-		ST - The TCSB value to replace the instance number in.
-		NUM - Task instance number in the range 0-7.
-	
-	Returns:
-		A TCSB value with the category number and sleep bit equal to the ones in *ST* and
-		the instance number set to *NUM*.
-*/
-#define TASK_ST_SET_NUM(ST, NUM) TASK_ST_SET(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, ST, NUM)
-
-#define TASK_ST_CAT_OFFS (TASK_ST_NUM_OFFS + TASK_ST_NUM_BITS)
-#define TASK_ST_CAT_BITS 4
-#define TASK_ST_N_CATS TASK_ST_N(TASK_ST_CAT_BITS)
-#define TASK_ST_MAX_CAT TASK_ST_MAX(TASK_ST_CAT_BITS)
-#define TASK_ST_CAT_MASK TASK_ST_MASK(TASK_ST_CAT_OFFS, TASK_ST_CAT_BITS)
-
-/**
-	Macro: TASK_ST_CAT
-	Constructs a TCSB value (see <sched_task>) with the given category number set
-	(the instance number and sleep bit are zero). Function-like macro.
-	
-	Parameters:
-		CAT - Task category number in the range 0-15.
-	
-	Returns:
-		A TCSB value with (only) the category number *CAT* set.
-*/
-#define TASK_ST_CAT(CAT) TASK_ST_INIT(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, CAT)
-
-/**
-	Macro: TASK_ST_GET_CAT
-	Extracts the category number from a TCSB value (see <sched_task>). Function-like macro.
-	
-	Parameters:
-		ST - The TCSB value to get the category number from.
-	
-	Returns:
-		The category number from *ST*, right-shifted into the four least significant bits.
-*/
-#define TASK_ST_GET_CAT(ST) TASK_ST_GET(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, ST)
-
-/**
-	Macro: TASK_ST_SET_CAT
-	Replaces the category number in a TCSB value (see <sched_task>). Function-like macro.
-	
-	Parameters:
-		ST - The TCSB value to replace the category number in.
-		CAT - Task category number in the range 0-15.
-	
-	Returns:
-		A TCSB value with the instance number and sleep bit equal to the ones in *ST* and
-		the category number set to *CAT*.
-*/
-#define TASK_ST_SET_CAT(ST, CAT) TASK_ST_SET(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, ST, CAT)
-
-#define TASK_ST_NUM_CAT_MASK (TASK_ST_NUM_MASK | TASK_ST_CAT_MASK)
-
-#define TASK_ST_SLP_OFFS (TASK_ST_CAT_OFFS + TASK_ST_CAT_BITS)
-#define TASK_ST_SLP_BITS 1
-#define TASK_ST_SLP_MASK TASK_ST_MASK(TASK_ST_SLP_OFFS, TASK_ST_SLP_BITS)
-#define TASK_ST_SLP(SLP) TASK_ST_INIT(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, SLP)
-
-/**
-	Macro: TASK_ST_GET_SLP
-	Extracts the sleep bit from a TCSB value (see <sched_task>). Function-like macro.
-	
-	NOTE: When only the truth value of the result matters, <TASK_SLEEP_BIT_SET> can
-	be a faster alternative.
-	
-	Parameters:
-		ST - The TCSB value to get the sleep bit from.
-	
-	Returns:
-		The sleep bit from *ST*, right-shifted into the least significant bit.
-*/
-#define TASK_ST_GET_SLP(ST) TASK_ST_GET(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, ST)
-
-#define TASK_ST_SET_SLP(ST, SLP) TASK_ST_SET(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, ST, SLP)
-
-/**
-	Macro: TASK_SLEEP_BIT
-	Integer value with (only) the TCSB sleep bit (see <sched_task>) set.
-	Constant macro. Can be used to put a task to sleep or awaken it:
-	
-	> task->st |= TASK_SLEEP_BIT;   // Sleep now.
-	> task->st &= ~TASK_SLEEP_BIT;  // Awaken!
-*/
-#define TASK_SLEEP_BIT TASK_ST_SLP_MASK
-
-/**
-	Macro: TASK_SLEEP_BIT_SET
-	True if and only if the sleep bit is set in the specified TCSB value
-	(see <sched_task>). Function-like macro.
-	
-	NOTE: This macro can be faster than <TASK_ST_GET_SLP>, especially if
-	the argument is not a compile-time constant.
-	
-	Parameters:
-		ST - The TCSB value to check the sleep bit in.
-	
-	Returns:
-		An integer value that is true (i.e. non-zero) if and only if the
-		sleep bit in *ST* is set to one (1). This value is NOT necessarily
-		either 0 or 1.
-*/
-#define TASK_SLEEP_BIT_SET(ST) (TASK_SLEEP_BIT & (ST))
-
-/**
-	Macro: TASK_ST_MAKE
-	Convenience macro for constructing a complete TSCB value (see <sched_task>).
-	Function-like macro.
-	
-	Parameters:
-		N - Task instance number in the range 0-7.
-		C - Task category number in the range 0-15.
-		S - Task sleep bit, 0 or 1.
-	
-	Returns:
-		A TCSB value with the instance number set to *N*, the category number set
-		to *C* and the sleep bit set to *S*.
-*/
-#define TASK_ST_MAKE(N, C, S) (TASK_ST_NUM(N) | TASK_ST_CAT(C) | TASK_ST_SLP(S))
-
-/**
-	Macro: TASK_ST_GARBAGE
-	This is a special TCSB value (see <sched_task>) that marks
-	a task as "garbage" when assigned. At the start of each scheduler
-	iteration, the scheduler will remove all tasks marked as garbage from
-	the task list. Constant macro.
-	
-	> task->st = TASK_ST_GARBAGE;  // This is garbage, throw it out.
-*/
-#define TASK_ST_GARBAGE 0xff
 
 // FIXME: Explain what the "maximum allowed length" is, and why.
 /**
@@ -443,7 +273,243 @@ typedef struct sched_time {
 #define SCHED_MIN_DELTA SCHED_TIME_LH(SCHED_MIN_DELTA_L, SCHED_MIN_DELTA_H)
 
 
+/// Section: Task Control and Status Bytes
+
+#define TASK_ST_N(B) (1 << (B))
+#define TASK_ST_MAX(B) (TASK_ST_N(B) - 1)
+#define TASK_ST_MASK(O, B) (TASK_ST_MAX(B) << (O))
+#define TASK_ST_INIT(O, M, V) ((M) & ((V) << (O)))
+#define TASK_ST_GET(O, M, ST) (((M) & (ST)) >> (O))
+#define TASK_ST_SET(O, M, ST, V) ((~(M) & (ST)) | TASK_ST_INIT(O, M, V))
+
+#define TASK_ST_NUM_OFFS 0
+#define TASK_ST_NUM_BITS 3
+#define TASK_ST_N_NUMS TASK_ST_N(TASK_ST_NUM_BITS)
+#define TASK_ST_MAX_NUM TASK_ST_MAX(TASK_ST_NUM_BITS)
+
+/**
+	Macro: TASK_ST_NUM_MASK
+	Bit mask for the task instance number in a TCSB (see <sched_task>).
+	Constant macro. Useful for task list queries (see <sched_query>).
+*/
+#define TASK_ST_NUM_MASK TASK_ST_MASK(TASK_ST_NUM_OFFS, TASK_ST_NUM_BITS)
+
+/**
+	Macro: TASK_ST_NUM
+	Constructs a TCSB value (see <sched_task>) with the given instance number set
+	(the category number and sleep bit are zero). Function-like macro.
+	
+	Parameters:
+		NUM - Task instance number in the range 0-7.
+	
+	Returns:
+		A TCSB value with (only) the instance number *NUM* set.
+*/
+#define TASK_ST_NUM(NUM) TASK_ST_INIT(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, NUM)
+
+/**
+	Macro: TASK_ST_GET_NUM
+	Extracts the instance number from a TCSB value (see <sched_task>). Function-like macro.
+	
+	Parameters:
+		ST - The TCSB value to get the instance number from.
+	
+	Returns:
+		The instance number from *ST*, right-shifted into the three least significant bits.
+*/
+#define TASK_ST_GET_NUM(ST) TASK_ST_GET(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, ST)
+
+/**
+	Macro: TASK_ST_SET_NUM
+	Replaces the instance number in a TCSB value (see <sched_task>). Function-like macro.
+	
+	Parameters:
+		ST - The TCSB value to replace the instance number in.
+		NUM - Task instance number in the range 0-7.
+	
+	Returns:
+		A TCSB value with the category number and sleep bit equal to the ones in *ST* and
+		the instance number set to *NUM*.
+*/
+#define TASK_ST_SET_NUM(ST, NUM) TASK_ST_SET(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, ST, NUM)
+
+#define TASK_ST_CAT_OFFS (TASK_ST_NUM_OFFS + TASK_ST_NUM_BITS)
+#define TASK_ST_CAT_BITS 4
+#define TASK_ST_N_CATS TASK_ST_N(TASK_ST_CAT_BITS)
+#define TASK_ST_MAX_CAT TASK_ST_MAX(TASK_ST_CAT_BITS)
+
+/**
+	Macro: TASK_ST_CAT_MASK
+	Bit mask for the task category number in a TCSB (see <sched_task>).
+	Constant macro. Useful for task list queries (see <sched_query>).
+*/
+#define TASK_ST_CAT_MASK TASK_ST_MASK(TASK_ST_CAT_OFFS, TASK_ST_CAT_BITS)
+
+/**
+	Macro: TASK_ST_CAT
+	Constructs a TCSB value (see <sched_task>) with the given category number set
+	(the instance number and sleep bit are zero). Function-like macro.
+	
+	Parameters:
+		CAT - Task category number in the range 0-15.
+	
+	Returns:
+		A TCSB value with (only) the category number *CAT* set.
+*/
+#define TASK_ST_CAT(CAT) TASK_ST_INIT(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, CAT)
+
+/**
+	Macro: TASK_ST_GET_CAT
+	Extracts the category number from a TCSB value (see <sched_task>). Function-like macro.
+	
+	Parameters:
+		ST - The TCSB value to get the category number from.
+	
+	Returns:
+		The category number from *ST*, right-shifted into the four least significant bits.
+*/
+#define TASK_ST_GET_CAT(ST) TASK_ST_GET(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, ST)
+
+/**
+	Macro: TASK_ST_SET_CAT
+	Replaces the category number in a TCSB value (see <sched_task>). Function-like macro.
+	
+	Parameters:
+		ST - The TCSB value to replace the category number in.
+		CAT - Task category number in the range 0-15.
+	
+	Returns:
+		A TCSB value with the instance number and sleep bit equal to the ones in *ST* and
+		the category number set to *CAT*.
+*/
+#define TASK_ST_SET_CAT(ST, CAT) TASK_ST_SET(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, ST, CAT)
+
+/**
+	Macro: TASK_ST_NUM_CAT_MASK
+	Bit mask for the task instance and category numbers in a TCSB (see <sched_task>).
+	Constant macro. Useful for task list queries (see <sched_query>).
+	
+	> // Get pointer to task instance 2 in category 5.
+	> sched_task *task_p = SCHED_FIND(
+	>   TASK_ST_NUM_CAT_MASK, TASK_ST_NUM(2) | TASK_ST_CAT(5), 0);
+	>
+	> // Invoke task instance 4 in category 11, more tersely.
+	> sched_invoke(TASK_ST_NUM_CAT_MASK, TASK_ST_MAKE(4, 11, 0), 0);
+*/
+#define TASK_ST_NUM_CAT_MASK (TASK_ST_NUM_MASK | TASK_ST_CAT_MASK)
+
+#define TASK_ST_SLP_OFFS (TASK_ST_CAT_OFFS + TASK_ST_CAT_BITS)
+#define TASK_ST_SLP_BITS 1
+#define TASK_ST_SLP_MASK TASK_ST_MASK(TASK_ST_SLP_OFFS, TASK_ST_SLP_BITS)
+#define TASK_ST_SLP(SLP) TASK_ST_INIT(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, SLP)
+
+/**
+	Macro: TASK_ST_GET_SLP
+	Extracts the sleep bit from a TCSB value (see <sched_task>). Function-like macro.
+	
+	NOTE: When only the truth value of the result matters, <TASK_SLEEP_BIT_SET> can
+	be a faster alternative.
+	
+	Parameters:
+		ST - The TCSB value to get the sleep bit from.
+	
+	Returns:
+		The sleep bit from *ST*, right-shifted into the least significant bit.
+*/
+#define TASK_ST_GET_SLP(ST) TASK_ST_GET(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, ST)
+
+#define TASK_ST_SET_SLP(ST, SLP) TASK_ST_SET(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, ST, SLP)
+
+/**
+	Macro: TASK_SLEEP_BIT
+	Integer value with (only) the TCSB sleep bit (see <sched_task>) set.
+	Constant macro. Can be used to put a task to sleep or awaken it:
+	
+	> task->st |= TASK_SLEEP_BIT;   // Sleep now.
+	> task->st &= ~TASK_SLEEP_BIT;  // Awaken!
+*/
+#define TASK_SLEEP_BIT TASK_ST_SLP_MASK
+
+/**
+	Macro: TASK_SLEEP_BIT_SET
+	True if and only if the sleep bit is set in the specified TCSB value
+	(see <sched_task>). Function-like macro.
+	
+	NOTE: This macro can be faster than <TASK_ST_GET_SLP>, especially if
+	the argument is not a compile-time constant.
+	
+	Parameters:
+		ST - The TCSB value to check the sleep bit in.
+	
+	Returns:
+		An integer value that is true (i.e. non-zero) if and only if the
+		sleep bit in *ST* is set to one (1). This value is NOT necessarily
+		either 0 or 1.
+*/
+#define TASK_SLEEP_BIT_SET(ST) (TASK_SLEEP_BIT & (ST))
+
+/**
+	Macro: TASK_ST_MAKE
+	Convenience macro for constructing a complete TSCB value (see <sched_task>).
+	Function-like macro.
+	
+	Parameters:
+		N - Task instance number in the range 0-7.
+		C - Task category number in the range 0-15.
+		S - Task sleep bit, 0 or 1.
+	
+	Returns:
+		A TCSB value with the instance number set to *N*, the category number set
+		to *C* and the sleep bit set to *S*.
+*/
+#define TASK_ST_MAKE(N, C, S) (TASK_ST_NUM(N) | TASK_ST_CAT(C) | TASK_ST_SLP(S))
+
+/**
+	Macro: TASK_ST_GARBAGE
+	This is a special TCSB value (see <sched_task>) that marks
+	a task as "garbage" when assigned. At the start of each scheduler
+	iteration, the scheduler will remove all tasks marked as garbage from
+	the task list. Constant macro.
+	
+	> task->st = TASK_ST_GARBAGE;  // This is garbage, throw it out.
+*/
+#define TASK_ST_GARBAGE 0xff
+
+
 /// Section: Task Records
+
+/**
+	Ref: sched_catflags
+	The type of fields containing sets of bit flags that correspond to task
+	categories.
+*/
+typedef uint16_t sched_catflags;
+
+/**
+	Macro: SCHED_CATFLAG
+	Maps task category numbers to the corresponding bit flags. Function-like macro.
+	
+	Parameters:
+		N - A task category number in the range 0-15.
+	
+	Returns:
+		A <sched_catflags> value with (only) bit number *N* set to one (1).
+*/
+#define SCHED_CATFLAG(N) ((sched_catflags)1 << (N))
+
+/**
+	Macro: TASK_ST_GET_CATFLAG
+	Gets the category number from a TCSB value (see <sched_task>) as a <sched_catflags>
+	value. Function-like macro.
+	
+	Parameters:
+		ST - The TCSB value to get the category bit flag for.
+	
+	Returns:
+		A <sched_catflags> value with (only) the bit corresponding to the category number
+		in *ST* set to one (1).
+*/
+#define TASK_ST_GET_CATFLAG(ST) SCHED_CATFLAG(TASK_ST_GET_CAT(ST))
 
 struct sched_task;
 
@@ -462,6 +528,8 @@ typedef void (*sched_task_handler)(struct sched_task *task);
 */
 typedef struct sched_task {
 	// IDEA: Use bit fields in the task control and status byte?
+	// IDEA: Move the category number into the least significant bits,
+	//       to avoid bit shifting when extracting it?
 	/**
 		Field: st
 		Task control and status byte (TCSB) of the task instance. The control
@@ -471,8 +539,8 @@ typedef struct sched_task {
 		> |  SLP | CAT3 | CAT2 | CAT1 | CAT0 | NUM2 | NUM1 | NUM0 |
 		
 		Bit fields:
-			NUM0:2 - Task instance number, in the range 0-7.
-			CAT0:3 - Task category number, in the range 0-15.
+			NUM2:0 - Task instance number, in the range 0-7.
+			CAT3:0 - Task category number, in the range 0-15.
 			SLP - Sleep bit. If this is set to one, the task will not
 				be executed until a wakeup event occurs.
 		
@@ -518,26 +586,7 @@ typedef struct sched_task {
 } sched_task;
 
 
-/// Section: Global Variables
-
-/**
-	Ref: sched_catflags
-	The type of fields containing sets of bit flags that correspond to task
-	categories.
-*/
-typedef uint16_t sched_catflags;
-
-/**
-	Macro: SCHED_CATFLAG
-	Maps task category numbers to the corresponding bit flags. Function-like macro.
-	
-	Parameters:
-		N - A task category number in the range 0-15.
-	
-	Returns:
-		A <sched_catflags> value with (only) bit number *N* set to one (1).
-*/
-#define SCHED_CATFLAG(N) ((sched_catflags)1 << (N))
+/// Section: API Variables
 
 #ifndef LIBAVR_TEST_BUILD
 
@@ -598,7 +647,7 @@ extern uint8_t sched_list_size;
 extern volatile uint16_t sched_tick_count_h;
 
 
-/// Section: Helper Functions
+/// Section: API Functions - Helpers
 
 /**
 	Function: sched_time_is_zero
@@ -632,7 +681,7 @@ uint8_t sched_time_gt(sched_time a, sched_time b);
 sched_time sched_time_sub(sched_time a, sched_time b);
 
 
-/// Section: Scheduler Operations
+/// Section: API Functions - Scheduler Operations
 
 /**
 	Macro: SCHED_FIND

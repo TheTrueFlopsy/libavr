@@ -26,6 +26,9 @@
 	(Confusing, I know, but *they started it* with their weird port layout.)
 */
 
+
+/// Section: Configuration Macros
+
 /**
 	Macro: TBOUNCER_TICK_COUNT_BITS
 	The number of bits in the tick count field of an I/O pin's debouncing
@@ -53,20 +56,6 @@
 #ifndef TBOUNCER_NEQ_COUNT_BITS
 #define TBOUNCER_NEQ_COUNT_BITS 3
 #endif
-
-/**
-	Macro: TBOUNCER_TICKS_FOR_UPDATE_MAX
-	Maximum allowed value of <TBOUNCER_TICKS_FOR_UPDATE>. Constant macro.
-	Equal to *2^TBOUNCER_TICK_COUNT_BITS*.
-*/
-#define TBOUNCER_TICKS_FOR_UPDATE_MAX (1 << TBOUNCER_TICK_COUNT_BITS)
-
-/**
-	Macro: TBOUNCER_NEQ_FOR_UPDATE_MAX
-	Maximum allowed value of <TBOUNCER_NEQ_FOR_UPDATE>. Constant macro.
-	Equal to *2^TBOUNCER_NEQ_COUNT_BITS*.
-*/
-#define TBOUNCER_NEQ_FOR_UPDATE_MAX (1 << TBOUNCER_NEQ_COUNT_BITS)
 
 /**
 	Macro: TBOUNCER_TICKS_FOR_UPDATE
@@ -100,6 +89,23 @@
 #define TBOUNCER_NEQ_FOR_UPDATE 2
 #endif
 
+
+/// Section: API
+
+/**
+	Macro: TBOUNCER_TICKS_FOR_UPDATE_MAX
+	Maximum allowed value of <TBOUNCER_TICKS_FOR_UPDATE>. Constant macro.
+	Equal to *2^TBOUNCER_TICK_COUNT_BITS*.
+*/
+#define TBOUNCER_TICKS_FOR_UPDATE_MAX (1 << TBOUNCER_TICK_COUNT_BITS)
+
+/**
+	Macro: TBOUNCER_NEQ_FOR_UPDATE_MAX
+	Maximum allowed value of <TBOUNCER_NEQ_FOR_UPDATE>. Constant macro.
+	Equal to *2^TBOUNCER_NEQ_COUNT_BITS*.
+*/
+#define TBOUNCER_NEQ_FOR_UPDATE_MAX (1 << TBOUNCER_NEQ_COUNT_BITS)
+
 /**
 	Macro: TBOUNCER_ALL
 	This value can be given to the pin change notification mask arguments of
@@ -107,7 +113,6 @@
 	should trigger pin change notifications. Constant macro.
 */
 #define TBOUNCER_ALL 0xff
-
 
 /**
 	Macro: TBOUNCER_INIT

@@ -113,7 +113,7 @@ override CFLAGS += -ffat-lto-objects
 
 testflags := $(macro_defs) -DLIBAVR_TEST_BUILD -g $(warnings)
 
-natural_flags := -s Default MyStyle
+natural_flags := --highlight all --style Default MyStyle
 
 # --- Phony Targets ---
 .PHONY : all $(test_runs) $(cytest_runs) $(libname) $(test_targets) \

@@ -1,6 +1,10 @@
 #ifndef AVR_TASK_TLV_H
 #define AVR_TASK_TLV_H
 
+#include <stdint.h>
+
+#include "task_sched.h"
+
 /**
 	File: task_tlv.h
 	Task-based TLV (TTLV) communication module for ATmega microcontrollers. Also supports
@@ -8,10 +12,7 @@
 	perform communication asynchronously.
 */
 
-#include <stdint.h>
-
-#include "task_sched.h"
-
+// IDEA: Add stdio support? What kind of interface and semantics?
 
 // TODO: Document some recommended standard ways to use this module.
 // * Get awakened - check TTLV_HAS_HEADER/TTLV_HAS_MESSAGE - inspect headers
@@ -19,6 +20,9 @@
 //   message - resume sleep.
 // * For transmission, simply calling ttlv_xmit should suffice, unless you
 //   need reliability and might be stuffing your buffer.
+
+
+/// Section: Configuration Macros
 
 /**
 	Macro: TTLV_XMIT_BFR_SIZE
@@ -36,26 +40,80 @@
 */
 #define TTLV_RECV_BFR_SIZE 32
 
+
+/// Section: TLV/INM Protocol Constants
+
 /**
-	Macro: BAUD_TO_UBRR
-	Converts a baud rate to an UBRR register value that can be passed
-	to <ttlv_init>. Function-like macro.
-	
-	CAUTION: This macro depends on the *F_CPU* macro deing defined
-	as a long integer expression representing the master clock
-	frequency of the target ATmega controller.
-	
-	Parameters:
-		B - A positive integer baud rate. *B* MUST be less than or
-			equal to *F_CPU* / 16 (*F_CPU* / 8 if *X* is true).
-		X - A Boolean flag indicating whether the double-speed mode
-			of the ATmega USART will be used.
-	
-	Returns:
-		A nonnegative integer UBRR clock divisor value that may be passed
-		to <ttlv_init>.
+	Macro: TTLV_MAX_MESSAGE_ID
+	Largest valid TTLV message ID. Constant macro.
 */
-#define BAUD_TO_UBRR(B, X) ((uint16_t)((F_CPU)/(((int32_t)(B)*8)*(2-!!(X)))-1))
+#define TTLV_MAX_MESSAGE_ID 0xffff
+
+/**
+	Macro: TTLV_MAX_MESSAGE_ADR
+	Largest valid INM address. Constant macro.
+*/
+#define TTLV_MAX_MESSAGE_ADR 0xff
+
+/**
+	Macro: TTLV_LOCAL_ADR
+	Special INM address representing the local node. Constant macro.
+*/
+#define TTLV_LOCAL_ADR 0x00
+
+/**
+	Macro: TTLV_LOCAL_ADR
+	Special INM address used for broadcast messages. Constant macro.
+*/
+#define TTLV_BROADCAST_ADR TTLV_MAX_MESSAGE_ADR
+
+/**
+	Macro: TTLV_MIN_TYPE_NUM
+	Smallest valid TTLV message type number for standard messages. Constant macro.
+*/
+#define TTLV_MIN_TYPE_NUM 0x00
+
+/**
+	Macro: TTLV_MAX_TYPE_NUM
+	Largest valid TTLV message type number for standard messages. Constant macro.
+*/
+#define TTLV_MAX_TYPE_NUM 0x7f
+
+/**
+	Macro: TTLV_MAX_MESSAGE_LEN
+	Maximum TTLV message length for standard messages. Constant macro.
+	
+	CAUTION: The actual maximum message length this module can handle is less than
+	this general upper limit. See <TTLV_MAX_LEN_TLV> and <TTLV_MAX_LEN_INM>.
+*/
+#define TTLV_MAX_MESSAGE_LEN 0xff
+
+/**
+	Macro: TTLV_PROTOCOL_TYPE_NUM
+	TTLV message type number reserved for protocol messages. Constant macro.
+*/
+#define TTLV_PROTOCOL_TYPE_NUM TTLV_MAX_TYPE_NUM
+
+/**
+	Macro: TTLV_MIN_LARGE_TYPE_NUM
+	Smallest valid TTLV message type number for large messages. Constant macro.
+*/
+#define TTLV_MIN_LARGE_TYPE_NUM 0x80
+
+/**
+	Macro: TTLV_MAX_LARGE_TYPE_NUM
+	Largest valid TTLV message type number for large messages. Constant macro.
+*/
+#define TTLV_MAX_LARGE_TYPE_NUM 0xff
+
+/**
+	Macro: TTLV_MAX_LARGE_MESSAGE_LEN
+	Maximum TTLV message length for large messages. Constant macro.
+*/
+#define TTLV_MAX_LARGE_MESSAGE_LEN 0xffffffffL
+
+
+/// Section: TLV/INM Data Types
 
 /**
 	Enum: TTLV Module State/Result Codes
@@ -94,15 +152,6 @@ enum {
 	TTLV_E_STATE       = 13,
 	TTLV_E_BUFFER      = 14
 };
-
-/**
-	Macro: TTLV_IS_ERROR
-	Evaluates to a true value iff the argument is a TTLV error code.
-	
-	Parameters:
-		S - A <ttlv_state> result code.
-*/
-#define TTLV_IS_ERROR(S) ((S) >= TTLV_E_UNSPECIFIED)
 
 /**
 	Enum: TTLV Mode Flags
@@ -166,15 +215,14 @@ typedef struct __attribute__ ((__packed__)) ttlv_s_inm_header {
 	
 } ttlv_s_inm_header;
 
+/**
+	Struct: ttlv_inm_header
+	Provides byte access to the <ttlv_s_inm_header> struct *h* via the byte array *b*.
+*/
 typedef union ttlv_inm_header {
 	ttlv_s_inm_header h;
 	uint8_t b[sizeof(ttlv_s_inm_header)];
 } ttlv_inm_header;
-
-#define TTLV_MAX_MESSAGE_ID 0xffff
-#define TTLV_MAX_MESSAGE_ADR 0xff
-#define TTLV_LOCAL_ADR 0x00
-#define TTLV_BROADCAST_ADR TTLV_MAX_MESSAGE_ADR
 
 /**
 	Struct: ttlv_s_header
@@ -195,26 +243,18 @@ typedef struct __attribute__ ((__packed__)) ttlv_s_header {
 	
 } ttlv_s_header;
 
+/**
+	Struct: ttlv_header
+	Provides byte access to the <ttlv_s_header> struct *h* via the byte array *b*.
+*/
 typedef union ttlv_header {
 	ttlv_s_header h;
 	uint8_t b[sizeof(ttlv_s_header)];
 } ttlv_header;
 
-#define TTLV_MIN_TYPE_NUM 0x00
-#define TTLV_MAX_TYPE_NUM 0x7f
-#define TTLV_MAX_MESSAGE_LEN 0xff
-#define TTLV_PROTOCOL_TYPE_NUM TTLV_MAX_TYPE_NUM
-
-#define TTLV_MIN_LARGE_TYPE_NUM 0x08
-#define TTLV_MAX_LARGE_TYPE_NUM 0xff
-#define TTLV_MAX_LARGE_MESSAGE_LEN 0xffffffffL
-
-
-/// Section: Header and Message Sizes
-
 /**
 	Macro: TTLV_HEADER_BYTES_TLV
-	Size in bytes of a TLV header.
+	Size in bytes of a TLV header. Constant macro.
 */
 #define TTLV_HEADER_BYTES_TLV sizeof(ttlv_header)
 
@@ -238,7 +278,7 @@ typedef union ttlv_header {
 #define TTLV_MAX_LEN_INM (0xff - TTLV_HEADER_BYTES_INM)
 
 
-/// Section: Global Variables
+/// Section: API Variables
 
 /**
 	Variable: ttlv_mode_flags
@@ -337,9 +377,30 @@ extern ttlv_header ttlv_recv_header;
 /// Section: Helper Macros
 
 /**
+	Macro: BAUD_TO_UBRR
+	Converts a baud rate to an UBRR register value that can be passed
+	to <ttlv_init>. Function-like macro.
+	
+	CAUTION: This macro depends on the *F_CPU* macro deing defined
+	as a long integer expression representing the master clock
+	frequency of the target ATmega controller.
+	
+	Parameters:
+		B - A positive integer baud rate. *B* MUST be less than or
+			equal to *F_CPU* / 16 (*F_CPU* / 8 if *X* is true).
+		X - A Boolean flag indicating whether the double-speed mode
+			of the ATmega USART will be used.
+	
+	Returns:
+		A nonnegative integer UBRR clock divisor value that may be passed
+		to <ttlv_init>.
+*/
+#define BAUD_TO_UBRR(B, X) ((uint16_t)((F_CPU)/(((int32_t)(B)*8)*(2-!!(X)))-1))
+
+/**
 	Macro: TTLV_HAS_MESSAGE
 	Evaluates to a true value iff at least one complete received message is
-	currently pending.
+	currently pending. Expression macro.
 */
 #define TTLV_HAS_MESSAGE (ttlv_recv_state == TTLV_VALUE_DONE)
 
@@ -347,8 +408,25 @@ extern ttlv_header ttlv_recv_header;
 	Macro: TTLV_HAS_HEADER
 	Evaluates to a true value iff at least one received message header (TLV
 	header only in TLV mode, INM+TLV header in INM mode) is currently pending.
+	Expression macro.
 */
 #define TTLV_HAS_HEADER (ttlv_recv_state == TTLV_HEADER || TTLV_HAS_MESSAGE)
+
+/**
+	Macro: TTLV_IS_ERROR
+	Evaluates to a true value if and only if the argument is a TTLV error code.
+	Function-like macro.
+	
+	CAUTION: This macro may evaluate true if the argument is not a valid TTLV
+	result code.
+	
+	Parameters:
+		S - A <ttlv_state> result code.
+	
+	Returns:
+		True if and only if *S* is a TTLV error code.
+*/
+#define TTLV_IS_ERROR(S) ((S) >= TTLV_E_UNSPECIFIED)
 
 /**
 	Macro: TTLV_CHECK_TL
@@ -356,10 +434,14 @@ extern ttlv_header ttlv_recv_header;
 	and length match the ones currently stored in <ttlv_recv_header>. The
 	type identifier is tested for equality, while the message length is tested
 	for being less than or equal to the one in <ttlv_recv_header>.
+	Function-like macro.
 	
 	Parameters:
 		T - A TLV message type identifier.
 		L - A TLV message length.
+	
+	Returns:
+		True if and only if the arguments match the current <ttlv_recv_header>.
 */
 #define TTLV_CHECK_TL(T, L) \
 	(ttlv_recv_header.h.type == (T) && ttlv_recv_header.h.length >= (L))
@@ -368,12 +450,16 @@ extern ttlv_header ttlv_recv_header;
 	Macro: TTLV_PTR
 	Converts a pointer to an arbitrary type into a pointer to another
 	arbitrary type, without triggering compiler warnings.
+	Function-like macro.
 	
 	Parameters:
 		T - A type name. The macro will evaluate to a pointer to an instance
 			of this type.
 		P - A pointer. The macro will evaluate to a pointer containing the
 			same address as this pointer.
+	
+	Returns:
+		A pointer to *T*, containing the same address as *P*.
 */
 #define TTLV_PTR(T, P) ((T*)(void*)(P))
 
@@ -381,23 +467,30 @@ extern ttlv_header ttlv_recv_header;
 	Macro: TTLV_CPTR
 	Converts a pointer to an arbitrary type into a pointer to a constant
 	instance of another arbitrary type, without triggering compiler warnings.
+	Function-like macro.
 	
 	Parameters:
 		T - A type name. The macro will evaluate to a pointer to a constant
 			instance of his type.
 		P - A pointer. The macro will evaluate to a pointer containing the
 			same address as this pointer.
+	
+	Returns:
+		A pointer to *const T*, containing the same address as *P*.
 */
 #define TTLV_CPTR(T, P) ((const T*)(const void*)(P))
 
 /**
 	Macro: TTLV_DATA_PTR
 	Converts a pointer to an arbitrary type into a pointer to *uint8_t*,
-	without triggering compiler warnings.
+	without triggering compiler warnings. Function-like macro.
 	
 	Parameters:
 		P - A pointer. The macro will evaluate to a pointer containing the
 			same address as this pointer.
+	
+	Returns:
+		A pointer to *uint8_t*, containing the same address as *P*.
 */
 #define TTLV_DATA_PTR(P) TTLV_PTR(uint8_t, (P))
 
@@ -405,15 +498,19 @@ extern ttlv_header ttlv_recv_header;
 	Macro: TTLV_DATA_CPTR
 	Converts a pointer to an arbitrary type into a pointer to
 	*const uint8_t*, without triggering compiler warnings.
+	Function-like macro.
 	
 	Parameters:
 		P - A pointer. The macro will evaluate to a pointer containing the
 			same address as this pointer.
+	
+	Returns:
+		A pointer to *const uint8_t*, containing the same address as *P*.
 */
 #define TTLV_DATA_CPTR(P) TTLV_CPTR(uint8_t, (P))
 
 
-/// Section: I/O Operations
+/// Section: API Functions
 
 /**
 	Function: ttlv_init

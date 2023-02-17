@@ -309,19 +309,19 @@ void sched_run(void) {
 		task_p = task_list;
 		
 		for (uint8_t i = 0; i < sched_list_size; i++, task_p++) {
-			sched_task *task_k1_p = task_p;      // Current task record pointer.
-			sched_task task_i = *task_k1_p;      // Current task record.
+			sched_task *task_k1_p = task_p;  // Current task record pointer.
+			sched_task task_i = *task_k1_p;  // Current task record.
 			
-			// If bit number 'task_i.st.cat' in 'tcww' is set, clear the sleep bit in 'task_i.st'.
-			if (tcww & SCHED_CATFLAG(TASK_ST_GET_CAT(task_i.st))) {
+			// Check task status.
+			if (task_i.st == TASK_ST_GARBAGE)  // Task marked as garbage.
+				n_garbage++;  // Count the number of garbage tasks.
+			else if (!TASK_SLEEP_BIT_SET(task_i.st))  // Task is not sleeping.
+				n_ready++;  // Count the number of ready (possibly delayed) tasks.
+			else if (tcww & TASK_ST_GET_CATFLAG(task_i.st)) {  // Task notified.
 				task_i.st &= ~TASK_SLEEP_BIT;  // Awaken notified task.
 				task_k1_p->st = task_i.st;
+				n_ready++;  // Task is now ready.
 			}
-			
-			if (task_i.st == TASK_ST_GARBAGE)
-				n_garbage++; // Count the number of garbage tasks.
-			else if (!TASK_SLEEP_BIT_SET(task_i.st))  // Sleep bit not set.
-				n_ready++; // Count the number of ready (possibly delayed) tasks.
 			
 			// Perform an insertion sort on the task list.
 			// Sort by the unsigned integer value of the TCSB field, in ascending order.
@@ -364,11 +364,15 @@ void sched_run(void) {
 			if (sched_time_gt(task_i.delay, delta)) {  // Task is delayed.
 				task_p->delay = sched_time_sub(task_i.delay, delta);  // Update the task execution delay.
 				
-				if (!(tcww & SCHED_CATFLAG(TASK_ST_GET_CAT(task_i.st))))  // Task is not notified.
+				if (!(tcww & TASK_ST_GET_CATFLAG(task_i.st)))  // Task is not notified.
 					continue;  // Wait a little longer
 			}
 			
 			// Time to run this task.
+			// ISSUE: The compiler is being really dumb with pointer->struct assignments, doing
+			//        some silly two-steps-forward-one-step-back exercise, and restoring index
+			//        registers only to immediately clobber them. You'd think writing three zeros
+			//        to memory would be easy.
 			task_p->delay = SCHED_TIME_ZERO;  // Clear the task execution delay.
 			task_i.handler(task_p);  // Call the task handler.
 		}

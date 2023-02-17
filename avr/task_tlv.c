@@ -8,6 +8,7 @@
 #include "task_tlv.h"
 
 
+// ---<<< Constant Definitions >>>---
 #ifdef LIBAVR_ATMEGA_U
 
 #define TTLV_RX_VECT USART1_RX_vect
@@ -63,17 +64,19 @@
 #define USART_ERROR_BITS (BV(TTLV_UPE) | BV(TTLV_DOR) | BV(TTLV_FE))
 
 enum {
-	BFR_FLAG_DATA      = BV(0),    // Bytes have been successfully received or transmitted.
-	BFR_FLAG_DONE      = BV(1),    // Transmit ISR disabled itself due to an empty buffer.
+	BFR_FLAG_DATA      = BV(0),        // Bytes have been successfully received or transmitted.
+	BFR_FLAG_DONE      = BV(1),        // Transmit ISR disabled itself due to an empty buffer.
 	BFR_FLAG_E_PARITY  = BV(TTLV_UPE), // Received byte with parity error.
 	BFR_FLAG_E_OVERRUN = BV(TTLV_DOR), // Received bytes were dropped due to a full USART buffer.
 	BFR_FLAG_E_FRAME   = BV(TTLV_FE),  // Received invalid byte frame.
-	BFR_FLAG_E_DROP    = BV(5)     // Received bytes were dropped due to a full TTLV buffer.
+	BFR_FLAG_E_DROP    = BV(5)         // Received bytes were dropped due to a full TTLV buffer.
 };
 
 #define BFR_ERROR_FLAGS \
 	(BFR_FLAG_E_PARITY | BFR_FLAG_E_OVERRUN | BFR_FLAG_E_FRAME | BFR_FLAG_E_DROP)
 
+
+// ---<<< API Variables >>>---
 ttlv_mode ttlv_mode_flags;
 
 // Awaken tasks in these categories when there is a change in the state
@@ -92,6 +95,8 @@ ttlv_state ttlv_recv_state = TTLV_DISABLED;
 ttlv_inm_header ttlv_recv_inm_header;
 ttlv_header ttlv_recv_header;
 
+
+// ---<<< Static Variables >>>---
 static volatile sched_catflags ttlv_man_cat_bv;
 
 // This is a circular array queue. The transmit ISR gets bytes from
@@ -133,6 +138,7 @@ static uint8_t recv_msg_length;
 static uint8_t recv_n_committed;
 
 
+// ---<<< Static Helper Functions >>>---
 static uint8_t uint8_min(uint8_t a, uint8_t b) {
 	return (a < b) ? a : b;
 }
@@ -168,6 +174,7 @@ static uint8_t buffer_write(
 }
 
 
+// ---<<< ISRs >>>---
 ISR(TTLV_RX_VECT) { // USART has received and buffered a data byte.
 	uint8_t csra = TTLV_UCSRA; // Read USART status flags BEFORE the data byte.
 	uint8_t data = TTLV_UDR; // Always read TTLV_UDR to clear the RxC interrupt.
@@ -220,6 +227,7 @@ ISR(TTLV_UDRE_VECT) { // USART is ready to receive a data byte for transmission.
 }
 
 
+// ---<<< Static Routines >>>---
 static void run_recv_state_machine(void) {
 	uint8_t bfr_start = recv_bfr_start;
 	uint8_t bfr_n = recv_bfr_n;
@@ -367,6 +375,7 @@ static void ttlv_handler(sched_task *task) {
 }
 
 
+// ---<<< API Functions >>>---
 void ttlv_init(
 	uint8_t task_num_cat, uint16_t ubrr, uint8_t parity, uint8_t u2x,
 	ttlv_mode mode, sched_catflags xmit_task_cats, sched_catflags recv_task_cats)
@@ -399,7 +408,7 @@ void ttlv_init(
 	
 	task_num_cat &= TASK_ST_NUM_CAT_MASK;
 	ttlv_man_num_cat = task_num_cat;
-	ttlv_man_cat_bv = SCHED_CATFLAG(TASK_ST_GET_CAT(task_num_cat));
+	ttlv_man_cat_bv = TASK_ST_GET_CATFLAG(task_num_cat);
 	
 	n_header_bytes = (TTLV_MODE_INM & mode)
 		? TTLV_HEADER_BYTES_INM
@@ -415,7 +424,7 @@ void ttlv_init(
 	
 	// Create the TTLV receiver/transmitter task.
 	task = (sched_task) {
-		.st = TASK_ST_SLP(1) | task_num_cat,
+		.st = task_num_cat | TASK_SLEEP_BIT,
 		.delay = SCHED_TIME_ZERO,
 		.handler = ttlv_handler
 	};
