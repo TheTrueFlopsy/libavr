@@ -5,8 +5,6 @@
 
 #include "i2chelper.h"
 
-//#define BV(N) (1 << (N))
-
 #ifndef I2C_TWSR_INIT
 // TWPS[1..0]=0 - prescaler divisor 4^0 == 1
 #define I2C_TWSR_INIT 0

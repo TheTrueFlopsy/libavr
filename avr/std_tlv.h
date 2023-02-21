@@ -7,8 +7,11 @@
 
 /**
 	File: std_tlv.h
-	Common TLV message types for the ATmega	Task-based TLV communication module
-	(<task_tlv.h>).
+	Common message types, result codes and payload data types for the Task-based
+	TLV/INM (TTLV) communication module (<task_tlv.h>). Also declares a standard
+	set of logical registers for TLV/INM nodes, as well as helper macros that
+	simplify implementation of the logical register interface. Finally, there are
+	some convenience functions for transmission of INM response messages.
 */
 
 
@@ -17,26 +20,26 @@
 /**
 	Enum: TTLV Message Type Identifiers
 	
-	NOTE: Application-specific message type identifiers should be greater than
+	NOTE: Application-specific message type identifiers SHOULD be greater than
 	or equal to *TTLV_MSG_T_APPLICATION*.
 	
 	TTLV_MSG_T_DEFAULT              - Default message type.
 	TTLV_MSG_T_RESULT               - Generic TLV operation response (result code).
 	TTLV_MSG_T_INM_RESULT           - Generic INM operation response (result code and request ID).
-	TTLV_MSG_T_REG_READ             - Generic logical register read request.
-	TTLV_MSG_T_REG_READ_RES         - Generic TLV logical register read response.
-	TTLV_MSG_T_INM_REG_READ_RES     - Generic INM logical register read response (with request ID).
-	TTLV_MSG_T_REG_WRITE            - Generic logical register write request.
-	TTLV_MSG_T_REG_TOGGLE           - Generic logical register toggle request.
-	TTLV_MSG_T_REG_RW_EXCH          - Generic logical register read-write request.
-	TTLV_MSG_T_REG_WR_EXCH          - Generic logical register write-read request.
-	TTLV_MSG_T_REGPAIR_READ         - Generic logical register pair read request.
-	TTLV_MSG_T_REGPAIR_READ_RES     - Generic TLV logical register pair read response.
-	TTLV_MSG_T_INM_REGPAIR_READ_RES - Generic INM logical register pair read response (with request ID).
-	TTLV_MSG_T_REGPAIR_WRITE        - Generic logical register pair write request.
-	TTLV_MSG_T_REGPAIR_TOGGLE       - Generic logical register pair toggle request.
-	TTLV_MSG_T_REGPAIR_RW_EXCH      - Generic logical register pair read-write request.
-	TTLV_MSG_T_REGPAIR_WR_EXCH      - Generic logical register pair write-read request.
+	TTLV_MSG_T_REG_READ             - Logical register read request.
+	TTLV_MSG_T_REG_READ_RES         - Logical TLV register read response.
+	TTLV_MSG_T_INM_REG_READ_RES     - Logical INM register read response (with request ID).
+	TTLV_MSG_T_REG_WRITE            - Logical register write (*R* = *V*) request.
+	TTLV_MSG_T_REG_TOGGLE           - Logical register toggle (*R* ^= *V*; ret *R*) request.
+	TTLV_MSG_T_REG_RW_EXCH          - Logical register read-write (*X* = *R*; *R* = *V*; ret *X*) request.
+	TTLV_MSG_T_REG_WR_EXCH          - Logical register write-read (*R* = *V*; ret *R*) request.
+	TTLV_MSG_T_REGPAIR_READ         - Logical register pair read (ret *R*) request.
+	TTLV_MSG_T_REGPAIR_READ_RES     - Logical TLV register pair read response.
+	TTLV_MSG_T_INM_REGPAIR_READ_RES - Logical INM register pair read response (with request ID).
+	TTLV_MSG_T_REGPAIR_WRITE        - Logical register pair write request.
+	TTLV_MSG_T_REGPAIR_TOGGLE       - Logical register pair toggle request.
+	TTLV_MSG_T_REGPAIR_RW_EXCH      - Logical register pair read-write request.
+	TTLV_MSG_T_REGPAIR_WR_EXCH      - Logical register pair write-read request.
 	TTLV_MSG_T_MEMMON_DATA          - Memory monitor notification. Variable-length message.
 	TTLV_MSG_T_MEMMON_CTRL          - Memory monitor control request. Not implemented.
 	TTLV_MSG_T_APPLICATION          - Start of application-specific identifier range.
@@ -70,7 +73,7 @@ enum {
 /**
 	Enum: TTLV Operation Result Codes
 	
-	NOTE: Application-specific result codes should be greater than
+	NOTE: Application-specific result codes SHOULD be greater than
 	or equal to *TTLV_RES_APPLICATION* and not equal to *TTLV_RES_NONE*.
 	
 	TTLV_RES_OK              - Request successfully handled.
@@ -98,11 +101,9 @@ enum {
 typedef uint8_t ttlv_result;
 
 
-// ISSUE: Include the request message ID in other response message values
-//        (e.g. responses to REG_READ) for more reliable request/response matching?
 /**
 	Struct: ttlv_msg_inm_result
-	Specifies the byte format of a generic INM response message.
+	Specifies the format of a generic INM response message.
 */
 typedef struct __attribute__ ((__packed__)) ttlv_msg_inm_result {
 	/**
@@ -183,7 +184,7 @@ typedef uint16_t ttlv_regpair_value;
 
 /**
 	Struct: ttlv_msg_reg
-	Specifies the byte format of an identifier-value pair for a
+	Specifies the format of an identifier-value pair for a
 	logical register. Such pairs are the payloads of register
 	write requests and register read responses.
 */
@@ -204,7 +205,7 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_reg {
 
 /**
 	Struct: ttlv_msg_inm_reg
-	Specifies the byte format of an identifier-value pair for a logical register,
+	Specifies the format of an identifier-value pair for a logical register,
 	with an INM message ID appended. Such triples are the payloads of register read
 	responses in INM applications.
 */
@@ -231,7 +232,7 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_inm_reg {
 
 /**
 	Struct: ttlv_msg_regpair
-	Specifies the byte format of an identifier-value pair for a
+	Specifies the format of an identifier-value pair for a
 	logical register pair. Such pairs are the payloads of register
 	pair write requests and register pair read responses.
 */
@@ -255,7 +256,7 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_regpair {
 
 /**
 	Struct: ttlv_msg_inm_regpair
-	Specifies the byte format of an identifier-value pair for a logical register pair,
+	Specifies the format of an identifier-value pair for a logical register pair,
 	with an INM message ID appended. Such triples are the payloads of register pair read
 	responses in INM applications.
 */
@@ -284,7 +285,7 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_inm_regpair {
 } ttlv_msg_inm_regpair;
 
 
-/// Section: Message Lengths
+/// Section: Message Lengths and Type Checking
 
 /**
 	Enum: Standard TTLV Message Lengths
@@ -325,17 +326,88 @@ enum {
 	TTLV_MSG_L_REGPAIR_WR_EXCH      = sizeof(ttlv_msg_regpair)
 };
 
+/**
+	Macro: TTLV_CHECK_RESULT
+	True if and only if the current <ttlv_recv_header> matches a *RESULT*
+	message with a <ttlv_result> payload. Expression macro.
+*/
 #define TTLV_CHECK_RESULT TTLV_CHECK_TL(TTLV_MSG_T_RESULT, TTLV_MSG_L_RESULT)
+
+/**
+	Macro: TTLV_CHECK_INM_RESULT
+	True if and only if the current <ttlv_recv_header> matches an *INM_RESULT*
+	message with a <ttlv_msg_inm_result> payload. Expression macro.
+*/
 #define TTLV_CHECK_INM_RESULT TTLV_CHECK_TL(TTLV_MSG_T_INM_RESULT, TTLV_MSG_L_INM_RESULT)
+
+/**
+	Macro: TTLV_CHECK_REG_READ
+	True if and only if the current <ttlv_recv_header> matches a *REG_READ*
+	message with a <ttlv_reg_index> payload. Expression macro.
+*/
 #define TTLV_CHECK_REG_READ TTLV_CHECK_TL(TTLV_MSG_T_REG_READ, TTLV_MSG_L_REG_READ)
+
+/**
+	Macro: TTLV_CHECK_REG_WRITE
+	True if and only if the current <ttlv_recv_header> matches a *REG_WRITE*
+	message with a <ttlv_msg_reg> payload. Expression macro.
+*/
 #define TTLV_CHECK_REG_WRITE TTLV_CHECK_TL(TTLV_MSG_T_REG_WRITE, TTLV_MSG_L_REG_WRITE)
+
+/**
+	Macro: TTLV_CHECK_REG_TOGGLE
+	True if and only if the current <ttlv_recv_header> matches a *REG_TOGGLE*
+	message with a <ttlv_msg_reg> payload. Expression macro.
+*/
 #define TTLV_CHECK_REG_TOGGLE TTLV_CHECK_TL(TTLV_MSG_T_REG_TOGGLE, TTLV_MSG_L_REG_TOGGLE)
+
+/**
+	Macro: TTLV_CHECK_REG_RW_EXCH
+	True if and only if the current <ttlv_recv_header> matches a *REG_RW_EXCH*
+	message with a <ttlv_msg_reg> payload. Expression macro.
+*/
 #define TTLV_CHECK_REG_RW_EXCH TTLV_CHECK_TL(TTLV_MSG_T_REG_RW_EXCH, TTLV_MSG_L_REG_RW_EXCH)
+
+/**
+	Macro: TTLV_CHECK_REG_WR_EXCH
+	True if and only if the current <ttlv_recv_header> matches a *REG_WR_EXCH*
+	message with a <ttlv_msg_reg> payload. Expression macro.
+*/
 #define TTLV_CHECK_REG_WR_EXCH TTLV_CHECK_TL(TTLV_MSG_T_REG_WR_EXCH, TTLV_MSG_L_REG_WR_EXCH)
+
+/**
+	Macro: TTLV_CHECK_REGPAIR_READ
+	True if and only if the current <ttlv_recv_header> matches a *REGPAIR_READ*
+	message with a <ttlv_reg_index> payload. Expression macro.
+*/
 #define TTLV_CHECK_REGPAIR_READ TTLV_CHECK_TL(TTLV_MSG_T_REGPAIR_READ, TTLV_MSG_L_REGPAIR_READ)
+
+/**
+	Macro: TTLV_CHECK_REGPAIR_WRITE
+	True if and only if the current <ttlv_recv_header> matches a *REGPAIR_WRITE*
+	message with a <ttlv_msg_regpair> payload. Expression macro.
+*/
 #define TTLV_CHECK_REGPAIR_WRITE TTLV_CHECK_TL(TTLV_MSG_T_REGPAIR_WRITE, TTLV_MSG_L_REGPAIR_WRITE)
+
+/**
+	Macro: TTLV_CHECK_REGPAIR_TOGGLE
+	True if and only if the current <ttlv_recv_header> matches a *REGPAIR_TOGGLE*
+	message with a <ttlv_msg_regpair> payload. Expression macro.
+*/
 #define TTLV_CHECK_REGPAIR_TOGGLE TTLV_CHECK_TL(TTLV_MSG_T_REGPAIR_TOGGLE, TTLV_MSG_L_REGPAIR_TOGGLE)
+
+/**
+	Macro: TTLV_CHECK_REGPAIR_RW_EXCH
+	True if and only if the current <ttlv_recv_header> matches a *REGPAIR_RW_EXCH*
+	message with a <ttlv_msg_regpair> payload. Expression macro.
+*/
 #define TTLV_CHECK_REGPAIR_RW_EXCH TTLV_CHECK_TL(TTLV_MSG_T_REGPAIR_RW_EXCH, TTLV_MSG_L_REGPAIR_RW_EXCH)
+
+/**
+	Macro: TTLV_CHECK_REGPAIR_WR_EXCH
+	True if and only if the current <ttlv_recv_header> matches a *REGPAIR_WR_EXCH*
+	message with a <ttlv_msg_regpair> payload. Expression macro.
+*/
 #define TTLV_CHECK_REGPAIR_WR_EXCH TTLV_CHECK_TL(TTLV_MSG_T_REGPAIR_WR_EXCH, TTLV_MSG_L_REGPAIR_WR_EXCH)
 
 
@@ -343,9 +415,82 @@ enum {
 
 // NOTE: These macros let a TLV application provide full logical register support
 //       by creating application-specific implementations of the READ_REG and
-//       WRITE_REG operations. The other register operations can then be defined
-//       declaratively in terms of READ_REG and WRITE_REG.
+//       WRITE_REG operations. The other register (and register pair) operations
+//       can then be defined declaratively in terms of READ_REG and WRITE_REG.
 
+/**
+	Function: ttlv_reg_setter
+	The type of pointers to functions that set the value of a specified logical
+	register.
+	
+	Parameters:
+		index - Identifier of the target logical register.
+		value - The new register value.
+	
+	Returns:
+		A <ttlv_result> indicating the outcome of the attempted register operation.
+*/
+typedef ttlv_result (*ttlv_reg_setter)(ttlv_reg_index index, ttlv_reg_value value);
+
+/**
+	Function: ttlv_reg_manipulator
+	The type of pointers to functions that perform some update operation
+	on a specified logical register.
+	
+	Parameters:
+		index - Identifier of the target logical register.
+		value_p - Pointer to a register value. Used both to receive the input value
+			and to return the output value.
+	
+	Returns:
+		A <ttlv_result> indicating the outcome of the attempted register operation.
+*/
+typedef ttlv_result (*ttlv_reg_manipulator)(ttlv_reg_index index, ttlv_reg_value *value_p);
+
+/**
+	Function: ttlv_regpair_setter
+	The type of pointers to functions that set the value of a specified logical
+	register pair.
+	
+	Parameters:
+		index - Identifier of the lower half of the target logical register pair.
+		value - The new register pair value.
+	
+	Returns:
+		A <ttlv_result> indicating the outcome of the attempted register operation.
+*/
+typedef ttlv_result (*ttlv_regpair_setter)(ttlv_reg_index index, ttlv_regpair_value value);
+
+/**
+	Function: ttlv_regpair_manipulator
+	The type of pointers to functions that perform some update operation
+	on a specified logical register pair.
+	
+	Parameters:
+		index - Identifier of the lower half of the target logical register pair.
+		value_p - Pointer to a register pair value. Used both to receive the input value
+			and to return the output value.
+	
+	Returns:
+		A <ttlv_result> indicating the outcome of the attempted register operation.
+*/
+typedef ttlv_result (*ttlv_regpair_manipulator)(ttlv_reg_index index, ttlv_regpair_value *value_p);
+
+/**
+	Macro: TTLV_STD_REG_TOGGLE
+	Defines a static function that uses specified logical register read and write
+	functions to implement the register toggle operation (*R* ^= *V*; ret *R*).
+	Function definition macro.
+	
+	Parameters:
+		RF - Name of a <ttlv_reg_manipulator> that implements the read operation.
+		WF - Name of a <ttlv_reg_setter> that implements the write operation.
+		DF - Name of the emitted register toggle function.
+	
+	Returns:
+		Emits a definition of a static <ttlv_reg_manipulator> function that
+		implements the register toggle operation.
+*/
 #define TTLV_STD_REG_TOGGLE(RF, WF, DF) \
 	static ttlv_result DF(ttlv_reg_index index, ttlv_reg_value *value_p) { \
 		ttlv_reg_value tmp_value; \
@@ -358,6 +503,21 @@ enum {
 		return WF(index, *value_p); \
 	}
 
+/**
+	Macro: TTLV_STD_REG_RW_EXCH
+	Defines a static function that uses specified logical register read and write
+	functions to implement the register read-write operation (*X* = *R*; *R* = *V*;
+	ret *X*). Function definition macro.
+	
+	Parameters:
+		RF - Name of a <ttlv_reg_manipulator> that implements the read operation.
+		WF - Name of a <ttlv_reg_setter> that implements the write operation.
+		DF - Name of the emitted register read-write function.
+	
+	Returns:
+		Emits a definition of a <ttlv_reg_manipulator> function that implements
+		the register read-write operation.
+*/
 #define TTLV_STD_REG_RW_EXCH(RF, WF, DF) \
 	static ttlv_result DF(ttlv_reg_index index, ttlv_reg_value *value_p) { \
 		ttlv_reg_value tmp_value; \
@@ -371,6 +531,21 @@ enum {
 		return res; \
 	}
 
+/**
+	Macro: TTLV_STD_REG_WR_EXCH
+	Defines a static function that uses specified logical register read and write
+	functions to implement the register write-read operation (*R* = *V*; ret *R*).
+	Function definition macro.
+	
+	Parameters:
+		RF - Name of a <ttlv_reg_manipulator> that implements the read operation.
+		WF - Name of a <ttlv_reg_setter> that implements the write operation.
+		DF - Name of the emitted register write-read function.
+	
+	Returns:
+		Emits a definition of a static <ttlv_reg_manipulator> function that
+		implements the register write-read operation.
+*/
 #define TTLV_STD_REG_WR_EXCH(RF, WF, DF) \
 	static ttlv_result DF(ttlv_reg_index index, ttlv_reg_value *value_p) { \
 		ttlv_result res = WF(index, *value_p); \
@@ -380,6 +555,20 @@ enum {
 		return RF(index, value_p); \
 	}
 
+/**
+	Macro: TTLV_STD_REGPAIR_READ
+	Defines a static function that uses a specified logical register read function
+	to implement the register pair read operation (ret *R*).
+	Function definition macro.
+	
+	Parameters:
+		RF - Name of a <ttlv_reg_manipulator> that implements the read operation.
+		DF - Name of the emitted register pair read function.
+	
+	Returns:
+		Emits a definition of a static <ttlv_regpair_manipulator> function that
+		implements the register pair read operation.
+*/
 #define TTLV_STD_REGPAIR_READ(RF, DF) \
 	static ttlv_result DF(ttlv_reg_index index, ttlv_regpair_value *value_p) { \
 		ttlv_reg_value *value_byte_p = (ttlv_reg_value*)value_p; \
@@ -391,6 +580,20 @@ enum {
 		return RF(index+1, value_byte_p+1); \
 	}
 
+/**
+	Macro: TTLV_STD_REGPAIR_WRITE
+	Defines a static function that uses a specified logical register write function
+	to implement the register pair write operation (*R* = *V*).
+	Function definition macro.
+	
+	Parameters:
+		WF - Name of a <ttlv_reg_setter> that implements the write operation.
+		DF - Name of the emitted register pair write function.
+	
+	Returns:
+		Emits a definition of a static <ttlv_regpair_setter> function that
+		implements the register pair write operation.
+*/
 #define TTLV_STD_REGPAIR_WRITE(WF, DF) \
 	static ttlv_result DF(ttlv_reg_index index, ttlv_regpair_value value) { \
 		ttlv_reg_value *value_byte_p = (ttlv_reg_value*)&value; \
@@ -402,6 +605,21 @@ enum {
 		return WF(index+1, *(value_byte_p+1)); \
 	}
 
+/**
+	Macro: TTLV_STD_REGPAIR_TOGGLE
+	Defines a static function that uses specified logical register pair read and
+	write functions to implement the register pair toggle operation (*R* ^= *V*;
+	ret *R*). Function definition macro.
+	
+	Parameters:
+		RF - Name of a <ttlv_regpair_manipulator> that implements the read operation.
+		WF - Name of a <ttlv_regpair_setter> that implements the write operation.
+		DF - Name of the emitted register pair toggle function.
+	
+	Returns:
+		Emits a definition of a static <ttlv_regpair_manipulator> function that
+		implements the register pair toggle operation.
+*/
 #define TTLV_STD_REGPAIR_TOGGLE(RF, WF, DF) \
 	static ttlv_result DF(ttlv_reg_index index, ttlv_regpair_value *value_p) { \
 		ttlv_regpair_value tmp_value; \
@@ -414,6 +632,21 @@ enum {
 		return WF(index, *value_p); \
 	}
 
+/**
+	Macro: TTLV_STD_REGPAIR_RW_EXCH
+	Defines a static function that uses specified logical register pair read and
+	write functions to implement the register pair read-write operation
+	(*X* = *R*; *R* = *V*; ret *X*). Function definition macro.
+	
+	Parameters:
+		RF - Name of a <ttlv_regpair_manipulator> that implements the read operation.
+		WF - Name of a <ttlv_regpair_setter> that implements the write operation.
+		DF - Name of the emitted register pair read-write function.
+	
+	Returns:
+		Emits a definition of a static <ttlv_regpair_manipulator> function that
+		implements the register pair read-write operation.
+*/
 #define TTLV_STD_REGPAIR_RW_EXCH(RF, WF, DF) \
 	static ttlv_result DF(ttlv_reg_index index, ttlv_regpair_value *value_p) { \
 		ttlv_regpair_value tmp_value; \
@@ -427,6 +660,21 @@ enum {
 		return res; \
 	}
 
+/**
+	Macro: TTLV_STD_REGPAIR_WR_EXCH
+	Defines a static function that uses specified logical register pair read and
+	write functions to implement the register pair write-read operation (*R* = *V*;
+	ret *R*). Function definition macro.
+	
+	Parameters:
+		RF - Name of a <ttlv_regpair_manipulator> that implements the read operation.
+		WF - Name of a <ttlv_regpair_setter> that implements the write operation.
+		DF - Name of the emitted register pair write-read function.
+	
+	Returns:
+		Emits a definition of a static <ttlv_regpair_manipulator> function that
+		implements the register pair write-read operation.
+*/
 #define TTLV_STD_REGPAIR_WR_EXCH(RF, WF, DF) \
 	static ttlv_result DF(ttlv_reg_index index, ttlv_regpair_value *value_p) { \
 		ttlv_result res = WF(index, *value_p); \
@@ -437,7 +685,7 @@ enum {
 	}
 
 
-/// Section: Functions
+/// Section: API Functions
 
 /**
 	Function: ttlv_xmit_response
@@ -452,8 +700,8 @@ enum {
 		data_p - Pointer to the data bytes (TLV value) of the message to transmit.
 	
 	Returns:
-		An integer result code, which will be an error code iff the attempt to initiate
-		transmission failed.
+		An integer result code, which will be an error code if and only if
+		the attempt to initiate transmission failed.
 */
 ttlv_state ttlv_xmit_response(uint8_t type, uint8_t length, const uint8_t *data_p);
 
@@ -468,8 +716,8 @@ ttlv_state ttlv_xmit_response(uint8_t type, uint8_t length, const uint8_t *data_
 		res - The result code to send in the <TTLV_MSG_T_RESULT> message.
 	
 	Returns:
-		An integer result code, which will be an error code iff the attempt to initiate
-		transmission failed.
+		An integer result code, which will be an error code if and only if
+		the attempt to initiate transmission failed.
 */
 ttlv_state ttlv_xmit_result(ttlv_result res);
 
@@ -485,8 +733,8 @@ ttlv_state ttlv_xmit_result(ttlv_result res);
 		res - The result code to send in the <TTLV_MSG_T_INM_RESULT> message.
 	
 	Returns:
-		An integer result code, which will be an error code iff the attempt to initiate
-		transmission failed.
+		An integer result code, which will be an error code if and only if
+		the attempt to initiate transmission failed.
 */
 ttlv_state ttlv_xmit_inm_result(ttlv_result res);
 

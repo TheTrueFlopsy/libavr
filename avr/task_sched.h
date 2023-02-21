@@ -33,10 +33,6 @@
 //       invoked via sched_invoke())?
 //       What would the best way to implement this be?
 
-// TODO: Document all these macros. At least the ones that are likely to
-//       be used in applications. Sometimes it's better to just look
-//       at the code.
-
 /**
 	Macro: BV
 	Utility macro that maps a bit number to an integer value with (only)
@@ -685,22 +681,10 @@ sched_time sched_time_sub(sched_time a, sched_time b);
 
 /**
 	Macro: SCHED_FIND
-	Gets a pointer to the first task that matches a query. Returns a pointer to
-	the first encountered task on the list where the TCSB bits selected
-	(i.e. set to one) in *M* are equal to the corresponding bits in *V*.
-	The search starts at index *I* in the task list. If no matching task is
-	found, then a null pointer is returned. Function-like macro.
-	
-	Parameters:
-		M - Bit mask to apply to the task control and status byte.
-		V - Bit pattern to compare with the task control and status byte.
-		I - Starting index of the forward search of the task list.
-	
-	Returns:
-		A pointer to the matched task, or a null pointer if there are no matching
-		tasks.
+	Deprecated, kept for backward compatibility. Use the function <sched_find>
+	instead of this macro.
 */
-#define SCHED_FIND(M, V, I) sched_get_at(sched_query(M, V, I))
+#define SCHED_FIND(M, V, I) sched_find(M, V, I)
 
 /**
 	Function: sched_init
@@ -712,18 +696,47 @@ sched_time sched_time_sub(sched_time a, sched_time b);
 void sched_init(void);
 
 /**
+	Function: sched_ptr_query
+	Queries the task list. Returns a pointer to the first encountered task
+	on the list for which the TCSB bits selected (i.e. set to one) in *st_mask*
+	are equal to the corresponding bits in *st_val*. The search starts
+	at index *start_i* in the task list. If no matching task is found, then
+	a null pointer is returned. If a matching task is found, then the task list
+	index of that task is stored in the location pointed to by *task_i_p*.
+	
+	NOTE: If all bits in *st_mask* are set (i.e. the value is 255) and *st_val*
+	      is <TASK_ST_GARBAGE>, then a null pointer will always be returned.
+	      This special case can be used when an always-empty query is useful,
+	      e.g. when some API requires task query arguments to use as a filter
+	      for synchronous task invocation, but that feature isn't being used.
+	
+	NOTE: The matched task may be one that is marked as garbage.
+	
+	Parameters:
+		st_mask - Bit mask to apply to the task control and status byte.
+		st_val - Bit pattern to compare with the task control and status byte.
+		start_i - Starting index of the forward search of the task list.
+		task_i_p - Pointer to location where the task list index of the matched task
+			should be stored. Note that this location is NOT updated if no matching
+			task is found.
+	
+	Returns:
+		A pointer to the matched task, or a null pointer if there are no matching
+		tasks.
+*/
+sched_task *sched_ptr_query(
+	uint8_t st_mask, uint8_t st_val, uint8_t start_i, uint8_t *task_i_p);
+
+/**
 	Function: sched_query
 	Queries the task list. Returns the task list index of the first encountered
-	task on the list where the TCSB bits selected (i.e. set to one) in
+	task on the list for which the TCSB bits selected (i.e. set to one) in
 	*st_mask* are equal to the corresponding bits in *st_val*. The search starts
 	at index *start_i* in the task list. If no matching task is found, then
 	<SCHED_MAX_TASKS> is returned.
 	
-	NOTE: If all bits in *st_mask* are set (i.e. the value is 255) and *st_val*
-	      is <TASK_ST_GARBAGE>, then <SCHED_MAX_TASKS> will always be returned.
-	      This special case can be used when an always-empty query is useful,
-	      e.g. when some API requires task query arguments to use as a filter
-	      for synchronous task invocation, but that feature isn't being used.
+	NOTE: This function delegates to <sched_ptr_query>, and the notes for that
+	      function also apply to this one.
 	
 	Parameters:
 		st_mask - Bit mask to apply to the task control and status byte.
@@ -737,17 +750,15 @@ void sched_init(void);
 uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
 
 /**
-	Function: sched_invoke
-	Invokes a matching task on the task list. Invokes and returns the task list
-	index of the first encountered task on the list where the TCSB bits
-	selected (i.e. set to one) in *st_mask* are equal to the corresponding bits
-	in *st_val*. The search starts at index *start_i* in the task list. If no
-	matching task is found, then <SCHED_MAX_TASKS> is returned.
+	Function: sched_find
+	Queries the task list. Returns a pointer to the first encountered task
+	on the list for which the TCSB bits selected (i.e. set to one) in *st_mask*
+	are equal to the corresponding bits in *st_val*. The search starts at index
+	*start_i* in the task list. If no matching task is found, then a null pointer
+	is returned.
 	
-	NOTE: Before handler invocation, sleeping tasks are awakened (i.e. have the
-	      sleep bit in their TCSB cleared) and elapsing delays canceled.
-	
-	NOTE: The task handler procedure is invoked synchronously.
+	NOTE: This function delegates to <sched_ptr_query>, and the notes for that
+	      function also apply to this one.
 	
 	Parameters:
 		st_mask - Bit mask to apply to the task control and status byte.
@@ -755,27 +766,57 @@ uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
 		start_i - Starting index of the forward search of the task list.
 	
 	Returns:
-		The task list index of the invoked task, or <SCHED_MAX_TASKS> if there
+		A pointer to the matched task, or a null pointer if there are no matching
+		tasks.
+*/
+sched_task *sched_find(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
+
+/**
+	Function: sched_invoke
+	Invokes a matching task on the task list. Invokes and returns the task list
+	index of the first encountered task on the list for which the TCSB bits
+	selected (i.e. set to one) in *st_mask* are equal to the corresponding bits
+	in *st_val*. The search starts at index *start_i* in the task list. If no
+	matching task is found, then <SCHED_MAX_TASKS> is returned.
+	
+	NOTE: Before handler invocation, sleeping tasks are awakened (i.e. have the
+	      sleep bit in their TCSB cleared) and elapsing delays canceled.
+	
+	NOTE: A matched task marked as garbage is NOT invoked, but the index
+	      where the task was found is still returned.
+	
+	NOTE: The task handler procedure is invoked synchronously.
+	
+	NOTE: This function delegates to <sched_ptr_query>, and the notes for that
+	      function also apply to this one.
+	
+	Parameters:
+		st_mask - Bit mask to apply to the task control and status byte.
+		st_val - Bit pattern to compare with the task control and status byte.
+		start_i - Starting index of the forward search of the task list.
+	
+	Returns:
+		The task list index of the matched task, or <SCHED_MAX_TASKS> if there
 		are no matching tasks.
 */
 uint8_t sched_invoke(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
 
 /**
 	Function: sched_invoke_all
-	Invokes all matching tasks on the task list. Invokes every task on the list
-	where the TCSB bits selected (i.e. set to one) in *st_mask* are equal
-	to the corresponding bits in *st_val*.
+	Invokes all matching tasks on the task list. Invokes every non-garbage task
+	on the list for which the TCSB bits selected (i.e. set to one) in *st_mask* are
+	equal to the corresponding bits in *st_val*.
 	
-	NOTE: Before handler invocation, sleeping tasks are awakened (i.e. have the
-	      sleep bit in their TCSB cleared) and elapsing delays canceled.
-	
-	NOTE: The task handler procedures are invoked synchronously.
+	NOTE: This function delegates to <sched_invoke>, and the notes for that
+	      function also apply to this one.
 	
 	Parameters:
 		st_mask - Bit mask to apply to the task control and status byte.
 		st_val - Bit pattern to compare with the task control and status byte.
 */
 void sched_invoke_all(uint8_t st_mask, uint8_t st_val);
+
+// IDEA: Add sched_wake() and sched_wake_all()?
 
 /**
 	Function: sched_get_at
@@ -807,10 +848,13 @@ uint8_t sched_add(const sched_task *task);
 /**
 	Function: sched_remove
 	Marks a matching task on the task list for removal. Marks as garbage and
-	returns the index of the first encountered task on the list where the TCSB
-	bits selected (i.e. set to one) in *st_mask* are equal to the
+	returns the index of the first encountered task on the list for which
+	the TCSB bits selected (i.e. set to one) in *st_mask* are equal to the
 	corresponding bits in *st_val*. The search starts at index *start_i* in the
 	task list. If no matching task is found, then <SCHED_MAX_TASKS> is returned.
+	
+	NOTE: This function delegates to <sched_ptr_query>, and the notes for that
+	      function also apply to this one.
 	
 	Parameters:
 		st_mask - Bit mask to apply to the task control and status byte.

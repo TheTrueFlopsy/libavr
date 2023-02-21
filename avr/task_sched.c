@@ -181,36 +181,109 @@ void sched_init(void) {
 	SCHED_TCCRB = SCHED_TCCRB_INIT_VAL; // Normal mode, counter stopped.
 }
 
-uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
+/*sched_task *sched_find_ptr(uint8_t st_mask, uint8_t st_val, sched_task *start_p) {
+	if (st_val == TASK_ST_GARBAGE && st_mask == 0xff)
+		return NULL;
+	
+	st_val &= st_mask;
+	
+	sched_task task_p = (start_p) ? start_p : task_list;
+	
+	for (uint8_t i = start_i; i < sched_list_size; i++, task_p++) {
+		uint8_t masked_st = st_mask & task_p->st;
+		if (masked_st == st_val)
+			return task_p;
+	}
+	
+	return NULL;
+}
+
+sched_task *sched_find(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
+	if (st_val == TASK_ST_GARBAGE && st_mask == 0xff)
+		return NULL;
+	
+	st_val &= st_mask;
+	
+	sched_task task_p = task_list;
+	
+	for (uint8_t i = start_i; i < sched_list_size; i++, task_p++) {
+		uint8_t masked_st = st_mask & task_p->st;
+		if (masked_st == st_val)
+			return task_p;
+	}
+	
+	return NULL;
+}*/
+
+sched_task *sched_ptr_query(
+	uint8_t st_mask, uint8_t st_val, uint8_t start_i, uint8_t *task_i_p)
+{
+	if (st_val == TASK_ST_GARBAGE && st_mask == 0xff)
+		return NULL;
+	
+	st_val &= st_mask;
+	
+	sched_task *task_p = task_list + start_i;
+	
+	for (uint8_t i = start_i; i < sched_list_size; i++, task_p++) {
+		uint8_t masked_st = st_mask & task_p->st;
+		
+		if (masked_st == st_val) {
+			*task_i_p = i;
+			return task_p;
+		}
+	}
+	
+	return NULL;
+}
+
+/*uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
 	if (st_val == TASK_ST_GARBAGE && st_mask == 0xff)
 		return SCHED_MAX_TASKS;
 	
 	st_val &= st_mask;
 	
-	for (uint8_t i = start_i; i < sched_list_size; i++) {
-		uint8_t masked_st = st_mask & task_list[i].st;
+	sched_task *task_p = task_list;
+	if (start_i > 0)
+		task_p += start_i;
+	
+	for (uint8_t i = start_i; i < sched_list_size; i++, task_p++) {
+		uint8_t masked_st = st_mask & task_p->st;
 		if (masked_st == st_val)
 			return i;
 	}
 	
 	return SCHED_MAX_TASKS;
+}*/
+
+uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
+	sched_task *task_p = sched_ptr_query(st_mask, st_val, start_i, &start_i);
+	return (task_p) ? start_i : SCHED_MAX_TASKS;
+}
+
+sched_task *sched_find(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
+	return sched_ptr_query(st_mask, st_val, start_i, &start_i);
 }
 
 uint8_t sched_invoke(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
-	uint8_t i = sched_query(st_mask, st_val, start_i);
+	sched_task *task_p = sched_ptr_query(st_mask, st_val, start_i, &start_i);
 	
-	if (i < SCHED_MAX_TASKS) {
-		sched_task *task = task_list + i;
-		task->st &= ~TASK_SLEEP_BIT;  // You are being invoked, wakey wakey.
-		task->delay = SCHED_TIME_ZERO;  // Delay always zero at handler invocation.
-		task->handler(task);
+	if (!task_p)
+		return SCHED_MAX_TASKS;
+	else if (task_p->st != TASK_ST_GARBAGE) {  // Detect and refuse to invoke garbage tasks.
+		task_p->st &= ~TASK_SLEEP_BIT;  // You are being invoked, wakey wakey.
+		task_p->delay = SCHED_TIME_ZERO;  // Delay always zero at handler invocation.
+		task_p->handler(task_p);
 	}
 	
-	return i;
+	// NOTE: We return the task index (instead of SCHED_MAX_TASKS) even if
+	//       the task we found was garbage and not invoked, to avoid breaking
+	//       sched_invoke_all().
+	return start_i;
 }
 
 void sched_invoke_all(uint8_t st_mask, uint8_t st_val) {
-	uint8_t i = 0xff;
+	uint8_t i = UINT8_MAX;
 	
 	do {
 		i = sched_invoke(st_mask, st_val, i+1);
@@ -232,14 +305,13 @@ uint8_t sched_add(const sched_task *task) {
 }
 
 uint8_t sched_remove(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
-	uint8_t i = sched_query(st_mask, st_val, start_i);
+	sched_task *task_p = sched_ptr_query(st_mask, st_val, start_i, &start_i);
 	
-	if (i < SCHED_MAX_TASKS) {
-		sched_task *task = task_list + i;
-		task->st = TASK_ST_GARBAGE;
-	}
+	if (!task_p)
+		return SCHED_MAX_TASKS;
 	
-	return i;
+	task_p->st = TASK_ST_GARBAGE;
+	return start_i;
 }
 
 void sched_run(void) {

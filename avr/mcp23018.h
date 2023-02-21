@@ -5,6 +5,14 @@
 	File: mcp23018.h
 	Helper module for controlling an MCP23018 I/O expander via I2C.
 	Depends on the <i2chelper.h> module.
+	
+	NOTE: If the macro *MCP23018_BANK_MODE* is defined, the I/O expander is
+	      assumed to operate in banked mode (i.e. all registers for the same
+	      I/O port are located together in the expander's register address space).
+	      If *MCP23018_BANK_MODE* is NOT defined, the I/O expander is assumed to
+	      operate in paired mode (i.e. all registers of the same type are
+	      located together). Consult your expander's datasheet for details
+	      on the different addressing modes.
 */
 
 // TODO: Fully implement 23017 and 23008 compatibility.
@@ -71,19 +79,19 @@ enum {
 
 /**
 	Macro: MCP23018_MAX_PAIR
-	The largest valid register pair address.
+	The largest valid register pair address. Constant macro.
 */
 #define MCP23018_MAX_PAIR MCP23018_OLAT
 
 /**
 	Macro: MCP23018_MAX_BANK
-	The largest valid register bank address.
+	The largest valid register bank address. Constant macro.
 */
 #define MCP23018_MAX_BANK MCP23018_BANK_B
 
 /**
 	Macro: MCP23018_REG_MASK
-	Bit mask for the valid bits of an MCP23018 register address.
+	Bit mask for the valid bits of an MCP23018 register address. Constant macro.
 */
 #define MCP23018_REG_MASK (MCP23018_BANK_MASK | MCP23018_PAIR_MASK)
 
@@ -130,6 +138,7 @@ enum {
 	MCP23018_INTCAPx  - [R] interrupt capture register
 	MCP23018_GPIOx    - [RW] I/O port register
 	MCP23018_OLATx    - [RW] output latch register
+	MCP23018_NOT_A_REG - guaranteed to NOT be a valid register address
 */
 enum {
 	MCP23018_IODIRA   = MCP23018_IODIR | MCP23018_BANK_A,
@@ -174,8 +183,8 @@ typedef uint8_t mcp23018_reg;
 		r - A register address.
 	
 	Returns:
-		A true value iff the argument is a valid MCP23018 register address in the
-		selected addressing mode (i.e. paired or banked).
+		A true value if and only if the argument is a valid MCP23018 register
+		address in the selected addressing mode (i.e. paired or banked).
 */
 uint8_t mcp23018_is_valid_reg(mcp23018_reg r);
 
@@ -192,8 +201,8 @@ uint8_t mcp23018_is_valid_reg(mcp23018_reg r);
 		r - Address of the register to read.
 	
 	Returns:
-		<I2C_ACTIVE> iff the register read operation was successfully started,
-		otherwise an error code.
+		<I2C_ACTIVE> if and only if the register read operation was successfully
+		started, otherwise an error code.
 */
 i2c_state mcp23018_begin_read(i2c_slave_addr addr, mcp23018_reg r);
 
@@ -208,8 +217,8 @@ i2c_state mcp23018_begin_read(i2c_slave_addr addr, mcp23018_reg r);
 	
 	Parameters:
 		v - Pointer to memory where the most recently read register value should
-			be stored. This output parameter is updated only when *mcp23018_poll_read*
-			returns <I2C_READY>.
+			be stored. This output parameter is updated only when the returned
+			<i2c_state> is <I2C_READY>.
 	
 	Returns:
 		An <i2c_state> value representing the current state of the I2C module.
@@ -226,12 +235,12 @@ i2c_state mcp23018_poll_read(uint8_t *v);
 			MUST NOT include an R/W control bit.
 		r - Address of the register to read.
 		v - Pointer to memory where the result of the read register operation should
-			be stored. This output parameter is updated only when *mcp23018_read*
-			returns <I2C_READY>.
+			be stored. This output parameter is updated only when the returned
+			<i2c_state> is <I2C_READY>.
 	
 	Returns:
-		<I2C_READY> iff the register read operation was successfully performed,
-		otherwise an error code.
+		<I2C_READY> if and only if the register read operation was successfully
+		performed, otherwise an error code.
 */
 i2c_state mcp23018_read(i2c_slave_addr addr, mcp23018_reg r, uint8_t *v);
 
@@ -249,8 +258,8 @@ i2c_state mcp23018_read(i2c_slave_addr addr, mcp23018_reg r, uint8_t *v);
 		v - Value to write to the target register.
 	
 	Returns:
-		<I2C_ACTIVE> iff the register read operation was successfully started,
-		otherwise an error code.
+		<I2C_ACTIVE> if and only if the register read operation was successfully
+		started, otherwise an error code.
 */
 i2c_state mcp23018_begin_write(i2c_slave_addr addr, mcp23018_reg r, uint8_t v);
 
@@ -266,8 +275,8 @@ i2c_state mcp23018_begin_write(i2c_slave_addr addr, mcp23018_reg r, uint8_t v);
 		v - Value to write to the target register.
 	
 	Returns:
-		<I2C_READY> iff the register write operation was successfully performed,
-		otherwise an error code.
+		<I2C_READY> if and only if the register write operation was successfully
+		performed, otherwise an error code.
 */
 i2c_state mcp23018_write(i2c_slave_addr addr, mcp23018_reg r, uint8_t v);
 

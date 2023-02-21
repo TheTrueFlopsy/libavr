@@ -4,6 +4,7 @@
 /**
 	File: i2chelper.h
 	Asynchronous, interrupt-driven I2C (aka TWI) helper module.
+	Master mode only, for the time being.
 */
 
 #include <stdint.h>
@@ -83,7 +84,7 @@ typedef uint8_t i2c_slave_addr;
 
 /**
 	Ref: i2c_state
-	The type of state codes for the I2C module.
+	The type of state and result codes for the I2C module.
 */
 typedef uint8_t i2c_state;
 
@@ -91,9 +92,9 @@ typedef uint8_t i2c_state;
 
 /**
 	Variable: i2c_task_cats
-	Contains a set of task category bit flags. Tasks in the indicated categories will
-	be awakened by the i2chelper ISR when an I2C operation finishes (either successfully
-	or with an error).
+	Tasks in the categories indicated by this <sched_catflags> value will be
+	awakened by the I2C module's ISR when a request operation finishes (either
+	successfully or with an error).
 */
 extern volatile sched_catflags i2c_task_cats;
 
@@ -108,27 +109,27 @@ extern volatile i2c_state i2c_request_state;
 
 /**
 	Macro: I2C_IS_READY
-	Evaluates to a true value iff the I2C module is initialized and
-	ready to begin a new operation.
+	Evaluates to a true value if and only if the I2C module is initialized and
+	ready to begin a new operation. Expression macro.
 */
 #define I2C_IS_READY (i2c_request_state == I2C_READY)
 
 /**
 	Macro: I2C_IS_ACTIVE
-	Evaluates to a true value iff the I2C module is busy with an
-	ongoing operation.
+	Evaluates to a true value if and only if the I2C module is busy with an
+	ongoing operation. Expression macro.
 */
 #define I2C_IS_ACTIVE (i2c_request_state == I2C_ACTIVE)
 
 /**
 	Function: i2chelper_mstr_init
-	Configures the I2C module for Master mode.
+	Configures the I2C module for master mode (the only one currently implemented).
 	
 	Parameters:
 		twbr - A clock divisor value that is used to control the I2C bit rate.
 		task_cats - A set of bit flags specifying task categories whose
 			members should be awakened in response to certain events in the
-			I2C module. See <i2c_task_cats> for details.
+			I2C module. Used to initialize <i2c_task_cats>.
 */
 void i2chelper_mstr_init(uint8_t twbr, sched_catflags task_cats);
 
@@ -143,12 +144,12 @@ void i2chelper_mstr_init(uint8_t twbr, sched_catflags task_cats);
 	macro) and by specifying task categories to be awakened via <i2c_task_cats>.
 	
 	Parameters:
-		addr - 7-bit I2C slave address of the target device. The address MUST
+		addr - The 7-bit I2C slave address of the target device. The address MUST
 			be stored in the 7 least significant bits of the argument and
 			MUST NOT include an R/W control bit.
 		n_out - Number of bytes to transmit. If this argument is zero, the
 			transmit phase will be omitted and the I2C module will transmit
-			a SLA+R address byte immediately after transmitting a START condition.
+			an SLA+R address byte immediately after transmitting a START condition.
 		bfr_out - Pointer to the data bytes to transmit. If *n_out* is zero,
 			this MAY be a null pointer.
 		n_in - Number of bytes to receive. If this argument is zero, the
@@ -159,7 +160,7 @@ void i2chelper_mstr_init(uint8_t twbr, sched_catflags task_cats);
 			is zero, this MAY be a null pointer.
 	
 	Returns:
-		<I2C_ACTIVE> iff the request operation was successfully started,
+		<I2C_ACTIVE> if and only if the request operation was successfully started,
 		otherwise an error code.
 */
 i2c_state i2chelper_request(

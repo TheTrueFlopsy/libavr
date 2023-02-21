@@ -41,7 +41,7 @@
 #define TTLV_RECV_BFR_SIZE 32
 
 
-/// Section: TLV/INM Protocol Constants
+/// Section: Protocol Constants
 
 /**
 	Macro: TTLV_MAX_MESSAGE_ID
@@ -113,7 +113,7 @@
 #define TTLV_MAX_LARGE_MESSAGE_LEN 0xffffffffL
 
 
-/// Section: TLV/INM Data Types
+/// Section: Data Types
 
 /**
 	Enum: TTLV Module State/Result Codes
@@ -399,16 +399,16 @@ extern ttlv_header ttlv_recv_header;
 
 /**
 	Macro: TTLV_HAS_MESSAGE
-	Evaluates to a true value iff at least one complete received message is
-	currently pending. Expression macro.
+	Evaluates to a true value if and only if at least one complete received
+	message is currently pending. Expression macro.
 */
 #define TTLV_HAS_MESSAGE (ttlv_recv_state == TTLV_VALUE_DONE)
 
 /**
 	Macro: TTLV_HAS_HEADER
-	Evaluates to a true value iff at least one received message header (TLV
-	header only in TLV mode, INM+TLV header in INM mode) is currently pending.
-	Expression macro.
+	Evaluates to a true value if and only if at least one received message header
+	(TLV header only in TLV mode, INM+TLV header in INM mode) is currently
+	pending. Expression macro.
 */
 #define TTLV_HAS_HEADER (ttlv_recv_state == TTLV_HEADER || TTLV_HAS_MESSAGE)
 
@@ -430,10 +430,10 @@ extern ttlv_header ttlv_recv_header;
 
 /**
 	Macro: TTLV_CHECK_TL
-	Evaluates to a true value iff the specified TLV message type identifier
-	and length match the ones currently stored in <ttlv_recv_header>. The
-	type identifier is tested for equality, while the message length is tested
-	for being less than or equal to the one in <ttlv_recv_header>.
+	Evaluates to a true value and only if the specified TLV message type
+	identifier and length match the ones currently stored in <ttlv_recv_header>.
+	The type identifier is tested for equality, while the message length is
+	tested for being less than or equal to the one in <ttlv_recv_header>.
 	Function-like macro.
 	
 	Parameters:

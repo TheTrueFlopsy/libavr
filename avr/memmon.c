@@ -39,7 +39,7 @@ static void memmon_handler(sched_task *task) {
 			memmon_msg_count++;
 			
 			head.ptr = mon->ptr;
-			if (!ttlv_try_put_bytes(sizeof(head), MEMMON_MAKE_PTR(&head)))
+			if (!ttlv_try_put_bytes(sizeof(head), TTLV_DATA_CPTR(&head)))
 				goto msg_dropped;
 			
 			if (!ttlv_try_put_bytes(n_bytes, head.ptr))

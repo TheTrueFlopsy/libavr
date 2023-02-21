@@ -10,12 +10,56 @@
 /**
 	File: memmon.h
 	A memory monitor module that uses the <task_sched.h> scheduler
-	to periodically execute a task that sends <task_tlv.h> messages
-	about the content of certain memory locations. The set of monitored
-	memory locations can be updated while the task scheduler is running.
+	to periodically execute a task that sends messages about the content
+	of specfied memory locations via the <task_tlv.h> module. The set of
+	monitored memory locations can be updated while the task scheduler
+	is running.
 */
 
-#define MEMMON_MAKE_PTR(P) TTLV_DATA_PTR(P)
+
+/// Section: Data Types
+
+/**
+	Variable: memmon_ptr
+	The type of pointers to memory locations in the memory monitor API.
+*/
+typedef uint8_t *memmon_ptr;
+
+/**
+	Variable: memmon_cptr
+	The type of pointers to constant memory locations in the memory monitor API.
+*/
+typedef const uint8_t *memmon_cptr;
+
+/**
+	Macro: MEMMON_MAKE_PTR
+	Converts a pointer to an arbitrary type into a pointer that is compatible
+	with the memory monitor API (a <memmon_ptr>), without triggering compiler
+	warnings. Function-like macro.
+	
+	Parameters:
+		P - A pointer. The macro will evaluate to a pointer containing the
+			same address as this pointer.
+	
+	Returns:
+		A <memmon_ptr> containing the same address as *P*.
+*/
+#define MEMMON_MAKE_PTR(P) ((memmon_ptr)TTLV_DATA_PTR(P))
+
+/**
+	Macro: MEMMON_MAKE_CPTR
+	Converts a pointer to an arbitrary type into a pointer-to-constant that is
+	compatible with the memory monitor API (a <memmon_cptr>), without triggering
+	compiler warnings. Function-like macro.
+	
+	Parameters:
+		P - A pointer. The macro will evaluate to a pointer containing the
+			same address as this pointer.
+	
+	Returns:
+		A <memmon_cptr> containing the same address as *P*.
+*/
+#define MEMMON_MAKE_CPTR(P) ((memmon_cptr)TTLV_DATA_CPTR(P))
 
 /**
 	Struct: memmon_spec
@@ -26,7 +70,7 @@ typedef struct memmon_spec {
 		Field: ptr
 		Pointer to the memory location to monitor.
 	*/
-	const uint8_t *ptr;
+	memmon_cptr ptr;
 	
 	/**
 		Field: size
@@ -66,7 +110,7 @@ typedef struct __attribute__ ((__packed__)) memmon_header {
 		Field: ptr
 		Address of the monitored memory location.
 	*/
-	const uint8_t *ptr;
+	memmon_cptr ptr;
 } memmon_header;
 
 
@@ -74,7 +118,7 @@ typedef struct __attribute__ ((__packed__)) memmon_header {
 
 /**
 	Macro: MEMMON_MAX_SIZE
-	Maximum size in bytes of a monitored memory location.
+	Maximum size in bytes of a monitored memory location. Constant macro.
 */
 #define MEMMON_MAX_SIZE (TTLV_MAX_LEN_INM - sizeof(memmon_header))
 
@@ -149,16 +193,17 @@ ptrdiff_t memmon_get_free_ram(void);
 	registered.
 	
 	Parameters:
-		task_num_cat - A TCSB value containing the task instance and category
-			numbers that should be used by the memory monitor task. (The SLP bit
-			of the argument is ignored.)
+		task_num_cat - A TCSB value (see <sched_task>) containing the task instance
+			and category numbers that should be used by the memory monitor task.
+			(The sleep bit is ignored.)
 		max_mon - Maximum number of simultaneously registered memory monitors.
 		mon_array - Pointer to memory where <memmon_spec> structs representing
 			registered memory monitors should be stored. The specified memory
-			location MUST be large enough to store at least *max_mon* such structs.
+			location MUST be large enough to store at least *max_mon* such structs
+			and remain valid until <memmon_shutdown> is called.
 		delay - Scheduler delay of the memory monitor task.
-		tlv_typ - TLV type identifier to use for memory monitor notification
-			messages.
+		tlv_typ - TLV message type identifier to use for memory monitor
+			notification messages (<TTLV_MSG_T_MEMMON_DATA> is recommended).
 		inm_dstadr - INM destination address to use for memory monitor
 			notification messages.
 */
@@ -188,7 +233,7 @@ uint8_t memmon_add(const memmon_spec *mon);
 		mon_i - Index number of the monitor to unregister.
 	
 	Returns:
-		A true value iff *mon_i* was the index number of a registered
+		A true value if and only if *mon_i* was the index number of a registered
 		monitor that was removed by this call.
 */
 uint8_t memmon_remove(uint8_t mon_i);
@@ -202,10 +247,10 @@ uint8_t memmon_remove(uint8_t mon_i);
 			monitor to unregister.
 	
 	Returns:
-		A true value iff a matching registered memory monitor
+		A true value if and only if a matching registered memory monitor
 		was found and removed by this call.
 */
-uint8_t memmon_remove_ptr(const uint8_t *mon_ptr);
+uint8_t memmon_remove_ptr(memmon_cptr mon_ptr);
 
 /**
 	Function: memmon_shutdown

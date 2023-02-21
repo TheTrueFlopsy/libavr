@@ -6,6 +6,10 @@
 /**
 	File: spihelper.h
 	Helper functions and macros for communication via the ATmega's SPI hardware.
+	
+	CAUTION (ATmegaU) : Port C is very small on the ATmegaU (only two pins),
+	so if *LIBAVR_ATMEGA_U* is defined, the port called "C" in this module is
+	actually hardware port F.
 */
 
 #define SPI_PINR PINB
