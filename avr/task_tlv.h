@@ -62,7 +62,7 @@
 #define TTLV_LOCAL_ADR 0x00
 
 /**
-	Macro: TTLV_LOCAL_ADR
+	Macro: TTLV_BROADCAST_ADR
 	Special INM address used for broadcast messages. Constant macro.
 */
 #define TTLV_BROADCAST_ADR TTLV_MAX_MESSAGE_ADR

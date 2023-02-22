@@ -134,26 +134,38 @@ volatile uint16_t sched_tick_count_h; // High bytes of the timer tick count.
 static sched_task task_list[SCHED_MAX_TASKS];
 
 #ifdef SCHED_RATE_LIMITING
-static sched_time sched_delay; // Scheduler rate limiting delay.
+static sched_time sched_delay;  // Scheduler rate limiting delay.
 #endif
 
 #ifndef SCHED_NO_ISR
-ISR(SCHED_TIMER_VECT) { // The tick counter has overflowed.
-	sched_tick_count_h++; // Add 1 to the high bytes of the tick count.
+ISR(SCHED_TIMER_VECT) {  // The tick counter has overflowed.
+	sched_tick_count_h++;  // Add 1 to the high bytes of the tick count.
 }
 #endif
 
-uint8_t sched_time_is_zero(sched_time t) { // Tests whether T == 0.
+uint8_t sched_time_is_zero(sched_time t) {  // Tests whether T == 0.
 	return t.h == 0 && t.l == 0;
 }
 
-uint8_t sched_time_gt(sched_time a, sched_time b) { // Tests whether A > B.
+uint8_t sched_time_gt(sched_time a, sched_time b) {  // Tests whether A > B.
 	return (a.h == b.h) ? (a.l > b.l) : (a.h > b.h);
+}
+
+uint8_t sched_time_lt(sched_time a, sched_time b) {  // Tests whether A < B.
+	return sched_time_gt(b, a);
+}
+
+uint8_t sched_time_gte(sched_time a, sched_time b) {  // Tests whether A >= B.
+	return !sched_time_gt(b, a);
+}
+
+uint8_t sched_time_lte(sched_time a, sched_time b) {  // Tests whether A <= B.
+	return !sched_time_gt(a, b);
 }
 
 // TODO: Verify that this produces the correct difference even when
 //       the subtraction overflows.
-sched_time sched_time_sub(sched_time a, sched_time b) { // Subtracts B from A.
+sched_time sched_time_sub(sched_time a, sched_time b) {  // Subtracts B from A.
 	a.h -= b.h;
 	if (b.l > a.l) // Must borrow.
 		a.h--;       // Borrow from 'a.h'.
@@ -433,11 +445,10 @@ void sched_run(void) {
 			if (TASK_SLEEP_BIT_SET(task_i.st))  // This task was put to sleep after being found ready.
 				continue;  // Let sleeping tasks lie.
 			
-			if (sched_time_gt(task_i.delay, delta)) {  // Task is delayed.
-				task_p->delay = sched_time_sub(task_i.delay, delta);  // Update the task execution delay.
-				
-				if (!(tcww & TASK_ST_GET_CATFLAG(task_i.st)))  // Task is not notified.
-					continue;  // Wait a little longer
+			if (sched_time_gt(task_i.delay, delta) && !(tcww & TASK_ST_GET_CATFLAG(task_i.st))) {
+				// Task is delayed and not notified (being notified would override the delay).
+				task_p->delay = sched_time_sub(task_i.delay, delta);  // Update the remaining delay.
+				continue;  // Wait a little longer
 			}
 			
 			// Time to run this task.

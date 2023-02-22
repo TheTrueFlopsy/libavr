@@ -149,27 +149,28 @@ class Visualizer:
 
 class _BetterArgumentParser(argparse.ArgumentParser):
 	def convert_arg_line_to_args(self, arg_line):
-		if len(arg_line) == 0 or arg_line[0] == '#': # Empty or comment line.
+		if len(arg_line) == 0 or arg_line[0] == '#':  # Empty or comment line.
 			return []
-		elif arg_line[0] == ':': # Verbatim argument line.
+		elif arg_line[0] == ':':  # Verbatim argument line.
 			return [arg_line[1:]]
-		else: # Space-separated argument line.
+		else:  # Space-separated argument line.
 			return arg_line.split()
 
 def _parse_args(args=None, namespace=None):
 	arg_p = _BetterArgumentParser(
 		description='A console-based TLV/INM memory monitor visualization tool.',
 		fromfile_prefix_chars='@')
+	int0 = lambda x: int(x, 0)  # Allow prefixed integer arguments in base 2, 8, or 16.
 	
 	arg_p.add_argument('-A', '--inm-adr',
 		help='INM address to receive messages for', metavar='INM_ADR',
-		default=0, type=int, dest='inm_adr')
+		default=0, type=int0, dest='inm_adr')
 	arg_p.add_argument('-I', '--ip-adr',
 		help='IP address of interface to receive messages at', metavar='IP_ADR',
 		nargs='?', default=None, const=DEFAULT_IP_ADR_VAL, dest='ip_adr')
 	arg_p.add_argument('-U', '--udp-port',
 		help='UDP port to receive messages at', metavar='UDP_PORT',
-		default=DEFAULT_UDP_PORT_VAL, type=int, dest='udp_port')
+		default=DEFAULT_UDP_PORT_VAL, type=int0, dest='udp_port')
 	arg_p.add_argument('-S', '--serial-port',
 		help='serial port to receive messages from', metavar='SERIAL',
 		nargs='?', default=None, const=DEFAULT_SERIAL_PORT_VAL, dest='serial_port')
@@ -213,14 +214,14 @@ def _parse_args(args=None, namespace=None):
 	
 	arg_p.add_argument('-t', '--tlv-type',
 		help='TLV message type of monitor data messages', metavar='TYPE',
-		default=DEFAULT_TLV_TYPE, type=int, dest='mon_msg_typ')
+		default=DEFAULT_TLV_TYPE, type=int0, dest='mon_msg_typ')
 	arg_p.add_argument('-T', '--text-vis',
 		help='output non-monitor messages as text',
 		action='store_true', dest='text_vis')
 	# TODO: Add support for several visualized monitors in the same console window.
 	arg_p.add_argument('-i', '--index',
 		help='monitor index to visualize', metavar='INDEX',
-		default=0, type=int, dest='mon_i')
+		default=0, type=int0, dest='mon_i')
 	arg_p.add_argument('--mask-size',
 		help='value bitmask size', metavar='BITS',
 		default=0, type=int, dest='mask_size')

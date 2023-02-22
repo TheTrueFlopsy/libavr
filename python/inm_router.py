@@ -24,7 +24,7 @@ _DEFAULT_HOOK_INTERVAL = 1.0  # 1 second between main loop hook invocations
 _prog_title = 'INM Router Script'
 # 0xAABBCCDD
 # A: major version, B: minor version, C: revision, D: build.
-_prog_version = 0x01_00_04_01  # 1.0.4.1
+_prog_version = 0x01_00_04_02  # 1.0.4.2
 
 _firmware_id_l = 0x01
 _firmware_id_h = 0x03
@@ -75,24 +75,25 @@ def _shutdown_logger():
 
 class _BetterArgumentParser(argparse.ArgumentParser):
 	def convert_arg_line_to_args(self, arg_line):
-		if len(arg_line) == 0 or arg_line[0] == '#': # Empty or comment line.
+		if len(arg_line) == 0 or arg_line[0] == '#':  # Empty or comment line.
 			return []
-		elif arg_line[0] == ':': # Verbatim argument line.
+		elif arg_line[0] == ':':  # Verbatim argument line.
 			return [arg_line[1:]]
-		else: # Space-separated argument line.
+		else:  # Space-separated argument line.
 			return arg_line.split()
 
 def _parse_args(args=None, namespace=None):
 	arg_p = _BetterArgumentParser(
 		description='A console-based TLV/INM message router.',
 		fromfile_prefix_chars='@')
+	int0 = lambda x: int(x, 0)  # Allow prefixed integer arguments in base 2, 8, or 16.
 	
 	arg_p.add_argument('-A', '--inm-adr',
 		help='INM address of router', metavar='INMADR',
-		default=0, type=int, dest='inm_adr')
+		default=0, type=int0, dest='inm_adr')
 	arg_p.add_argument('-C', '--cc-to',
 		help='INM address of CC destination', metavar='INMADR',
-		type=int, action='append', dest='cc_to')
+		type=int0, action='append', dest='cc_to')
 	arg_p.add_argument('-D', '--debug-log',
 		help='use debug log format', action='store_true', dest='debug_log')
 	arg_p.add_argument('-H', '--hook-module',
@@ -123,15 +124,16 @@ def _parse_args(args=None, namespace=None):
 	return arg_p.parse_args(args, namespace)
 
 def _parse_inm_adr(s):
-	inm_adr = int(s)
+	# NOTE: Because an int argument to int() is suddenly verboten when you specify a base.
+	inm_adr = s if isinstance(s, int) else int(s, 0)
 	if inm_adr < 0 or inm_adr > _MAX_INM_ADR:
 		_log.error(f'Invalid INM address {inm_adr} specified. Exiting.')
 		sys.exit(2)
 	return inm_adr
 
 def _parse_ch_num(s, channels=None):
-	ch_num = int(s)
-	if ch_num < 0 or ch_num > 9999:
+	ch_num = int(s, 0)  # Allow prefixed integer arguments in base 2, 8, or 16.
+	if ch_num < 0 or ch_num > 0xffff:
 		_log.error(f'Invalid channel number {ch_num} specified. Exiting.')
 		sys.exit(3)
 	
@@ -142,7 +144,7 @@ def _parse_ch_num(s, channels=None):
 	return ch_num
 
 def _parse_port_num(s):
-	port_num = int(s)
+	port_num = int(s, 0)  # Allow prefixed integer arguments in base 2, 8, or 16.
 	if port_num < 0 or port_num > 0xffff:
 		_log.error(f'Invalid port number {port_num} specified. Exiting.')
 		sys.exit(5)

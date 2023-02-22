@@ -648,7 +648,7 @@ class MessageChannel:
 		self.timeout = timeout
 		self.msg_factory = msg_factory
 		self.selector = selector
-		self.ch_num = ch_num
+		self.ch_num = ch_num  # ISSUE: Should this be type/range checked?
 		
 		self._is_open = False
 		self._prev_msg_id = None

@@ -663,6 +663,39 @@ uint8_t sched_time_is_zero(sched_time t);
 */
 uint8_t sched_time_gt(sched_time a, sched_time b);
 
+/**
+	Function: sched_time_lt
+	Tests whether <sched_time> *a* contains a lesser integer value than *b*.
+	The test is equivalent to the expression *a.h+a.l < b.h+b.l*.
+	
+	NOTE: This operation is only meaningful for durations. It CANNOT be used
+	to determine whether one scheduler timestamp represents a later moment
+	in time than another.
+*/
+uint8_t sched_time_lt(sched_time a, sched_time b);
+
+/**
+	Function: sched_time_gte
+	Tests whether <sched_time> *a* contains a greater-or-equal integer value
+	than *b*. The test is equivalent to the expression *a.h+a.l >= b.h+b.l*.
+	
+	NOTE: This operation is only meaningful for durations. It CANNOT be used
+	to determine whether one scheduler timestamp represents a later moment
+	in time than another.
+*/
+uint8_t sched_time_gte(sched_time a, sched_time b);
+
+/**
+	Function: sched_time_lte
+	Tests whether <sched_time> *a* contains a lesser-or-equal integer value
+	than *b*. The test is equivalent to the expression *a.h+a.l <= b.h+b.l*.
+	
+	NOTE: This operation is only meaningful for durations. It CANNOT be used
+	to determine whether one scheduler timestamp represents a later moment
+	in time than another.
+*/
+uint8_t sched_time_lte(sched_time a, sched_time b);
+
 // FIXME: How much later is "too much later"?
 /**
 	Function: sched_time_sub

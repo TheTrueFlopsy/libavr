@@ -1,13 +1,16 @@
+
 # INM address to register under. Usually doesn't matter.
 --inm-adr 98
 
 # TLV message type to look for. Usually DOES matter.
---tlv-type 17
+# Type 17/0x11 is the standard MEMMON_DATA type.
+--tlv-type 0x11
 
-# Receive relayed messages on loopback, UDP port 3001.
+# Receive relayed messages on loopback, UDP port 2998.
 --ip-adr   127.0.0.1
 --udp-port 2998
 
+# Set graph display parameters.
 --graph-style line
 --graph-width 60
 --range-low   0
@@ -16,3 +19,6 @@
 --mask-offset 0
 
 --label-minmax
+
+# Print messages that don't contain graph data as text.
+--text-vis
