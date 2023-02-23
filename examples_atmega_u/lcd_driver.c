@@ -26,6 +26,8 @@
 #define EN_DRIVE_DDR_PIN  BV(DDD4)
 #define EN_DRIVE_PORT_PIN BV(PORTD4)
 #define EN_DRIVE_PIN_PIN  BV(PIND4)  // D4 on the Leonardo
+#define EN_DRIVE_PIN_FALLING TBOUNCER_D_FALLING
+#define EN_DRIVE_PIN_RISING TBOUNCER_D_RISING
 
 // Input: LDC backlight enable
 #define EN_BLITE_DDR  DDRD
@@ -34,14 +36,8 @@
 #define EN_BLITE_DDR_PIN  BV(DDD7)
 #define EN_BLITE_PORT_PIN BV(PORTD7)
 #define EN_BLITE_PIN_PIN  BV(PIND7)  // D6 on the Leonardo
-
-// Input: test segment enable
-#define SEGTEST_DDR  DDRC
-#define SEGTEST_PORT PORTC
-
-#define SEGTEST_DDR_PIN  BV(DDC6)
-#define SEGTEST_PORT_PIN BV(PORTC6)
-#define SEGTEST_PIN_PIN  BV(PINC6)  // D5 on the Leonardo
+#define EN_BLITE_PIN_FALLING TBOUNCER_D_FALLING
+#define EN_BLITE_PIN_RISING TBOUNCER_D_RISING
 
 // Output: MCP23018 reset
 #define IOEXP_RESET_DDR  DDRB
@@ -92,12 +88,9 @@
 // Output: I2C interface to I/O expander
 // NOTE: At CPU clock rate 16 MHz and TWI prescaler setting 1 (the default),
 //       TWBR=72 corresponds to the I2C clock rate (16 MHz)/(16 + 2*72*1) == 100 kHz.
-// CAUTION: ATmega(16|32)U4 datasheet (p. 231) says that TWBR settings below 10 cause FUBAR.
+// CAUTION: ATmega(16|32)U4 datasheet (p. 231) says that TWBR settings below 10 are FUBAR.
 #define TWBR_INIT 72
 
-// NOTE: This assumes that the three settable address bits
-//       on the MCP23018 are all zero.
-//#define MCP23018_ADDR 0b00100000
 // NOTE: This assumes that the three settable address bits
 //       on the MCP23018 are equal to 2 (i.e. 0b010).
 #define MCP23018_ADDR 0b00100010
@@ -107,31 +100,10 @@
 typedef uint16_t output_freq;
 
 enum {
-	STATE_NONE     = 0,
-	//STATE_STARTUP  = 1,  // Waiting for ADC.
-	//STATE_CANCELED = 2,  // Stopped during startup.
-	STATE_STARTED  = 3,
-	//STATE_SHUTDOWN = 4,  // Waiting to shut down LCD drive outputs.
-	STATE_STOPPED  = 5
-};
-
-enum {
 	OUTPUT_STATE_NONE   = 0,
 	OUTPUT_STATE_ON     = 1,  // Output being produced.
-	OUTPUT_STATE_PAUSED = 2,  // Output timer stopped, output pins still enabled.
-	OUTPUT_STATE_OFF    = 3   // Output pins disabled.
+	OUTPUT_STATE_OFF    = 2   // Output timer stopped, output pins disabled.
 };
-
-/*enum {
-	SEG_MINUS = 0x80;  // GPB0
-	SEG_2A    = 0x81;  // GPB1
-	SEG_2B    = 0x81;  // GPB2
-	SEG_2C    = 0x81;  // GPB3
-	SEG_2D    = 0x81;  // GPB4
-	SEG_2E    = 0x81;  // GPB5
-	SEG_2F    = 0x81;  // GPB6
-	SEG_2G    = 0x81;  // GPB7
-};*/
 
 enum {
 	LCD_CH_SP = 0b00000000,  // all segments off
@@ -165,7 +137,6 @@ const uint8_t lcd_hex_digits[16] PROGMEM = {
 
 // ---<<< Data Definitions >>>---
 static output_freq pulse_freq   = PWM_FREQ_INIT;     // square wave frequency in Hz
-static uint8_t     pulse_state  = STATE_STOPPED;     // LCD drive output not requested
 static uint8_t     pulse_output = OUTPUT_STATE_OFF;  // LCD drive output disabled
 
 static uint8_t adc_started = 0;  // ADC sampling status flag.
@@ -177,10 +148,6 @@ static uint8_t ioexp_a_committed = 0x00;
 static uint8_t ioexp_b_requested = 0x00;
 static uint8_t ioexp_b_attempted = 0x00;
 static uint8_t ioexp_b_committed = 0x00;
-
-/*static uint8_t ioexp_b_requested = 0x01;  // DEBUG: 
-static uint8_t ioexp_b_attempted = 0x01;
-static uint8_t ioexp_b_committed = 0x01;*/
 
 
 // ---<<< ISRs >>>---
@@ -235,7 +202,7 @@ static uint16_t hz_to_top(output_freq hz) {
 	//     = (F_CPU >> (PWM_PRESCALER_LOG2 + 1)) / hz - 1.
 	uint16_t top = (uint16_t)((F_CPU >> (PWM_PRESCALER_LOG2 + 1)) / hz - 1);
 	
-	// NOTE: To get output signals in quadrature, use only odd values for top.
+	// NOTE: To get symmetric output signals, use only odd values for top.
 	//   Top (i.e. (2*N - 1)) is odd, (top // 2) is ((top+1)/2 - 1) (i.e. N-1), correct:
 	//     (2*N - 1) // 2 = (2*(N-1) + 1) // 2 = N - 1.  # Cycle evenly divided: [0, N-1], [N, 2*N-1]
 	//   Top (i.e. (2*N)) is even, (top // 2) is (top/2) (i.e. N), incorrect:
@@ -247,7 +214,7 @@ static uint16_t hz_to_top(output_freq hz) {
 }
 
 static void pulse_output_on(void) {
-	if (pulse_output != OUTPUT_STATE_OFF) // Not fully disabled, do not attempt to enable.
+	if (pulse_output != OUTPUT_STATE_OFF)  // Not disabled, do not attempt to enable.
 		return;
 	
 	uint16_t top = hz_to_top(pulse_freq);
@@ -279,19 +246,9 @@ static void pulse_output_on(void) {
 	pulse_output = OUTPUT_STATE_ON;
 }
 
-/*static void pause_pulse_output(void) {
-	if (pulse_output == OUTPUT_STATE_OFF) // Already disabled, do not attempt to pause.
-		return;
-	
-	// Timer clock off.
-	TCCR1B &= ~(BV(CS12) | BV(CS11) | BV(CS10)); // Stop the clock.
-	
-	pulse_output = OUTPUT_STATE_PAUSED;
-}*/
-
 static void pulse_output_off(void) {
-	// Timer clock off, in case that hasn't been done.
-	TCCR1B &= ~(BV(CS12) | BV(CS11) | BV(CS10)); // Stop the clock.
+	// Timer clock off.
+	TCCR1B &= ~(BV(CS12) | BV(CS11) | BV(CS10));  // Stop the clock.
 	
 	// Make Timer1's OCA and OCB pins inputs.
 	PWM_OUTPUT_DDR &= ~(PWM_OUTPUT_DDR_PIN_A | PWM_OUTPUT_DDR_PIN_B);
@@ -305,18 +262,14 @@ static void pulse_output_off(void) {
 // ---<<< Task Handlers >>>---
 static void lcd_drive_handler(sched_task *task) {
 	// Detect backlight on/off input (falling edge turns on backlight, rising edge turns it off).
-	uint8_t blite_on = EN_BLITE_PIN_PIN & TBOUNCER_D_FALLING;
-	uint8_t blite_off = EN_BLITE_PIN_PIN & TBOUNCER_D_RISING;
-	
-	// Detect test segment on/off input (falling edge turns on segment, rising edge turns it off).
-	//uint8_t testseg_on = SEGTEST_PIN_PIN & TBOUNCER_A_FALLING;
-	//uint8_t testseg_off = SEGTEST_PIN_PIN & TBOUNCER_A_RISING;
+	uint8_t blite_on = EN_BLITE_PIN_PIN & EN_BLITE_PIN_FALLING;
+	uint8_t blite_off = EN_BLITE_PIN_PIN & EN_BLITE_PIN_RISING;
 	
 	// Detect driver on/off input (falling edge starts LCD drive output, rising edge stops it).
 	uint8_t starting =
-		(pulse_state == STATE_STOPPED && (EN_DRIVE_PIN_PIN & TBOUNCER_D_FALLING));
+		(pulse_output == OUTPUT_STATE_OFF && (EN_DRIVE_PIN_PIN & EN_DRIVE_PIN_FALLING));
 	uint8_t stopping =
-		(pulse_state == STATE_STARTED && (EN_DRIVE_PIN_PIN & TBOUNCER_D_RISING));
+		(pulse_output == OUTPUT_STATE_ON && (EN_DRIVE_PIN_PIN & EN_DRIVE_PIN_RISING));
 	
 	task->st |= TASK_SLEEP_BIT;  // Put the task back to sleep. (It should run only when notified.)
 	
@@ -325,37 +278,10 @@ static void lcd_drive_handler(sched_task *task) {
 	else if (blite_off)
 		BLITE_PORT &= ~BLITE_PORT_PIN;
 	
-	/*if (testseg_off) {
-		if (ioexp_b_requested == 0x80) {
-			ioexp_a_requested = 0x01;
-			ioexp_b_requested = 0x00;
-		}
-		else if (ioexp_b_requested != 0)
-			ioexp_b_requested <<= 1;
-		else if (ioexp_a_requested == 0x80) {
-			ioexp_a_requested = 0x00;
-			ioexp_b_requested = 0x01;
-		}
-		else if (ioexp_a_requested != 0)
-			ioexp_a_requested <<= 1;
-		
-		sched_task_tcww |= SCHED_CATFLAG(IOEXP_CTRL_TASK_CAT);  // Awaken expander controller.
-	}*/
-	/*else if (testseg_off) {
-		ioexp_b_requested &= ~BV(0);
-		sched_task_tcww |= SCHED_CATFLAG(IOEXP_CTRL_TASK_CAT);  // Awaken expander controller.
-	}*/
-	
-	if (starting) {
-		// Start LCD drive output.
-		pulse_output_on();
-		pulse_state = STATE_STARTED;
-	}
-	else if (stopping) {
-		// Disable LCD drive output.
-		pulse_output_off();
-		pulse_state = STATE_STOPPED;
-	}
+	if (starting)
+		pulse_output_on();  // Start LCD drive output.
+	else if (stopping)
+		pulse_output_off();  // Disable LCD drive output.
 	// else: Nothing of interest happening.
 }
 
@@ -382,8 +308,6 @@ static void adc_input_handler(sched_task *task) {
 }
 
 static void ioexp_ctrl_handler(sched_task *task) {
-	//LED_OK_PIN |= LED_OK_PIN_PIN;  // DEBUG: Toggle 'OK' LED.
-	
 	task->st |= TASK_SLEEP_BIT;  // Put the task back to sleep. (It should run only when notified.)
 	
 	if (I2C_IS_ACTIVE)  // I2C module busy, unable to proceed.
@@ -445,11 +369,11 @@ static void init_pwm_generator(void) {
 
 static void init_adc(void) {
 	// Use external AREF, select ADC channel 7 (pin PF7, A0 on the Leonardo).
-        //ADMUX = BV(MUX2) | BV(MUX1) | BV(MUX0);
-        // Use 2.56 V internal AREF, select ADC channel 7 (pin PF7, A0 on the Leonardo).
-        //ADMUX = BV(REFS1) | BV(REFS0) | BV(MUX2) | BV(MUX1) | BV(MUX0);
-        // Use AVcc as internal AREF, select ADC channel 7 (pin PF7, A0 on the Leonardo).
-        ADMUX = BV(REFS0) | BV(MUX2) | BV(MUX1) | BV(MUX0);
+	//ADMUX = BV(MUX2) | BV(MUX1) | BV(MUX0);
+	// Use 2.56 V internal AREF, select ADC channel 7 (pin PF7, A0 on the Leonardo).
+	//ADMUX = BV(REFS1) | BV(REFS0) | BV(MUX2) | BV(MUX1) | BV(MUX0);
+	// Use AVcc as internal AREF, select ADC channel 7 (pin PF7, A0 on the Leonardo).
+	ADMUX = BV(REFS0) | BV(MUX2) | BV(MUX1) | BV(MUX0);
 	// Clock prescaler setting 128 (ADC clock 125 kHz @ 16 MHz CPU clock).
 	ADCSRA = BV(ADPS2) | BV(ADPS1) | BV(ADPS0);
 	ADCSRB = 0;  // Default settings.
@@ -499,8 +423,6 @@ static uint8_t init_ioexp(void) {
 	
 	if (mcp23018_write(MCP23018_ADDR, MCP23018_GPIOB, 0x00) != I2C_READY)  // All pins low.
 		return 0;  // Failure
-	//if (mcp23018_write(MCP23018_ADDR, MCP23018_GPIOB, 0x01) != I2C_READY)  // Pin B0 high.
-	//	return 0;  // Failure
 	
 	return 1;  // Success!
 }
@@ -530,10 +452,6 @@ static void init_tasks(void) {
 	sched_add(&task);
 }
 
-ISR(BADISR_vect) {  // DEBUG: 
-	BLITE_PORT |= BLITE_PORT_PIN;  // Signal invocation of undefined ISR.
-}
-
 // NOTE: This is the entry point, tell compiler not to save/restore registers.
 int main(void) __attribute__ ((OS_main));
 
@@ -548,7 +466,6 @@ int main(void) {
 	// Other I/O initialization.
 	EN_DRIVE_PORT |= EN_DRIVE_PORT_PIN;  // Enable pull-up on drive-enable input pin.
 	EN_BLITE_PORT |= EN_BLITE_PORT_PIN;  // Enable pull-up on backlight-enable input pin.
-	SEGTEST_PORT |= SEGTEST_PORT_PIN;  // Enable pull-up on segment test input pin.
 	LED_OK_PORT |= LED_OK_PORT_PIN;  // Success indicator output is active-low, start in off state.
 	LED_ERR_PORT |= LED_ERR_PORT_PIN;  // Error indicator output is active-low, start in off state.
 	
@@ -563,7 +480,7 @@ int main(void) {
 	sched_init();
 	TBOUNCER_INIT(
 		TASK_ST_MAKE(0, TBOUNCER_TASK_CAT, 0), SCHED_TIME_MS(TBOUNCER_DELAY_MS),
-		SEGTEST_PIN_PIN, 0, 0, EN_BLITE_PIN_PIN | EN_DRIVE_PIN_PIN,
+		0, 0, 0, EN_BLITE_PIN_PIN | EN_DRIVE_PIN_PIN,
 		0, TASK_ST_CAT_MASK, TASK_ST_CAT(LCD_DRIVE_TASK_CAT));
 	
 	// Schedule tasks.
