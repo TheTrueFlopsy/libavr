@@ -212,6 +212,15 @@ class Message:
 	def format_mval_0(self, formatter=None, conv=None, size=None, n_vals=None, strict=None):
 		mval = self.format_mval(formatter, conv, size, n_vals, strict)
 		return mval[0] if mval is not None and len(mval) >= 1 else None
+	
+	def to_bytes(self, formatter=None):
+		if formatter is None:
+			formatter = default_msg_factory
+		
+		typ_b = formatter.make_val(self.typ, int_size=1)
+		len_b = formatter.make_val(len(self.val), int_size=self.MESSAGE_LEN_SIZE)
+		val_b = bytes(self.val)
+		return typ_b + len_b + val_b
 
 
 class StandardMessage(Message):
@@ -587,6 +596,15 @@ class MessageFactory:
 		b_mval = self.make_mval(mval, int_size, typ)
 		msg = LargeMessage(typ, b_mval)
 		return msg
+	
+	def msg_to_bytes(self, msg, header=None):
+		msg_b = msg.to_bytes(self)
+		
+		if header is not None:
+			header_b = header.to_bytes(self)
+			msg_b = header_b + msg_b
+		
+		return msg_b
 
 default_msg_factory = MessageFactory()
 
@@ -626,6 +644,15 @@ class MessageHeader:
 	
 	def __repr__(self):
 		return f'<{str(self)}>'
+	
+	def to_bytes(self, formatter=None):
+		if formatter is None:
+			formatter = default_msg_factory
+		
+		msg_id_b = formatter.make_val(self.msg_id, int_size=2)
+		dstadr_b = formatter.make_val(self.dstadr, int_size=1)
+		srcadr_b = formatter.make_val(self.srcadr, int_size=1)
+		return msg_id_b + dstadr_b + srcadr_b
 
 
 class MessageChannelError(Exception):
