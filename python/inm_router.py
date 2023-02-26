@@ -14,6 +14,8 @@ from inm.inm import StandardTypes as _ST, StandardResults as _SRes, StandardRegi
 
 
 _DEFAULT_UDP_PORT = inm.InetMessageChannel.DEFAULT_UDP_PORT
+_DEFAULT_BAUDRATE = inm.SerialMessageChannel.DEFAULT_BAUDRATE
+_MAX_BAUDRATE = 10_000_000
 _MAX_INM_ADR = inm.MessageHeader.MAX_MESSAGE_ADR
 _BROADCAST_ADR = inm.MessageHeader.BROADCAST_ADR
 
@@ -24,7 +26,7 @@ _DEFAULT_HOOK_INTERVAL = 1.0  # 1 second between main loop hook invocations
 _prog_title = 'INM Router Script'
 # 0xAABBCCDD
 # A: major version, B: minor version, C: revision, D: build.
-_prog_version = 0x01_00_04_02  # 1.0.4.2
+_prog_version = 0x01_00_05_01  # 1.0.5.1
 
 _firmware_id_l = 0x01
 _firmware_id_h = 0x03
@@ -108,8 +110,8 @@ def _parse_args(args=None, namespace=None):
 		help='relay mode, route messages even when the router is the destination',
 		action='store_true', dest='relay')
 	arg_p.add_argument('-S', '--serial-ch',
-		help='<channel number> <serial port>', metavar=('CH', 'PORT'),
-		nargs=2, action='append', dest='serial_channels')
+		help='<channel number> <serial port> <baud rate>', metavar=('CH', 'PORT', 'BAUD'),
+		nargs=3, action='append', dest='serial_channels')
 	arg_p.add_argument('-T', '--hook-interval',
 		help='seconds between main loop hook invocations', metavar='SECS',
 		default=_DEFAULT_HOOK_INTERVAL, type=float, dest='hook_interval')
@@ -152,10 +154,19 @@ def _parse_port_num(s):
 		port_num = _DEFAULT_UDP_PORT
 	return port_num
 
+def _parse_baud_rate(s):
+	baud = int(s)
+	if baud < 0 or baud > _MAX_BAUDRATE:
+		_log.error(f'Invalid baud rate {baud} specified. Exiting.')
+		sys.exit(6)
+	elif baud == 0:
+		baud = _DEFAULT_BAUDRATE
+	return baud
+
 def _parse_serial_link_adr(link_adr):
 	if len(link_adr) > 0:
 		_log.error('Serial channels do not use link addresses. Exiting.')
-		sys.exit(6)
+		sys.exit(7)
 	return None
 
 def _parse_ip_link_adr(link_adr):
@@ -165,7 +176,7 @@ def _parse_ip_link_adr(link_adr):
 		return (link_adr[0], _parse_port_num(link_adr[1]))
 	else:
 		_log.error(f'Invalid IP link address {link_adr} specified. Exiting.')
-		sys.exit(7)
+		sys.exit(8)
 
 class RouteOptions(enum.Flag):
 	NONE = 0
@@ -182,7 +193,7 @@ def _parse_route_options(option_str):
 			options |= RouteOptions.NO_BROADCAST
 		else:
 			_log.error(f'Invalid route option {option_name} specified. Exiting.')
-			sys.exit(8)
+			sys.exit(9)
 	
 	return options
 
@@ -193,13 +204,16 @@ def _init_channels(args, inm_adr, def_selector):
 		for ch_num_, ip_adr, udp_port in args.ip_channels:
 			ch_num_ = _parse_ch_num(ch_num_, channels)
 			udp_port = _parse_port_num(udp_port)
-			ch = inm.InetMessageChannel(inm_adr, ip_adr, udp_port, selector=def_selector, ch_num=ch_num_)
+			ch = inm.InetMessageChannel(
+				inm_adr, ip_adr, udp_port, selector=def_selector, ch_num=ch_num_)
 			channels[ch_num_] = ch
 	
 	if args.serial_channels is not None:
-		for ch_num_, serial_port in args.serial_channels:
+		for ch_num_, serial_port, baud in args.serial_channels:
 			ch_num_ = _parse_ch_num(ch_num_, channels)
-			ch = inm.SerialMessageChannel(inm_adr, serial_port, selector=def_selector, ch_num=ch_num_)
+			baud = _parse_baud_rate(baud)
+			ch = inm.SerialMessageChannel(
+				inm_adr, serial_port, baud, selector=def_selector, ch_num=ch_num_)
 			channels[ch_num_] = ch
 	
 	return channels

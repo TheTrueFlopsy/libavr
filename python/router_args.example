@@ -8,15 +8,15 @@
 # Interval between main loop hook invocations.
 --hook-interval 3.0
 
-# Serial-over-USB channel.
-#--serial-ch 1 /dev/ttyUSB0
+# Serial-over-USB channel. Use default baud rate.
+--serial-ch 1 /dev/ttyUSB0 0
 # IP channel. Use the default UDP port for INM.
 --ip-ch     2 192.168.1.17 0
 # Loopback IP channel for monitoring.
 --ip-ch     3 127.0.0.1 3000
 
-# Reach INM node 1 (Uno board) via the virtual serial port.
-#--route 1   1 -
+# Reach INM node 1 via the virtual serial port.
+--route 1  1 -
 # Reach INM node 12 via IP address [192.168.1.12].
 --route 12 2 - 192.168.1.12
 # Reach INM node 13 via IP address [192.168.1.13].
@@ -26,7 +26,6 @@
 
 # Relay any traffic to the router itself on the loopback channel.
 --route 17 3 - 127.0.0.1 2997
-#--route 17 3 - 127.0.0.1 2998
 
 # Debugging/CC route (e.g. for the inm_memmon.py script).
 --route 98 3 - 127.0.0.1 2998
