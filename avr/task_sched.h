@@ -28,6 +28,10 @@
 // for as long as it pleases, use Timer2 and the task list memory
 // for other things, etc., and then hand control back to the scheduler.
 
+// IDEA: Add way to pause and restart the scheduler in a controlled fashion,
+// for low-power modes, etc. Even handle low-power modes in the scheduler
+// itself?
+
 // IDEA: Should there be a convenient way for a task to find out why its
 //       handler is being invoked (e.g. notified, delay elapsed, running,
 //       invoked via sched_invoke())?
@@ -53,7 +57,7 @@
 
 /**
 	Macro: SCHED_CLOCK_PRESCALE_LOG
-	The two-logarithm of the MCU clock prescale value of the timer that the scheduler
+	The two-logarithm of the CPU clock prescale value of the timer that the scheduler
 	uses to keep track of elapsed time. Either Timer2 or Timer0 is used, depending on
 	whether *SCHED_USE_TIMER0* is defined. Configuration macro.
 	
@@ -62,14 +66,14 @@
 	
 	CAUTION: When the scheduler uses Timer2, this macro MUST be defined to be 0, 3, 5,
 	6, 7, 8 or 10. When Timer0 is used, this macro MUST be defined to be 0, 3, 6, 8
-	or 10. It MUST also be true (with integer division) that:
-	> 1 <= (1000000 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU <= 255.
+	or 10. It MUST also be true that:
+	> 1 <= (1000000 * (1 << SCHED_CLOCK_PRESCALE_LOG)) / F_CPU <= 255.
 	
 	CAUTION: This macro SHOULD have a value such that
-	> (1000000 * 2^SCHED_CLOCK_PRESCALE_LOG) / F_CPU
+	> (1000000 * (1 << SCHED_CLOCK_PRESCALE_LOG)) / F_CPU
 	is an integer (without integer division). If it isn't, the scheduler's timekeeping,
 	including values produced by the time-related macros in this header, will be very
-	inexact.
+	inexact. (See <SCHED_TICK_MUSECS>.)
 */
 #ifndef SCHED_CLOCK_PRESCALE_LOG
 #if defined(SCHED_USE_TIMER0) || defined(LIBAVR_ATTINY) || defined(LIBAVR_ATMEGA_U)
@@ -105,7 +109,7 @@
 
 /**
 	Macro: CYCLES_TO_MUSECS
-	Converts a given number of MCU clock cycles to the duration in microseconds
+	Converts a given number of CPU clock cycles to the duration in microseconds
 	of that many clock cycles at the current clock frequency (given by the *F_CPU*
 	macro). Function-like macro.
 	
@@ -123,7 +127,7 @@
 
 /**
 	Macro: MUSECS_TO_CYCLES
-	Converts a duration in microseconds to the number of MCU clock cycles
+	Converts a duration in microseconds to the number of CPU clock cycles
 	performed during that time at the current clock frequency (given by the *F_CPU*
 	macro). Function-like macro.
 	
@@ -141,7 +145,7 @@
 
 /**
 	Macro: SCHED_CLOCK_PRESCALE
-	The MCU clock prescale value of the timer that the scheduler uses to keep track
+	The CPU clock prescale value of the timer that the scheduler uses to keep track
 	of elapsed time. It is usually best to set this via *SCHED_CLOCK_PRESCALE_LOG*.
 	Constant macro.
 */
@@ -149,8 +153,9 @@
 
 /**
 	Macro: SCHED_TICK_MUSECS
-	The duration in microseconds of a scheduler timer tick. Constant macro.
-	Depends on <SCHED_CLOCK_PRESCALE_LOG> and *F_CPU*.
+	The duration in microseconds of a scheduler tick. Constant macro.
+	Depends on <SCHED_CLOCK_PRESCALE_LOG> and *F_CPU*. Equal to
+	> (1000000 * (1 << SCHED_CLOCK_PRESCALE_LOG)) / F_CPU  // Integer division
 */
 #define SCHED_TICK_MUSECS ((uint8_t)CYCLES_TO_MUSECS(SCHED_CLOCK_PRESCALE))
 
@@ -174,40 +179,49 @@
 #define SCHED_MIN_DELTA_L ((uint8_t)MUSECS_TO_SCHED_SMALLTICKS(SCHED_MIN_DELTA_MUSECS))
 #define SCHED_MIN_DELTA_H ((uint16_t)MUSECS_TO_SCHED_BIGTICKS(SCHED_MIN_DELTA_MUSECS))
 
-// FIXME: Explain what the "maximum allowed length" is, and why.
 /**
 	Struct: sched_time
 	Represents either a duration or a scheduler timestamp. Time is measured
 	in scheduler ticks, and the length of a scheduler tick is the reciprocal
 	of the scheduling clock frequency, which depends on the CPU clock
-	frequency and the scheduler's clock prescaler setting.
+	frequency and the scheduler's timer prescaler setting.
 	See <SCHED_CLOCK_PRESCALE_LOG> and <SCHED_TICK_MUSECS>.
 	
-	Each *sched_time* represents a duration of
+	Each *sched_time* contains two scheduler tick counts, the "smalltick" count
+	in the 8-bit field *l* and the "bigtick" count in the 16-bit field *h*.
+	Together, the two fields represent a duration of
 	> SCHED_TICK_MUSECS*(256*h + l)
-	microseconds.
+	microseconds. The maximum representable duration (<SCHED_TIME_MAX>) is
+	> SCHED_TICK_MUSECS*16777215
+	microseconds. Since <SCHED_TICK_MUSECS> must be at least 1, durations up to
+	16 seconds are always representable.
 	
-	A scheduler timestamp is the duration of time elapsed since the latest
+	A scheduler timestamp encodes the duration of time elapsed since the latest
 	rollover of the scheduling clock's tick counter, at the time when the
-	timestamp was created. This means that timestamps with larger integer
-	values may represent earlier points in time. However, provided that
-	the duration of a scheduler iteration does not exceed the maximum
-	allowed length, the difference between two timestamps obtained during
-	successive iterations will always be equal to the duration of time
-	between the moments in time (as measured by the scheduling clock) when
-	those timestamps were created.
+	timestamp was recorded. This means that a timestamp with a larger total tick
+	count (obtained via <SCHED_TIME_TO_TICKS>) than another may still represent
+	an earlier point in time. The scheduler stores the timestamp of the current
+	scheduler iteration in the global variable <sched_ticks>.
+	
+	However, provided that the total duration of scheduler iterations performed
+	between iteration *X* and subsequent iteration *Y* does not exceed the maximum
+	representable duration (<SCHED_TIME_MAX>), the difference (as calculated
+	by <sched_time_sub>) between a timestamp obtained (from <sched_ticks>)
+	during iteration *Y* and one obtained during iteration *X* will always be
+	equal to the duration of time (as measured by the scheduling clock) between
+	the start of iteration *X* and the start of iteration *Y*.
 */
 typedef struct sched_time {
 	/**
 		Field: l
-		Low "smalltick" byte of the time value. One smalltick is *SCHED_TICK_MUSECS*
-		microseconds.
+		The smalltick count field. The duration of one smalltick (which is also
+		the resolution of the scheduling clock) is *SCHED_TICK_MUSECS* microseconds.
 	*/
 	uint8_t l;
 	
 	/**
 		Field: h
-		High "bigtick" bytes of the time value. One bigtick is 256 smallticks.
+		The bigtick count field. One bigtick is equivalent to 256 smallticks.
 	*/
 	uint16_t h;
 	
@@ -229,6 +243,20 @@ typedef struct sched_time {
 #define SCHED_TIME_LH(L, H) ((sched_time) { .l=(uint8_t)(L), .h=(uint16_t)(H) })
 
 /**
+	Macro: SCHED_TIME_TO_TICKS
+	Evaluates to the total number of smallticks stored in a given <sched_time> value.
+	Converts bigticks to smallticks to obtain the total number. Function-like macro.
+	
+	Parameters:
+		T - A <sched_time>.
+	
+	Returns:
+		The number of smallticks (including converted bigticks) stored in *T*.
+		The type of the result will be *uint32_t*.
+*/
+#define SCHED_TIME_TO_TICKS(T) ((uint32_t)(0x100L*(T).h + (T).l))
+
+/**
 	Macro: SCHED_TIME_MUSECS
 	Constructs a <sched_time> value representing the given duration in microseconds.
 	Function-like macro.
@@ -241,6 +269,20 @@ typedef struct sched_time {
 */
 #define SCHED_TIME_MUSECS(T) SCHED_TIME_LH( \
 	MUSECS_TO_SCHED_SMALLTICKS(T), MUSECS_TO_SCHED_BIGTICKS(T))
+
+/**
+	Macro: SCHED_TIME_TO_MUSECS
+	Evaluates to the duration in microseconds represented by a given <sched_time> value.
+	Function-like macro.
+	
+	Parameters:
+		T - A <sched_time> representing a duration.
+	
+	Returns:
+		The duration represented by *T*, in microseconds.
+		The type of the result will be *uint32_t*.
+*/
+#define SCHED_TIME_TO_MUSECS(T) SCHED_TICKS_TO_MUSECS(SCHED_TIME_TO_TICKS(T))
 
 /**
 	Macro: SCHED_TIME_MS
@@ -260,11 +302,54 @@ typedef struct sched_time {
 #define SCHED_TIME_MS(T) SCHED_TIME_MUSECS(1000L*(T))
 
 /**
+	Macro: SCHED_TIME_TO_MS
+	Evaluates to the duration in milliseconds represented by a given <sched_time> value.
+	Function-like macro.
+	
+	Parameters:
+		T - A <sched_time> representing a duration.
+	
+	Returns:
+		The duration represented by *T*, in milliseconds (rounded down).
+		The type of the result will be *uint32_t*.
+*/
+#define SCHED_TIME_TO_MS(T) ((uint32_t)(SCHED_TIME_TO_MUSECS(T)/1000L))
+
+/**
 	Macro: SCHED_TIME_ZERO
 	A <sched_time> value representing a zero duration (no time at all).
 	Constant macro.
 */
 #define SCHED_TIME_ZERO SCHED_TIME_LH(0, 0)
+
+/**
+	Macro: SCHED_TIME_MAX
+	A <sched_time> value representing the longest representable duration.
+	Constant macro.
+*/
+#define SCHED_TIME_MAX SCHED_TIME_LH(UINT8_MAX, UINT16_MAX)
+
+/**
+	Macro: SCHED_TIME_MAX_TICKS
+	The largest number of smallticks storable in a <sched_time>, including
+	those stored as bigticks. The type of this macro is *uint32_t*.
+	Constant macro.
+*/
+#define SCHED_TIME_MAX_TICKS SCHED_TIME_TO_TICKS(SCHED_TIME_MAX)
+
+/**
+	Macro: SCHED_TIME_MAX_MUSECS
+	The longest duration representable by a <sched_time>, in microseconds.
+	The type of this macro is *uint32_t*. Constant macro.
+*/
+#define SCHED_TIME_MAX_MUSECS SCHED_TIME_TO_MUSECS(SCHED_TIME_MAX)
+
+/**
+	Macro: SCHED_TIME_MAX_MS
+	The longest duration representable by a <sched_time>, in milliseconds
+	(rounded down). The type of this macro is *uint32_t*. Constant macro.
+*/
+#define SCHED_TIME_MAX_MS SCHED_TIME_TO_MS(SCHED_TIME_MAX)
 
 #define SCHED_MIN_DELTA SCHED_TIME_LH(SCHED_MIN_DELTA_L, SCHED_MIN_DELTA_H)
 
@@ -547,24 +632,25 @@ typedef struct sched_task {
 		as garbage by the scheduler, which means that it will be removed
 		from the task list at the start of a scheduler iteration. For
 		this reason, assigning instance number 7 to a task in category 15
-		is generally something to be avoided.
+		is generally something to be avoided. (See <TASK_ST_GARBAGE>.)
 	*/
 	uint8_t st;
 	
 	/**
 		Field: delay
 		Execution delay of the task instance. The scheduler will subtract
-		elapsed time deltas from this field, and will execute the task
-		when the value of the field is zero. If the time delta is greater
-		than the value of the field, the field will be set to zero.
+		elapsed time deltas (i.e. the durations of scheduler iterations)
+		from this field, and will execute the task when the value of the
+		field reaches zero. If the current time delta is greater than the
+		value of the field, the field will be set to zero.
 		
 		NOTE: When a task's *handler* is invoked for any reason, including
 		the task being notified or invoked via <sched_invoke>, any currently
-		elapsing delay is canceled. The *delay* field always starts out
-		zeroed when the handler is invoked.
+		elapsing delay is canceled by the scheduler. The *delay* field always
+		starts out zeroed when the task handler is invoked.
 		
-		NOTE: If a task should execute periodically, then that task is
-		responsible for re-assigning the period to the *delay* field upon
+		NOTE: If a task should execute periodically, its task handler
+		should re-assign the desired period to the *delay* field upon
 		task execution. The scheduler itself will simply leave zeroed
 		*delay* fields unchanged and execute the corresponding tasks
 		once per scheduler iteration.
@@ -574,8 +660,8 @@ typedef struct sched_task {
 	/**
 		Field: handler
 		Pointer to the task handler procedure. The task handler will be invoked
-		when the scheduler executes the task, and may also be invoked via
-		the functions <sched_invoke> and <sched_invoke_all>.
+		whenever the scheduler executes the task. The handler may also be invoked
+		via the API functions <sched_invoke> and <sched_invoke_all>.
 	*/
 	sched_task_handler handler;
 	
@@ -669,7 +755,7 @@ uint8_t sched_time_gt(sched_time a, sched_time b);
 	The test is equivalent to the expression *a.h+a.l < b.h+b.l*.
 	
 	NOTE: This operation is only meaningful for durations. It CANNOT be used
-	to determine whether one scheduler timestamp represents a later moment
+	to determine whether one scheduler timestamp represents an earlier moment
 	in time than another.
 */
 uint8_t sched_time_lt(sched_time a, sched_time b);
@@ -691,21 +777,22 @@ uint8_t sched_time_gte(sched_time a, sched_time b);
 	than *b*. The test is equivalent to the expression *a.h+a.l <= b.h+b.l*.
 	
 	NOTE: This operation is only meaningful for durations. It CANNOT be used
-	to determine whether one scheduler timestamp represents a later moment
+	to determine whether one scheduler timestamp represents an earlier moment
 	in time than another.
 */
 uint8_t sched_time_lte(sched_time a, sched_time b);
 
-// FIXME: How much later is "too much later"?
 /**
 	Function: sched_time_sub
-	Subtracts one <sched_time> from another. The subtraction is performed in
-	a way that is equivalent to two's complement subtraction of 24-bit integers.
+	Subtracts <sched_time> *b* from <sched_time> *a*. The subtraction is
+	performed in a way that is equivalent to subtraction of 24-bit unsigned
+	integers (with wraparound in case *a* is less than *b*).
 	
 	NOTE: This operation produces a meaningful result only when one duration is
 	subtracted from another that is no shorter and when one timestamp is
-	subtracted from another that was obtained no earlier in time, and not too
-	much later. In those cases, the result represents a nonnegative duration.
+	subtracted from another that was obtained no earlier in time, and not more
+	than <SCHED_TIME_MAX> later. In those cases, the result represents a
+	nonnegative duration.
 */
 sched_time sched_time_sub(sched_time a, sched_time b);
 

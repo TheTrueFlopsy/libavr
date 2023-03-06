@@ -163,8 +163,22 @@ uint8_t sched_time_lte(sched_time a, sched_time b) {  // Tests whether A <= B.
 	return !sched_time_gt(a, b);
 }
 
-// TODO: Verify that this produces the correct difference even when
+// TODO: Explain how this produces the correct difference even when
 //       the subtraction overflows.
+/*
+	0 (-2^M)        0               0 (2^M)         0 (2*2^M)
+	|===============|===============|===============|===============|
+			 A   C  B        A   C  B        A   C  B        A   C  B
+					 C<=========-B
+	0<======-C      +B=========>B
+															+C======>A
+	
+	A := 5.
+	B := 12.
+	A - B = -7.
+	C := usub_4(A, B) = (A - B) % 2^4 = -7 % 16 = 16 - 7 = 9.
+	uadd_4(B, C) = (B + C) % 2^4 = 21 % 16 = 5 = A.
+*/
 sched_time sched_time_sub(sched_time a, sched_time b) {  // Subtracts B from A.
 	a.h -= b.h;
 	if (b.l > a.l) // Must borrow.
