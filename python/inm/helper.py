@@ -1,6 +1,10 @@
 
 from . import inm
 
+## File: helper.py
+## The *helper* module contains the <InmHelper>, a convenience class
+## for INM communication.
+
 # ISSUE: Correctly entering INM commands at the Python prompt is still
 #        tedious and error-prone. For example, to turn on a LED via the
 #        "inm_node_demo.c" Uno program, one has to enter the not very
@@ -53,7 +57,68 @@ from . import inm
 # NOTE: The flattening of a structure is obtained by decomposing it fully into a sequence
 #       of simple (i.e. non-composite) fields of known size.
 
+## Class: InmHelper
+## Convenience class for INM communication. Encapsulates a <MessageChannel> and provides
+## a simplified interface for sending and receiving messages via that channel.
+##
+## An *InmHelper* can be used as a context manager, opening the encapsulated
+## <MessageChannel> when the context is entered and then closing the channel
+## upon exit from the context.
 class InmHelper:
+	## Variable: DEFAULT_SRCADR
+	## Default INM source address.
+	DEFAULT_SRCADR = 99
+	
+	## Variable: DEFAULT_IP_ADR
+	## Default IP address of internal <InetMessageChannel>.
+	DEFAULT_IP_ADR = '127.0.0.1'
+	
+	## Variable: DEFAULT_UDP_PORT
+	## Default UDP port of internal <InetMessageChannel>.
+	DEFAULT_UDP_PORT = 2999
+	
+	## Variable: DEFAULT_LINK_UDP_PORT
+	## Default target UDP port of internal <InetMessageChannel>.
+	DEFAULT_LINK_UDP_PORT = 3000
+	
+	## Method: __init__
+	## Instance initializer. Offers convenient default behaviors. For example, creating
+	## an *InmHelper* with zero arguments should result in an internal <InetMessageChannel>
+	## with a default debugging configuration (i.e. use UDP port 2999 to communicate with
+	## port 3000 on the loopback interface, as INM node 99).
+	##
+	## Parameters:
+	##   channel - The <MessageChannel> that the *InmHelper* should use to send and receive
+	##     INM messages. If this is *None*, the other parameters will be used to initialize
+	##     an internally created <InetMessageChannel>.
+	##   msg_factory - The <MessageFactory> that the *InmHelper* should use to create INM
+	##     <Message> objects. If this parameter is *None*, the *msg_factory* attribute
+	##     of the encapsulated <MessageChannel> will be used.
+	##   srcadr - INM source address of the encapsulated <MessageChannel>. Used only if
+	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
+	##     the class attribute *DEFAULT_SRCADR* will be used.
+	##   ip_adr - IP address of the internal <InetMessageChannel> that is created if
+	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
+	##     the class attribute *DEFAULT_IP_ADR* will be used.
+	##   udp_port - UDP port of the internal <InetMessageChannel> that is created if
+	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
+	##     the class attribute *DEFAULT_UDP_PORT* will be used.
+	##   tcp_port - TCP port of the internal <InetMessageChannel> that is created if
+	##     the *channel* parameter is *None*. If this parameter is *None*, the port
+	##     number used for the UDP port is also used for the TCP port.
+	##
+	##     NOTE: In the current implementation of <InetMessageChannel>, no TCP socket
+	##     is actually used, so this parameter makes no difference.
+	##   timeout - Receive timeout of the internal <InetMessageChannel> that is created if
+	##     the *channel* parameter is *None*. Should be an instance of the standard library
+	##     class *datetime.timedelta*. If this parameter is *None*, receive operations will
+	##     never time out.
+	##   link_adr - INM link address (think of it as the router address of an IP network)
+	##     of the internal <InetMessageChannel> that is created if the *channel* parameter
+	##     is *None*. Should be a tuple of the format *(link_ip_adr, link_udp_port)*.
+	##     If this parameter is *None*, the used *link_ip_adr* will be the same as the IP
+	##     address of the encapsulated channel, while *link_udp_port* will have the value
+	##     of the class attribute *DEFAULT_LINK_UDP_PORT*.
 	def __init__(self, channel=None, msg_factory=None,
 	             srcadr=None, ip_adr=None, udp_port=None, tcp_port=None,
 	             timeout=None, link_adr=None):
@@ -79,8 +144,16 @@ class InmHelper:
 		if msg_factory is None:
 			msg_factory = channel.msg_factory
 		
+		## Property: channel
+		## The encapsulated <MessageChannel> of this *InmHelper*.
 		self.channel = channel
+		
+		## Property: msg_factory
+		## The encapsulated <MessageFactory> of this *InmHelper*.
 		self.msg_factory = msg_factory
+		
+		## Property: link_adr
+		## The INM link address this *InmHelper* uses to send messages.
 		self.link_adr = link_adr
 	
 	def __enter__(self):
@@ -92,12 +165,38 @@ class InmHelper:
 		self.close()
 		return False
 	
+	## Method: open
+	## Opens the encapsulated <channel>. Calls <MessageChannel.open>.
+	##
+	## Returns:
+	##   <ResultCode.SUCCESS> if the channel was successfully opened, otherwise another
+	##   <ResultCode> indicating what went wrong.
 	def open(self):
 		return self.channel.open()
 	
+	## Method: close
+	## Closes the encapsulated <channel>. Calls <MessageChannel.close>.
 	def close(self):
 		self.channel.close()
 	
+	## Method: send
+	## Constructs and sends an INM message.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to send.
+	##   typ - INM message type.
+	##   val - INM message value.
+	##   int_size - Field size in bytes of an integer message value. If this is *None*,
+	##     the default *int_size* of the <msg_factory> will be used.
+	##   msg_id - INM message ID. If this is *None*, a message ID will be generated
+	##     by the <channel>.
+	##   srcadr - Source INM node address of the message to send. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##   link_adr - INM link address to use when sending the message. If this is *None*,
+	##     the value of the <link_adr> attribute will be used.
+	##
+	## Returns:
+	##   A <ResultCode> indicating the outcome of the attempted send operation.
 	def send(self, dstadr, typ, val, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		if typ >= inm.StandardMessage.MIN_TYPE_NUM and typ <= inm.StandardMessage.MAX_TYPE_NUM:
 			msg = self.msg_factory.make_msg(typ, val, int_size)
@@ -111,6 +210,26 @@ class InmHelper:
 		
 		return self.channel.send(dstadr, msg, msg_id, srcadr, link_adr)
 	
+	## Method: send_mval
+	## Constructs and sends an INM message with a multipart message value.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to send.
+	##   typ - INM message type.
+	##   mval - Multipart INM message value. Should be a list or tuple of values.
+	##   int_size - Field size in bytes of an integer message value. This may be
+	##     a list or tuple containing a separate integer size for each element
+	##     of the *val* argument. If this is *None*, the default *int_size*
+	##     of the <msg_factory> will be used.
+	##   msg_id - INM message ID. If this is *None*, a message ID will be generated
+	##     by the <channel>.
+	##   srcadr - Source INM node address of the message to send. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##   link_adr - INM link address to use when sending the message. If this is *None*,
+	##     the value of the <link_adr> attribute will be used.
+	##
+	## Returns:
+	##   A <ResultCode> indicating the outcome of the attempted send operation.
 	def send_mval(self, dstadr, typ, mval, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		if typ >= inm.StandardMessage.MIN_TYPE_NUM and typ <= inm.StandardMessage.MAX_TYPE_NUM:
 			msg = self.msg_factory.make_msg_mval(typ, mval, int_size)
@@ -124,9 +243,38 @@ class InmHelper:
 		
 		return self.channel.send(dstadr, msg, msg_id, srcadr, link_adr)
 	
+	## Method: recv
+	## Attempts to receive an INM message.
+	##
+	## Returns:
+	##   res - A <ResultCode> indicating the outcome of the attempted receive operation.
+	##   header - The <MessageHeader> of the received message, or *None* in case of failure.
+	##   msg - The received <Message>, or *None* in case of failure.
+	##   link_adr - The link address of the received message, or *None* in case of failure.
 	def recv(self):
 		return self.channel.recv()
 	
+	## Method: sendrecv
+	## First constructs and sends an INM message, then attempts to receive one.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to send.
+	##   typ - INM message type.
+	##   val - INM message value.
+	##   int_size - Field size in bytes of an integer message value. If this is *None*,
+	##     the default *int_size* of the <msg_factory> will be used.
+	##   msg_id - INM message ID. If this is *None*, a message ID will be generated
+	##     by the <channel>.
+	##   srcadr - Source INM node address of the message to send. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##   link_adr - INM link address to use when sending the message. If this is *None*,
+	##     the value of the <link_adr> attribute will be used.
+	##
+	## Returns:
+	##   res - A <ResultCode> indicating the outcome of the attempted send/receive operation.
+	##   header - The <MessageHeader> of the received message, or *None* in case of failure.
+	##   msg - The received <Message>, or *None* in case of failure.
+	##   link_adr - The link address of the received message, or *None* in case of failure.
 	def sendrecv(self, dstadr, typ, val, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		res = self.send(dstadr, typ, val, int_size, msg_id, srcadr, link_adr)
 		if res != inm.ResultCode.SUCCESS:
@@ -134,6 +282,30 @@ class InmHelper:
 		
 		return self.recv()
 	
+	## Method: sendrecv_mval
+	## First constructs and sends an INM message with a multipart value,
+	## then attempts to receive a message.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to send.
+	##   typ - INM message type.
+	##   mval - Multipart INM message value. Should be a list or tuple of values.
+	##   int_size - Field size in bytes of an integer message value. This may be
+	##     a list or tuple containing a separate integer size for each element
+	##     of the *val* argument. If this is *None*, the default *int_size*
+	##     of the <msg_factory> will be used.
+	##   msg_id - INM message ID. If this is *None*, a message ID will be generated
+	##     by the <channel>.
+	##   srcadr - Source INM node address of the message to send. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##   link_adr - INM link address to use when sending the message. If this is *None*,
+	##     the value of the <link_adr> attribute will be used.
+	##
+	## Returns:
+	##   res - A <ResultCode> indicating the outcome of the attempted send/receive operation.
+	##   header - The <MessageHeader> of the received message, or *None* in case of failure.
+	##   msg - The received <Message>, or *None* in case of failure.
+	##   link_adr - The link address of the received message, or *None* in case of failure.
 	def sendrecv_mval(self, dstadr, typ, mval, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		res = self.send_mval(dstadr, typ, mval, int_size, msg_id, srcadr, link_adr)
 		if res != inm.ResultCode.SUCCESS:

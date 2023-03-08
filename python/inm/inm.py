@@ -7,6 +7,11 @@ import selectors
 
 import serial
 
+## File: inm.py
+## The *inm* module provides a complete INM messaging API. This API is primarily
+## designed for flexibility, not ease of use. When implementing an INM client,
+## consider using an <InmHelper> to simplify the exchange of messages.
+
 # TODO: Document this module.
 
 ZERO_DURATION = datetime.timedelta(0)
@@ -100,6 +105,12 @@ class StandardRegisters(enum.IntEnum):
 	APPLICATION   = 0x40
 
 
+## Enum: ResultCode
+## Result codes for the INM module.
+##
+## SUCCESS      - Operation successfully completed.
+## RECV_TIMEOUT - Receive operation timed out.
+## RECV_FAILURE - Receive operation failed in underlying API.
 @enum.unique
 class ResultCode(enum.Enum):
 	SUCCESS          = 0
@@ -131,6 +142,10 @@ class Strictness(enum.IntEnum):
 	Exact      = 3
 
 
+## Class: Message
+## Instances of subclasses of this abstract class represent INM messages.
+## This class provides methods that inspect and format the content of
+## a message in various ways.
 class Message:
 	MESSAGE_TYP_SIZE = 1
 	
@@ -243,6 +258,9 @@ class LargeMessage(Message):
 	MAX_MESSAGE_LEN = 0xffffffff
 
 
+## Class: MessageFactory
+## A configurable factory class for INM messages. Provides various methods
+## that construct and parse <Message> objects and INM message payloads.
 class MessageFactory:
 	
 	DEFAULT_RES_ENUM_MSG_TYPES = (StandardTypes.RESULT, StandardTypes.INM_RESULT)
@@ -609,6 +627,8 @@ class MessageFactory:
 default_msg_factory = MessageFactory()
 
 
+## Class: MessageHeader
+## Represents the header of an INM message.
 class MessageHeader:
 	MESSAGE_ID_SIZE = 2
 	DSTADR_SIZE = 1
@@ -658,6 +678,8 @@ class MessageHeader:
 class MessageChannelError(Exception):
 	pass
 
+## Class: MessageChannel
+## Abstract parent class for objects that send and receive INM messages.
 class MessageChannel:
 	
 	make_default_selector = True
@@ -752,12 +774,20 @@ class MessageChannel:
 	def is_open(self):
 		return self._is_open
 	
+	## Method: open
+	## Opens the <MessageChannel>.
+	##
+	## Returns:
+	##   <ResultCode.SUCCESS> if the channel was successfully opened, otherwise another
+	##   <ResultCode> indicating what went wrong.
 	def open(self):
 		if self.is_open():
 			return ResultCode.INVALID_STATE
 		self._is_open = True
 		return ResultCode.SUCCESS
 	
+	## Method: close
+	## Closes the <MessageChannel>.
 	def close(self):
 		self._is_open = False
 	
@@ -1008,6 +1038,9 @@ class RoutingMessageChannel(MessageChannel):
 		return delivery_flag, res, header, msg, link_adr
 
 
+## Class: BinaryMessageChannel
+## Abstract parent class for <MessageChannels> that send and receive INM messages
+## encoded in the standard binary format.
 class BinaryMessageChannel(MessageChannel):
 	def __init__(self, srcadr, timeout=None, msg_factory=None, selector=None, ch_num=None,
 	             send_bfr_size=0, recv_bfr_size=0):
@@ -1099,6 +1132,8 @@ class BinaryMessageChannel(MessageChannel):
 		return res, header, msg
 
 
+## Class: InetMessageChannel
+## A <BinaryMessageChannel> that sends and receives messages via a UDP socket.
 class InetMessageChannel(BinaryMessageChannel):
 	DEFAULT_IP_ADR = '127.0.0.1'
 	DEFAULT_UDP_PORT = 2357
