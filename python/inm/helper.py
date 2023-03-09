@@ -57,6 +57,7 @@ from . import inm
 # NOTE: The flattening of a structure is obtained by decomposing it fully into a sequence
 #       of simple (i.e. non-composite) fields of known size.
 
+# TODO: Verify that the code example works.
 ## Class: InmHelper
 ## Convenience class for INM communication. Encapsulates a <MessageChannel> and provides
 ## a simplified interface for sending and receiving messages via that channel.
@@ -64,6 +65,34 @@ from . import inm
 ## An *InmHelper* can be used as a context manager, opening the encapsulated
 ## <MessageChannel> when the context is entered and then closing the channel
 ## upon exit from the context.
+##
+## Code Example:
+## > import inm
+## > import inm.helper
+## >
+## > T  = inm.StandardTypes      # standard INM message types
+## > Rs = inm.StandardResults    # INM protocol result codes (sent in responses)
+## > G  = inm.StandardRegisters  # standard logical registers for INM nodes
+## > Rc = inm.ResultCode         # INM module result codes (returned by methods)
+## > C  = inm.ValueConversions   # INM message field type conversions
+## > dstadr = 10
+## > debug0_val = 0xdb
+## >
+## > with inm.helper.InmHelper() as h:  # Create InmHelper with default message channel.
+## >   # Ask node 10 about its firmware version.
+## >   res, header, msg, link_adr = h.sendrecv(dstadr, T.REG_READ, G.FWVERSION)
+## >
+## >   if res == Rc.SUCCESS:  # send/receive operation succeeded
+## >     r_index, fw_ver, req_id = msg.format_mval(conv=C.Int)  # Unpack INM_REG_READ_RES payload.
+## >     print(f'Node {dstadr} has firmware version {fw_ver}.')
+## >
+## >   # Write to debug register 0 at node 10.
+## >   res, header, msg, link_adr = h.sendrecv_mval(dstadr, T.REG_WRITE, (G.DEBUG0, debug0_val))
+## >
+## >   if res == Rc.SUCCESS:  # send/receive operation succeeded
+## >     std_res, req_id = msg.format_mval(conv=C.Int)  # Unpack INM_RESULT payload.
+## >     if std_res = Rs.OK:  # successful register write at destination
+## >       print(f'Wrote {debug0_val:#02x} to debug register 0.')
 class InmHelper:
 	## Variable: DEFAULT_SRCADR
 	## Default INM source address.

@@ -34,6 +34,34 @@ def map_enum(enum_class, i, defval=None):
 		return defval
 
 
+## Enum: StandardTypes
+## Standard INM message types. Message type identifiers are transmitted as 8-bit
+## unsigned integers and MUST be specified as Python integers in the range 0-255
+## (inclusive).
+##
+## NOTE: Application-specific message type identifiers SHOULD be greater than
+## or equal to *APPLICATION* (i.e. 0x40/64).
+##
+## DEFAULT              - Default message type.
+## RESULT               - Generic TLV operation response (<StandardResults> code).
+## INM_RESULT           - Generic INM operation response (<StandardResults> code and request ID).
+## REG_READ             - Logical register read request.
+## REG_READ_RES         - Logical TLV register read response.
+## INM_REG_READ_RES     - Logical INM register read response (with request ID).
+## REG_WRITE            - Logical register write (*R* = *V*) request.
+## REG_TOGGLE           - Logical register toggle (*R* ^= *V*; ret *R*) request.
+## REG_RW_EXCH          - Logical register read-write (*X* = *R*; *R* = *V*; ret *X*) request.
+## REG_WR_EXCH          - Logical register write-read (*R* = *V*; ret *R*) request.
+## REGPAIR_READ         - Logical register pair read (ret *R*) request.
+## REGPAIR_READ_RES     - Logical TLV register pair read response.
+## INM_REGPAIR_READ_RES - Logical INM register pair read response (with request ID).
+## REGPAIR_WRITE        - Logical register pair write request.
+## REGPAIR_TOGGLE       - Logical register pair toggle request.
+## REGPAIR_RW_EXCH      - Logical register pair read-write request.
+## REGPAIR_WR_EXCH      - Logical register pair write-read request.
+## MEMMON_DATA          - Memory monitor notification. Variable-length message.
+## MEMMON_CTRL          - Memory monitor control request. Not implemented.
+## APPLICATION          - Start of application-specific identifier range.
 @enum.unique
 class StandardTypes(enum.IntEnum):
 	DEFAULT              = 0x00
@@ -57,6 +85,21 @@ class StandardTypes(enum.IntEnum):
 	MEMMON_CTRL          = 0x12
 	APPLICATION          = 0x40
 
+## Enum: StandardResults
+## Standard INM result codes. Result codes are transmitted as 8-bit unsigned
+## integers and MUST be specified as Python integers in the range 0-255
+## (inclusive).
+##
+## NOTE: Application-specific result codes SHOULD be greater than or equal to
+## *APPLICATION* (i.e. 0x40/64) and not equal to *NONE* (i.e. 0xff/255).
+##
+## OK              - Request successfully handled.
+## TYPE            - Error: Unrecognized message type.
+## LENGTH          - Error: Invalid message length.
+## REGISTER        - Error: Message specified unrecognized logical register.
+## NOT_IMPLEMENTED - Error: Message recognized but cannot be handled.
+## APPLICATION     - Start of application-specific result code range.
+## NONE            - Invalid result code.
 @enum.unique
 class StandardResults(enum.IntEnum):
 	OK              = 0x00
@@ -69,6 +112,40 @@ class StandardResults(enum.IntEnum):
 
 # TODO: Review the standard register set and consider improvements
 #       (e.g. replace the index register with indexed read/write).
+## Enum: StandardRegisters
+## Standard INM register identifiers. Identifiers are transmitted as 8-bit
+## unsigned integers and MUST be specified as Python integers in the range 0-255
+## (inclusive).
+##
+## NOTE: Application-specific register identifiers SHOULD be greater than or
+## equal to *APPLICATION* (i.e. 0x40/64).
+##
+## NULL          - Null register. Yeah. (What was the idea here again?)
+## APP_STATUS    - Application status. Zero means normal status, other values are
+##                 application-specific.
+## DEBUG[0-9]    - Registers for general temporary / debugging use.
+## INDEX         - Low index byte. Used to specify an index in array registers.
+## INDEX_L       - Alias of *INDEX*.
+## INDEX_H       - High index byte. Used together with *INDEX_L* to specify an index
+##                 in large array registers.
+## PAIR_INDEX    - Alias of *INDEX_L*. Intended for register pair access.
+## STDIN         - Standard input stream register.
+## STDOUT        - Standard output stream register.
+## STDERR        - Error/debug output stream register.
+## STDIO         - Standard I/O stream register. Intended for exchange operations.
+## STDIO_L       - Alias of *STDIO*.
+## STDIO_H       - Upper half of 16-bit standard I/O stream register pair.
+## PAIR_STDIO    - Alias of *STDIO_L*. Intended for register pair exchange operations.
+## STDIOERR      - Error/debug I/O stream register. Intended for exchange operations.
+## STDIOERR_L    - Alias of *STDIOERR*.
+## STDIOERR_H    - Upper half of 16-bit error/debug I/O stream register pair.
+## PAIR_STDIOERR - Alias of *STDIOERR_L*. Intended for register pair exchange operations.
+## FWID          - Firmware ID, low byte.
+## FWID_L        - Alias of *FWID*.
+## FWID_H        - Firmware ID, high byte.
+## PAIR_FWID     - Alias of *FWID_L*. Intended for register pair access.
+## FWVERSION     - Firmware version.
+## APPLICATION   - Start of application-specific register identifier range.
 class StandardRegisters(enum.IntEnum):
 	NULL          = 0x00
 	APP_STATUS    = 0x01 # Zero means normal status.
@@ -104,25 +181,43 @@ class StandardRegisters(enum.IntEnum):
 	FWVERSION     = 0x17 # Firmware version.
 	APPLICATION   = 0x40
 
-
 ## Enum: ResultCode
 ## Result codes for the INM module.
 ##
-## SUCCESS      - Operation successfully completed.
-## RECV_TIMEOUT - Receive operation timed out.
-## RECV_FAILURE - Receive operation failed in underlying API.
+## SUCCESS          - Operation successfully completed.
+## RECV_TIMEOUT     - Receive operation timed out.
+## RECV_FAILURE     - Receive operation failed in underlying API.
+## UNROUTABLE       - Message could not be routed toward destination.
+## LINK_FAILURE     - Error in underlying API.
+## CHANNEL_FAILURE  - Error in underlying message channel.
+## INVALID_HEADER   - Invalid message header received or submitted for sending.
+## INVALID_MESSAGE  - Invalid message received or submitted for sending.
+## INVALID_ARGUMENT - Invalid argument in module API function call.
+## INVALID_STATE    - Module API function call made in wrong object state.
 @enum.unique
-class ResultCode(enum.Enum):
+class ResultCode(enum.IntEnum):
 	SUCCESS          = 0
 	RECV_TIMEOUT     = 1
 	RECV_FAILURE     = 2
 	UNROUTABLE       = 3
 	LINK_FAILURE     = 4
-	INVALID_HEADER   = 5
-	INVALID_MESSAGE  = 6
-	INVALID_ARGUMENT = 7
-	INVALID_STATE    = 8
+	CHANNEL_FAILURE  = 5
+	INVALID_HEADER   = 6
+	INVALID_MESSAGE  = 7
+	INVALID_ARGUMENT = 8
+	INVALID_STATE    = 9
 
+## Enum: ValueConversions
+## Type conversion specifiers for INM message values.
+##
+## NoConv - No conversion / unspecified conversion
+## Hex    - Hexadecimal string (unprefixed)
+## Bin    - Binary string (unprefixed)
+## Int    - Integer
+## Str    - Decoded text string
+## Tuple  - Tuple of byte values (as integers)
+## List   - List of byte values (as integers)
+## Bytes  - Bytes object
 @enum.unique
 class ValueConversions(enum.Enum):
 	NoConv = enum.auto()
@@ -134,6 +229,14 @@ class ValueConversions(enum.Enum):
 	List   = enum.auto()
 	Bytes  = enum.auto()
 
+## Enum: Strictness
+## Parsing strictness specifiers for INM message values.
+##
+## Anything   - Any value whatsoever is accepted.
+## AllWanted  - All requested fields must be present.
+## OnlyWanted - All requested fields must be present, and only those.
+## Exact      - All requested fields must be present, and only those,
+##              and no unparsed bytes are allowed to remain.
 @enum.unique
 class Strictness(enum.IntEnum):
 	Anything   = 0
@@ -147,6 +250,8 @@ class Strictness(enum.IntEnum):
 ## This class provides methods that inspect and format the content of
 ## a message in various ways.
 class Message:
+	## Variable: MESSAGE_TYP_SIZE
+	## Size in bytes of the message type identifier field in an INM message.
 	MESSAGE_TYP_SIZE = 1
 	
 	@classmethod
@@ -167,6 +272,12 @@ class Message:
 		
 		return f_val
 	
+	## Method: __init__
+	## Instance initializer.
+	##
+	## Parameters:
+	##   typ - Message type identifier, e.g. one of the <StandardTypes>.
+	##   val - Message value/payload. MUST be a bytes object.
 	def __init__(self, typ, val):
 		if not (self.MIN_TYPE_NUM <= typ <= self.MAX_TYPE_NUM):
 			raise ValueError()
@@ -174,12 +285,27 @@ class Message:
 		if len(val) > self.MAX_MESSAGE_LEN:
 			raise ValueError()
 		
+		## Property: typ
+		## Message type identifier.
 		self.typ = typ
+		
+		## Property: val
+		## Message value/payload.
 		self.val = val
 	
+	## Method: __len__
+	## Object length.
+	##
+	## Returns:
+	##   The INM message length, determined by the *len()* of the <val> attribute.
 	def __len__(self):
 		return len(self.val)
 	
+	## Method: __str__
+	## String conversion.
+	##
+	## Returns:
+	##   A string representation of the *Message*, in the format "Message(typ, len, val)".
 	def __str__(self):
 		length = len(self.val)
 		f_typ, f_val = self.format_str()
@@ -189,9 +315,24 @@ class Message:
 		
 		return f'Message({f_typ}, {length}, {f_val})'
 	
+	## Method: __repr__
+	## String representation.
+	##
+	## Returns:
+	##   A string representation of the *Message*, in the format "<Message(typ, len, val)>".
 	def __repr__(self):
 		return f'<{str(self)}>'
 	
+	## Method: check_tl
+	## Message type and length check predicate.
+	##
+	## Parameters:
+	##   typ - Required message type identifier.
+	##   length - Minimum message length.
+	##
+	## Returns:
+	##   True if and only if the <typ> attribute is equal to the *typ* argument
+	##   and *len(self)* is greater than or equal to the *length* argument.
 	def check_tl(self, typ, length):
 		return self.typ == typ and len(self) >= length
 	
@@ -237,24 +378,60 @@ class Message:
 		val_b = bytes(self.val)
 		return typ_b + len_b + val_b
 
-
+## Class: StandardMessage
+## Concrete <Message> subclass for standard-size INM messages.
+## The maximum size of a standard message value/payload is 255 bytes.
 class StandardMessage(Message):
+	## Variable: MESSAGE_LEN_SIZE
+	## Size in bytes of the message length field in a standard INM message.
 	MESSAGE_LEN_SIZE = 1
+	
+	## Variable: MIN_MESSAGE_SIZE
+	## Minimum size in bytes of a standard INM message.
 	MIN_MESSAGE_SIZE = Message.MESSAGE_TYP_SIZE + MESSAGE_LEN_SIZE
 	
+	## Variable: MIN_TYPE_NUM
+	## Smallest valid message type identifier for standard INM messages.
 	MIN_TYPE_NUM = 0x00
+	
+	## Variable: MAX_TYPE_NUM
+	## Largest valid message type identifier for standard INM messages.
 	MAX_TYPE_NUM = 0x7f
+	
+	## Variable: MAX_MESSAGE_LEN
+	## Maximum value of the message length field in a standard INM message,
+	## and thereby also the maximum size in bytes of a standard message value
+	## field.
 	MAX_MESSAGE_LEN = 0xff
 	
+	## Variable: PROTOCOL_TYPE_NUM
+	## Type identifier reserved for INM protocol messages.
 	PROTOCOL_TYPE_NUM = MAX_TYPE_NUM
 
-
+## Class: LargeMessage
+## Concrete <Message> subclass for large-size INM messages.
+## The maximum size of a large message value/payload is 4294967295 bytes.
 class LargeMessage(Message):
+	## Variable: MESSAGE_LEN_SIZE
+	## Size in bytes of the message length field in a large INM message.
 	MESSAGE_LEN_SIZE = 4
+	
+	## Variable: MIN_MESSAGE_SIZE
+	## Minimum size in bytes of a large INM message.
 	MIN_MESSAGE_SIZE = Message.MESSAGE_TYP_SIZE + MESSAGE_LEN_SIZE
 	
+	## Variable: MIN_TYPE_NUM
+	## Smallest valid message type identifier for large INM messages.
 	MIN_TYPE_NUM = 0x80
+	
+	## Variable: MAX_TYPE_NUM
+	## Largest valid message type identifier for large INM messages.
 	MAX_TYPE_NUM = 0xff
+	
+	## Variable: MAX_MESSAGE_LEN
+	## Maximum value of the message length field in a large INM message,
+	## and thereby also the maximum size in bytes of a large message value
+	## field.
 	MAX_MESSAGE_LEN = 0xffffffff
 
 
@@ -994,7 +1171,7 @@ class RoutingMessageChannel(MessageChannel):
 					res, link_adr = ResultCode.SUCCESS, (ch, ch_link_adr)
 					break  # Done (success).
 				elif ch_res != ResultCode.RECV_TIMEOUT:
-					res, link_adr = ResultCode.LINK_FAILURE, (ch, ch_link_adr)
+					res, link_adr = ResultCode.CHANNEL_FAILURE, (ch, ch_link_adr)
 					break  # Done (failure).
 				
 				selector_key = next(selector_keys, None)  # Try the next selector key.

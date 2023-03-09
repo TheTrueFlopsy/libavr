@@ -12,7 +12,14 @@
 	perform communication asynchronously.
 */
 
-// IDEA: Add stdio support? What kind of interface and semantics?
+// IDEA: Add stdio support? What kind of interface and semantics? Use the STDIN/STDOUT/
+//       STDERR registers? A subscribe/push solution seems like a fundamentally better idea.
+//       But pushing STDIN is hard? Implement the push solution as "write to register R at
+//       node N", where R may or may not be the STDIN register? What about the read-write
+//       exchange registers (STDIO, etc.)? Implement both push and pull for output streams?
+//       How should the buffering work? Implement "read register R at node N" fetching for
+//       input streams? This could get complicated, and I'm not sure about the use cases.
+//       Perhaps streaming is not a job for INM?
 
 // TODO: Document some recommended standard ways to use this module.
 // * Get awakened - check TTLV_HAS_HEADER/TTLV_HAS_MESSAGE - inspect headers

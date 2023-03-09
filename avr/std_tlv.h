@@ -193,7 +193,7 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_reg {
 		Field: index
 		Register identifier.
 	*/
-	ttlv_reg_index index;  // ISSUE: Isn't this redundant?
+	ttlv_reg_index index;  // ISSUE: Isn't this redundant for read responses?
 	
 	/**
 		Field: value
@@ -241,7 +241,7 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_regpair {
 		Field: index
 		Register identifier.
 	*/
-	ttlv_reg_index index;  // ISSUE: Isn't this redundant, especially with request ID in the response?
+	ttlv_reg_index index;  // ISSUE: Isn't this redundant for read responses?
 	
 	/**
 		Field: value
