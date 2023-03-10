@@ -5,6 +5,7 @@ import inspect
 import socket
 import selectors
 
+# IDEA: Make this import conditional? It's only needed for the SerialMessageChannel.
 import serial
 
 ## File: inm.py
@@ -21,17 +22,75 @@ get_timestamp = datetime.datetime.now
 def get_timedelta(secs=0, musecs=0):
 	return datetime.timedelta(seconds=secs, microseconds=musecs)
 
-def bytes_to_binary(bs, big_endian=False):
+## Function: bytes_to_hex
+## Produces a hexadecimal string representation of a bytes object.
+##
+## Parameters:
+##   bs - A bytes object.
+##   sep - Group separator. Either *None* or a one-character string.
+##   bytes_per_sep - Group size.
+##   big_endian - If true, the order of byte representations in the returned
+##     string will be reversed relative to the order of bytes in *bs* (i.e.
+##     the representation of *bs[0]* will be at the end of the string, etc.).
+##
+## Returns:
+##   A hexadecimal string representation of *bs*. No prefix is included.
+def bytes_to_hex(bs, sep=None, bytes_per_sep=1, big_endian=False):
 	if big_endian:
-		bs = reversed(bs)
-	return ''.join(f'{b:08b}' for b in bs)
-	#return ''.join('{0:08b}'.format(b) for b in bs)
-
-def map_enum(enum_class, i, defval=None):
-	if i in (e.value for e in enum_class):
-		return enum_class(i)
+		bs = bytes(reversed(bs))
+	
+	if sep is not None:
+		return bs.hex(sep, bytes_per_sep)
 	else:
-		return defval
+		return bs.hex()
+
+## Function: bytes_to_bin
+## Produces a binary string representation of a bytes object.
+##
+## Parameters:
+##   bs - A bytes object.
+##   sep - Group separator. Either *None* or a one-character string.
+##   bytes_per_sep - Group size.
+##   big_endian - If true, the order of byte representations in the returned
+##     string will be reversed relative to the order of bytes in *bs* (i.e.
+##     the representation of *bs[0]* will be at the end of the string, etc.).
+##
+## Returns:
+##   A binary string representation of *bs*. No prefix is included.
+def bytes_to_bin(bs, sep=None, bytes_per_sep=1, big_endian=False):
+	if big_endian:
+		bs = bytes(reversed(bs))
+	
+	if sep is not None:
+		groups = []
+		g1_len = len(bs) % bytes_per_sep
+		
+		if g1_len > 0:  # Input length not divisible by group size.
+			groups.append(bs[0:g1_len])  # Put incomplete group at the start, like *bytes.hex()* does.
+		
+		for i in range(g1_len, len(bs), bytes_per_sep):
+			groups.append(bs[i:i+bytes_per_sep])
+		
+		return sep.join(''.join(f'{b:08b}' for b in g) for g in groups)
+	else:
+		return ''.join(f'{b:08b}' for b in bs)
+
+## Function: map_enum
+## Searches an enum class for a member with a specified integer value.
+##
+## Parameters:
+##   enum_class - An enum class.
+##   i - An integer.
+##   defval - Default return value.
+##
+## Returns:
+##   If a member with integer value *i* is found in *enum_class*, then
+##   that member is returned. Otherwise, *defval* is returned.
+def map_enum(enum_class, i, defval=None):
+	for e in enum_class:
+		if e.value == i:
+			return e
+	return defval
 
 
 ## Enum: StandardTypes
@@ -230,7 +289,7 @@ class ValueConversions(enum.Enum):
 	Bytes  = enum.auto()
 
 ## Enum: Strictness
-## Parsing strictness specifiers for INM message values.
+## Multipart formatting strictness specifiers for INM message values.
 ##
 ## Anything   - Any value whatsoever is accepted.
 ## AllWanted  - All requested fields must be present.
@@ -328,7 +387,7 @@ class Message:
 	##
 	## Parameters:
 	##   typ - Required message type identifier.
-	##   length - Minimum message length.
+	##   length - Required minimum message length.
 	##
 	## Returns:
 	##   True if and only if the <typ> attribute is equal to the *typ* argument
@@ -336,39 +395,135 @@ class Message:
 	def check_tl(self, typ, length):
 		return self.typ == typ and len(self) >= length
 	
+	## Method: format_str
+	## Apply string formatting to the INM message type and value.
+	##
+	## Parameters:
+	##   formatter - The message formatter to use, or *None* to use the default formatter.
+	##
+	## Returns:
+	##   f_typ - Formatted message type.
+	##   f_val - String formatted message value.
 	def format_str(self, formatter=None):
 		return self.format_type(formatter), self.format_val_str(formatter)
 	
+	## Method: format
+	## Apply formatting to the INM message type and value.
+	##
+	## Parameters:
+	##   formatter - The message formatter to use, or *None* to use the default formatter.
+	##   conv - Message value conversion specifier (e.g. from <ValueConversions>), or *None*
+	##     to apply the default conversion.
+	##
+	## Returns:
+	##   f_typ - Formatted message type.
+	##   f_val - Formatted message value.
 	def format(self, formatter=None, conv=None):
 		return self.format_type(formatter), self.format_val(formatter, conv)
 	
+	## Method: format_type
+	## Apply formatting to the INM message type.
+	##
+	## Parameters:
+	##   formatter - The message formatter to use, or *None* to use the default formatter.
+	##
+	## Returns:
+	##   Formatted message type.
 	def format_type(self, formatter=None):
 		if formatter is None:
 			formatter = default_msg_factory
 		return map_enum(formatter.type_enum_class, self.typ, self.typ)
 	
+	## Method: format_val_str
+	## Apply string formatting to the INM message value.
+	##
+	## Parameters:
+	##   formatter - The message formatter to use, or *None* to use the default formatter.
+	##
+	## Returns:
+	##   String formatted message value.
 	def format_val_str(self, formatter=None):
 		if formatter is None:
 			formatter = default_msg_factory
 		f_typ = self.format_type(formatter)
 		return formatter.format_val_str(self.val, f_typ)
 	
+	## Method: format_val
+	## Apply formatting to the INM message value.
+	##
+	## Parameters:
+	##   formatter - The message formatter to use, or *None* to use the default formatter.
+	##   conv - Message value conversion specifier (e.g. from <ValueConversions>), or *None*
+	##     to apply the default conversion.
+	##
+	## Returns:
+	##   Formatted message value.
 	def format_val(self, formatter=None, conv=None):
 		if formatter is None:
 			formatter = default_msg_factory
 		f_typ = self.format_type(formatter)
 		return formatter.format_val(self.val, conv, f_typ)
 	
+	## Method: format_mval
+	## Apply multipart formatting to the INM message value.
+	##
+	## Parameters:
+	##   formatter - The message formatter to use, or *None* to use the default formatter.
+	##   conv - Field value conversion specifiers (e.g. from <ValueConversions>).
+	##     May be a scalar (to apply the same conversion to all fields), tuple or list.
+	##     If this is *None*, default conversions are applied.
+	##   size - Multipart value field sizes. May be a scalar (if all fields have the same size),
+	##     tuple or list. If this is *None*, the message type is used to infer field sizes, if
+	##     possible.
+	##   n_vals - Multipart value field count. If this is *None*, the field count is inferred
+	##     from the *conv* and *size* arguments (or their default values).
+	##   strict - Multipart formatting <Strictness> specifier, or *None* to apply the default
+	##     strictness level.
+	##
+	## Returns:
+	##   The formatted multipart message value (list of formatted fields), if formatting was
+	##   successful. Otherwise *None*.
 	def format_mval(self, formatter=None, conv=None, size=None, n_vals=None, strict=None):
 		if formatter is None:
 			formatter = default_msg_factory
 		f_typ = self.format_type(formatter)
 		return formatter.format_mval(self.val, conv, size, f_typ, n_vals, strict)
 	
+	## Method: format_mval_0
+	## Apply multipart formatting to the INM message value, but return only the first field.
+	## (I.e. return the field at index 0 in the list of formatted fields).
+	##
+	## Parameters:
+	##   formatter - The message formatter to use, or *None* to use the default formatter.
+	##   conv - Field value conversion specifiers (e.g. from <ValueConversions>).
+	##     May be a scalar (to apply the same conversion to all fields), tuple or list.
+	##     If this is *None*, default conversions are applied.
+	##   size - Multipart value field sizes. May be a scalar (if all fields have the same size),
+	##     tuple or list. If this is *None*, the message type is used to infer field sizes, if
+	##     possible.
+	##   n_vals - Multipart value field count. If this is *None*, the field count is inferred
+	##     from the *conv* and *size* arguments (or their default values).
+	##   strict - Multipart formatting <Strictness> specifier, or *None* to apply the default
+	##     strictness level.
+	##
+	## Returns:
+	##   The first field of the formatted multipart message value, if at least one field
+	##   was successfully formatted. Otherwise *None*.
 	def format_mval_0(self, formatter=None, conv=None, size=None, n_vals=None, strict=None):
 		mval = self.format_mval(formatter, conv, size, n_vals, strict)
 		return mval[0] if mval is not None and len(mval) >= 1 else None
 	
+	## Method: to_bytes
+	## Convert *Message* to a bytes object representing the message in standard binary
+	## on-wire format.
+	##
+	## Parameters:
+	##   formatter - Formatter to use for message type and length conversion, or *None*
+	##     to use the default formatter.
+	##
+	## Returns:
+	##   A bytes object representing the standard binary on-wire format of the INM message
+	##   represented by this instance of *Message*.
 	def to_bytes(self, formatter=None):
 		if formatter is None:
 			formatter = default_msg_factory
@@ -440,8 +595,23 @@ class LargeMessage(Message):
 ## that construct and parse <Message> objects and INM message payloads.
 class MessageFactory:
 	
+	## Variable: MAKE_VAL_ATTR_NAME
+	## Name of attribute to use for custom conversion of objects into INM message
+	## values/payloads. If present, such an attribute MUST be callable, return
+	## a bytes object and accept the following positional arguments:
+	##
+	##   formatter - A formatter object that provides the *MessageFactory* API.
+	##   int_size - The requested size in bytes of a message value or field produced
+	##     from an integer. May be *None*.
+	##   tlv_type - An INM message type specifier. May be *None*.
+	MAKE_VAL_ATTR_NAME = 'to_inm_val'
+	
+	## Variable: DEFAULT_RES_ENUM_MSG_TYPES
+	## Default message types for result code enum conversion.
 	DEFAULT_RES_ENUM_MSG_TYPES = (StandardTypes.RESULT, StandardTypes.INM_RESULT)
 	
+	## Variable: DEFAULT_REG_ENUM_MSG_TYPES
+	## Default message types for register identifier enum conversion.
 	DEFAULT_REG_ENUM_MSG_TYPES = (
 		StandardTypes.REG_READ,
 		StandardTypes.REG_READ_RES,
@@ -458,19 +628,96 @@ class MessageFactory:
 		StandardTypes.REGPAIR_RW_EXCH,
 		StandardTypes.REGPAIR_WR_EXCH)
 	
-	def __init__(self):
+	## Method: __init__
+	## Instance initializer.
+	##
+	## Parameters:
+	##   default_type_mappings - Default type mappings will be added to the message type
+	##     lookup tables if and only if this is true.
+	def __init__(self, default_type_mappings=True):
+		## Property: make_val_hex_str
+		## If true, strings will be interpreted as sequences of hexadecimal digits
+		## (instead of text) when making message values. Default: *False*
 		self.make_val_hex_str = False
+		
+		## Property: str_encoding
+		## Name of text encoding to use when making and formatting message values.
+		## Default: 'ascii'
 		self.str_encoding = 'ascii'
+		
+		## Property: int_size
+		## Default size in bytes of integer fields in message values.
+		## Default: 1
 		self.int_size = 1
+		
+		## Property: int_byteorder
+		## Name of default byte order of integer fields in message values.
+		## Default: 'little'
 		self.int_byteorder = 'little'
+		
+		## Property: byte_sep
+		## Byte group separator for message values formatted as hex or binary strings.
+		## Default: *None*
+		self.byte_sep = None
+		
+		## Property: bytes_per_sep
+		## Byte group size for message values formatted as hex or binary strings.
+		## Default: 2
+		self.bytes_per_sep = 2
+		
+		## Property: byte_str_big_endian
+		## Byte order selector for message values formatted as hex or binary strings.
+		## Default: *False*
+		self.byte_str_big_endian = False
+		
+		## Property: default_val_conv
+		## Default conversion for formatted message values.
+		## Default: <ValueConversions.Bytes>
 		self.default_val_conv = ValueConversions.Bytes
+		
+		## Property: str_val_conv
+		## Conversion for string-formatted message values.
+		## Default: <ValueConversions.Hex>
 		self.str_val_conv = ValueConversions.Hex
+		
+		## Property: enum_format_val
+		## If true, fields known to contain result codes or message type or register
+		## identifiers will be converted to the corresponding enum members (from
+		## <type_enum_class> or <res_enum_class>) when formatting message values.
+		## This setting overrides any other conversion for those fields.
+		## Default: *True*
 		self.enum_format_val = True
+		
+		## Property: type_enum_class
+		## Enum class to use for conversion of message type identifiers.
+		## Default: <StandardTypes>
 		self.type_enum_class = StandardTypes
+		
+		## Property: res_enum_class
+		## Enum class to use for conversion of INM result codes.
+		## Default: <StandardResults>
 		self.res_enum_class = StandardResults
+		
+		## Property: res_enum_msg_types
+		## Message types to perform result code enum conversion on.
+		## SHOULD be a tuple of message type identifiers.
+		## Default: <DEFAULT_RES_ENUM_MSG_TYPES>
 		self.res_enum_msg_types = self.DEFAULT_RES_ENUM_MSG_TYPES
+		
+		## Property: reg_enum_class
+		## Enum class to use for conversion of logical register identifiers.
+		## Default: <StandardRegisters>
 		self.reg_enum_class = StandardRegisters
+		
+		## Property: reg_enum_msg_types
+		## Message types to perform register identifier enum conversion on.
+		## SHOULD be a tuple of message type identifiers.
+		## Default: <DEFAULT_REG_ENUM_MSG_TYPES>
 		self.reg_enum_msg_types = self.DEFAULT_REG_ENUM_MSG_TYPES
+		
+		## Property: default_strictness
+		## Default strictness level for multipart message value formatting.
+		## Default: <Strictness.Exact>
 		self.default_strictness = Strictness.Exact
 		
 		# NOTE: Centralized mapping of INM message types to value field structure
@@ -481,7 +728,8 @@ class MessageFactory:
 		self._typ_to_format_val_conv = {}
 		self._typ_to_format_val_size = {}
 		
-		self._populate_type_mapping_tables()
+		if default_type_mappings:
+			self._populate_type_mapping_tables()
 	
 	def _populate_type_mapping_tables(self):
 		self.set_make_val_int_size(StandardTypes.RESULT, (1,))
@@ -520,12 +768,69 @@ class MessageFactory:
 		self.set_format_val_size(StandardTypes.REGPAIR_WR_EXCH, (1, 2))
 		self.set_format_val_size(StandardTypes.MEMMON_DATA, (1, 2, 1))
 	
+	## Method: clone
+	## Copies the *MessageFactory*.
+	##
+	## Returns:
+	##   A new *MessageFactory* with the same formatting configuration as this
+	##   *MessageFactory*. The new object contains no reference to any mutable
+	##   state of this object (i.e. subsequent changes to this object will not
+	##   affect the copy, or vice versa).
+	def clone(self):
+		copy = MessageFactory(False)
+		
+		copy.make_val_hex_str = self.make_val_hex_str
+		copy.str_encoding = self.str_encoding
+		copy.int_size = self.int_size
+		copy.int_byteorder = self.int_byteorder
+		copy.byte_sep = self.byte_sep
+		copy.bytes_per_sep = self.bytes_per_sep
+		copy.byte_str_big_endian = self.byte_str_big_endian
+		copy.default_val_conv = self.default_val_conv
+		copy.str_val_conv = self.str_val_conv
+		copy.enum_format_val = self.enum_format_val
+		copy.type_enum_class = self.type_enum_class
+		copy.res_enum_class = self.res_enum_class
+		copy.res_enum_msg_types = self.res_enum_msg_types
+		copy.reg_enum_class = self.reg_enum_class
+		copy.reg_enum_msg_types = self.reg_enum_msg_types
+		copy.default_strictness = self.default_strictness
+		
+		copy._typ_to_make_val_int_size.update(self._typ_to_make_val_int_size)
+		copy._typ_to_format_val_conv.update(self._typ_to_format_val_conv)
+		copy._typ_to_format_val_size.update(self._typ_to_format_val_size)
+	
+	## Method: get_make_val_int_size
+	## Gets the value construction integer field sizes associated with a specified
+	## message type.
+	##
+	## Parameters:
+	##   tlv_type - An INM message type identifier.
+	##   default - Value to return if *tlv_type* is not found in the lookup table.
+	##
+	## Returns:
+	##   The value construction integer field sizes associated with *tlv_type*, if
+	##   that type is found in the lookup table. Otherwise *default*.
 	def get_make_val_int_size(self, tlv_type, default=None):
 		if not isinstance(tlv_type, int):
 			return default
 		
 		return self._typ_to_make_val_int_size.get(int(tlv_type), default)
 	
+	## Method: set_make_val_int_size
+	## Sets the value construction integer field sizes associated with a specified
+	## message type. Can also be used to delete entries from the value construction
+	## field size table.
+	##
+	## Parameters:
+	##   tlv_type - An INM message type identifier.
+	##   int_size - Value construction field sizes for *tlv_type*. SHOULD be a
+	##     positive integer, a list or tuple of positive integers, or *None*.
+	##     If the argument is *None*, any existing entry for *tlv_type* is
+	##     deleted from the lookup table.
+	##
+	## Returns:
+	##   True if and only if the table entry was successfully updated or deleted.
 	def set_make_val_int_size(self, tlv_type, int_size):
 		if not isinstance(tlv_type, int):
 			return False
@@ -550,12 +855,37 @@ class MessageFactory:
 		
 		return True
 	
+	## Method: get_format_val_conv
+	## Gets the value formatting conversion specifier associated with a specified
+	## message type.
+	##
+	## Parameters:
+	##   tlv_type - An INM message type identifier.
+	##   default - Value to return if *tlv_type* is not found in the lookup table.
+	##
+	## Returns:
+	##   The value formatting conversion specifier associated with *tlv_type*, if
+	##   that type is found in the lookup table. Otherwise *default*.
 	def get_format_val_conv(self, tlv_type, default=None):
 		if not isinstance(tlv_type, int):
 			return default
 		
 		return self._typ_to_format_val_conv.get(int(tlv_type), default)
 	
+	## Method: set_format_val_conv
+	## Sets the value formatting conversion specifier associated with a specified
+	## message type. Can also be used to delete entries from the value formatting
+	## conversion table.
+	##
+	## Parameters:
+	##   tlv_type - An INM message type identifier.
+	##   conv - Value formatting conversion specifier for *tlv_type*. SHOULD be a
+	##     member of <ValueConversions>, an enum class, a list or tuple of any
+	##     of the aforementioned types, or *None*. If the argument is *None*,
+	##     any existing entry for *tlv_type* is deleted from the lookup table.
+	##
+	## Returns:
+	##   True if and only if the table entry was successfully updated or deleted.
 	def set_format_val_conv(self, tlv_type, conv):
 		if not isinstance(tlv_type, int):
 			return False
@@ -580,12 +910,35 @@ class MessageFactory:
 		
 		return True
 	
+	## Method: get_format_val_size
+	## Gets the value formatting field sizes associated with a specified message type.
+	##
+	## Parameters:
+	##   tlv_type - An INM message type identifier.
+	##   default - Value to return if *tlv_type* is not found in the lookup table.
+	##
+	## Returns:
+	##   The value formatting field sizes associated with *tlv_type*, if
+	##   that type is found in the lookup table. Otherwise *default*.
 	def get_format_val_size(self, tlv_type, default=None):
 		if not isinstance(tlv_type, int):
 			return default
 		
 		return self._typ_to_format_val_size.get(int(tlv_type), default)
 	
+	## Method: set_format_val_size
+	## Sets the value formatting field sizes associated with a specified message type.
+	## Can also be used to delete entries from the value formatting field size table.
+	##
+	## Parameters:
+	##   tlv_type - An INM message type identifier.
+	##   size - Value formatting field sizes for *tlv_type*. SHOULD be a
+	##     positive integer, a list or tuple of positive integers, or *None*.
+	##     If the argument is *None*, any existing entry for *tlv_type* is
+	##     deleted from the lookup table.
+	##
+	## Returns:
+	##   True if and only if the table entry was successfully updated or deleted.
 	def set_format_val_size(self, tlv_type, size):
 		if not isinstance(tlv_type, int):
 			return False
@@ -610,6 +963,20 @@ class MessageFactory:
 		
 		return True
 	
+	## Method: make_val
+	## Creates a bytes object containing an INM message value. Objects representable
+	## as message values include bytes objects, strings, integers, enum members and
+	## tuples and lists of integers in the unsigned byte range (i.e. 0-255).
+	##
+	## Parameters:
+	##   val - The object to convert to a message value.
+	##   int_size - The size in bytes of a message value produced from an integer.
+	##     If this is *None*, a default size will be used.
+	##   tlv_type - An optional INM message type specifier. Used to determine
+	##     the default integer value size.
+	##
+	## Returns:
+	##   A bytes object containing a converted representation of *val*.
 	def make_val(self, val, int_size=None, tlv_type=None):
 		if int_size is None:
 			int_size = self.get_make_val_int_size(tlv_type, self.int_size)
@@ -635,11 +1002,31 @@ class MessageFactory:
 		elif isinstance(val, enum.Enum):
 			if val.value >= 0 and (val.value >> 8*int_size) == 0:
 				b_val = val.value.to_bytes(int_size, self.int_byteorder)
+		elif hasattr(val, self.MAKE_VAL_ATTR_NAME):  # TODO: Test and document this feature.
+			to_inm_val = getattr(val, self.MAKE_VAL_ATTR_NAME)
+			b_val = to_inm_val(self, int_size, tlv_type)
 		elif val is None:
 			b_val = b''
 		
 		return b_val
 	
+	## Method: make_mval
+	## Creates a bytes object containing a multipart INM message value. Objects
+	## representable as fields in multipart values include bytes objects, strings,
+	## integers, enum members and tuples and lists of integers in the unsigned
+	## byte range (i.e. 0-255).
+	##
+	## Parameters:
+	##   mval - The objects to convert to a multipart message value. SHOULD be
+	##     a tuple or list of representable objects.
+	##   int_size - The sizes in bytes of message value fields produced from an
+	##     integer. May be a scalar (if all integer fields have the same size),
+	##     tuple or list. If this is *None*, default sizes will be used.
+	##   tlv_type - An optional INM message type specifier. Used to determine
+	##     the default integer field sizes.
+	##
+	## Returns:
+	##   A bytes object containing a converted representation of *mval*.
 	def make_mval(self, mval, int_size=None, tlv_type=None):
 		if int_size is None:
 			int_size = self.get_make_val_int_size(tlv_type, self.int_size)
@@ -660,9 +1047,32 @@ class MessageFactory:
 		
 		return b_mval
 	
+	## Method: format_val_str
+	## Apply string formatting to an INM message value.
+	##
+	## Parameters:
+	##   val - A bytes object containing the message value to format.
+	##   tlv_type - An optional INM message type specifier. Used to determine
+	##     appropriate enum mappings.
+	##
+	## Returns:
+	##   The result of applying string formatting (determined by <str_val_conv>)
+	##   to *val*.
 	def format_val_str(self, val, tlv_type=None):
 		return self.format_val(val, self.str_val_conv, tlv_type)
 	
+	## Method: format_val
+	## Apply formatting to an INM message value.
+	##
+	## Parameters:
+	##   val - A bytes object containing the message value to format.
+	##   conv - Message value conversion specifier (e.g. from <ValueConversions>),
+	##     or *None* to apply the default conversion.
+	##   tlv_type - An optional INM message type specifier. Used to determine
+	##     the default value conversion and enum mappings.
+	##
+	## Returns:
+	##   The result of applying message value formatting to *val*.
 	def format_val(self, val, conv=None, tlv_type=None):
 		if conv is None:
 			conv = self.get_format_val_conv(tlv_type, self.default_val_conv)
@@ -691,9 +1101,9 @@ class MessageFactory:
 		
 		# ISSUE: Remove the legacy magic strings?
 		if conv == ValueConversions.Hex or conv == 'hex':
-			f_val = val.hex()
+			f_val = bytes_to_hex(val, self.byte_sep, self.bytes_per_sep, self.byte_str_big_endian)
 		elif conv == ValueConversions.Bin or conv == 'bin':
-			f_val = bytes_to_binary(val, True)
+			f_val = bytes_to_bin(val, self.byte_sep, self.bytes_per_sep, self.byte_str_big_endian)
 		elif conv == ValueConversions.Int or conv == 'int':
 			f_val = int.from_bytes(val, self.int_byteorder)
 		elif conv == ValueConversions.Str or conv == 'str':
@@ -706,14 +1116,36 @@ class MessageFactory:
 			f_val = val
 		elif inspect.isclass(conv) and issubclass(conv, enum.Enum):
 			# ISSUE: Does this make the special cases (StandardTypes.RESULT, etc.) above redundant?
-			f_val = map_enum(conv, val, val)
-		#elif callable(conv):  # ISSUE: Is this a good idea?
-		#	f_val = conv(val)
+			f_val = int.from_bytes(val, self.int_byteorder)
+			f_val = map_enum(conv, f_val, f_val)
+		elif callable(conv):  # TODO: Test and document this feature.
+			f_val = conv(self, val, tlv_type)  # Pass the factory to make it available as a helper.
 		else:
 			pass  # Unrecognized conversion type, return None.
 		
 		return f_val
 	
+	## Method: format_mval
+	## Apply multipart formatting to an INM message value.
+	##
+	## Parameters:
+	##   mval - A bytes object containing the multipart message value to format.
+	##   conv - Field value conversion specifiers (e.g. from <ValueConversions>).
+	##     May be a scalar (to apply the same conversion to all fields), tuple or list.
+	##     If this is *None*, default conversions are applied.
+	##   size - Multipart value field sizes. May be a scalar (if all fields have the same size),
+	##     tuple or list. If this is *None*, the message type is used to infer field sizes, if
+	##     possible.
+	##   tlv_type - An optional INM message type specifier. Used to determine the default
+	##     value conversions, field sizes and enum mappings.
+	##   n_vals - Multipart value field count. If this is *None*, the field count is inferred
+	##     from the *conv* and *size* arguments (or their default values).
+	##   strict - Multipart formatting <Strictness> specifier, or *None* to apply the default
+	##     strictness level.
+	##
+	## Returns:
+	##   The formatted multipart message value (list of formatted fields), if formatting was
+	##   successful. Otherwise *None*.
 	def format_mval(self, mval, conv=None, size=None, tlv_type=None, n_vals=None, strict=None):
 		if conv is None:
 			conv = self.get_format_val_conv(tlv_type, self.default_val_conv)
@@ -753,8 +1185,13 @@ class MessageFactory:
 				break
 			
 			val = mval[val_offset:val_end_offset]
-			# NOTE: Omit tlv_type to prevent re-application of standard enum mapping.
-			f_val = self.format_val(val, val_conv)
+			
+			if val_offset == 0:  # First field is subject to standard enum mapping.
+				# ISSUE: Is standard enum mapping desirable in multipart formatting?
+				f_val = self.format_val(val, val_conv, tlv_type)
+			else:
+				# NOTE: Omit tlv_type to prevent re-application of standard enum mapping.
+				f_val = self.format_val(val, val_conv)
 			
 			if f_val is None:  # Conversion failed.
 				#print(f'conv={val_conv} size={val_size}') # DEBUG: 
@@ -772,6 +1209,8 @@ class MessageFactory:
 		
 		return f_mval
 	
+	# ISSUE: Check the type identifier range in the make*_msg* methods?
+	#        Are large messages even a good idea?
 	def make_msg(self, typ, val, int_size=None):
 		b_val = self.make_val(val, int_size, typ)
 		msg = StandardMessage(typ, b_val)
@@ -1005,6 +1444,11 @@ def format_msg_info(obj, event=None, header=None, link_adr=None, event_colw=0, t
 	return f'{time_field}{event_field}{header_field}{link_adr_field}: {str(obj)}'
 
 
+## Class: RoutingMessageChannel
+## A <MessageChannel> with message routing functionality. Maintains collections of other
+## <MessageChannels> that it uses to receive incoming messages and then retransmit them
+## toward their final destinations. Uses a static routing table to determine on which
+## channel to retransmit each incoming message.
 class RoutingMessageChannel(MessageChannel):
 	
 	TIMEOUT_DIVISOR = 10.0
@@ -1217,7 +1661,7 @@ class RoutingMessageChannel(MessageChannel):
 
 ## Class: BinaryMessageChannel
 ## Abstract parent class for <MessageChannels> that send and receive INM messages
-## encoded in the standard binary format.
+## encoded in the standard binary on-wire format.
 class BinaryMessageChannel(MessageChannel):
 	def __init__(self, srcadr, timeout=None, msg_factory=None, selector=None, ch_num=None,
 	             send_bfr_size=0, recv_bfr_size=0):
@@ -1445,6 +1889,8 @@ class InetMessageChannel(BinaryMessageChannel):
 		return res, header, msg, link_adr
 
 
+## Class: SerialMessageChannel
+## A <BinaryMessageChannel> that sends and receives messages via a serial port.
 class SerialMessageChannel(BinaryMessageChannel):
 	#DEFAULT_BAUDRATE = 9600
 	DEFAULT_BAUDRATE = 38400

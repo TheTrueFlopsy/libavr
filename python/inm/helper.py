@@ -67,8 +67,8 @@ from . import inm
 ## upon exit from the context.
 ##
 ## Code Example:
-## > import inm
-## > import inm.helper
+## > import inm.inm as inm
+## > import inm.helper as helper
 ## >
 ## > T  = inm.StandardTypes      # standard INM message types
 ## > Rs = inm.StandardResults    # INM protocol result codes (sent in responses)
@@ -78,7 +78,7 @@ from . import inm
 ## > dstadr = 10
 ## > debug0_val = 0xdb
 ## >
-## > with inm.helper.InmHelper() as h:  # Create InmHelper with default message channel.
+## > with helper.InmHelper() as h:  # Create InmHelper with default message channel.
 ## >   # Ask node 10 about its firmware version.
 ## >   res, header, msg, link_adr = h.sendrecv(dstadr, T.REG_READ, G.FWVERSION)
 ## >
