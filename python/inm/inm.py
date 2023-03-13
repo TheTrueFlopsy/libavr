@@ -12,13 +12,33 @@ import serial
 ## The *inm* module provides a complete INM messaging API. This API is primarily
 ## designed for flexibility, not ease of use. When implementing an INM client,
 ## consider using an <InmHelper> to simplify the exchange of messages.
+##
+## CAUTION: This module is NOT inherently thread-safe. In a multi-threaded
+## application, access to thread-shared objects from this module (including the
+## <default_msg_factory>) MUST be synchronized in application code.
 
-# TODO: Document this module.
 
+## Section: General Utilities
+
+## Variable: ZERO_DURATION
+## A *datetime.timedelta* representing a zero duration.
 ZERO_DURATION = datetime.timedelta(0)
 
+## Variable: get_timestamp
+## Produces a *datetime.datetime* representing the current local time.
+## Alias of the standard library method *datetime.datetime.now*.
 get_timestamp = datetime.datetime.now
 
+## Function: get_timedelta
+## Produces a *datetime.timedelta* with a specified duration.
+##
+## Parameters:
+##   secs - An integer or float representing a number of seconds.
+##   musecs - An integer or float representing a number of microseconds.
+##
+## Returns:
+##   A *datetime.timedelta* representing a duration of *(secs + musecs/1000000)*
+##   seconds.
 def get_timedelta(secs=0, musecs=0):
 	return datetime.timedelta(seconds=secs, microseconds=musecs)
 
@@ -92,6 +112,40 @@ def map_enum(enum_class, i, defval=None):
 			return e
 	return defval
 
+## Function: format_msg_info
+## Provides a standard way to represent INM communication events as strings. This can
+## be useful for logging and debugging.
+##
+## Parameters:
+##   obj - An object describing some event of interest (e.g. a <Message>).
+##   event - An optional string identifying the type of event (e.g. 'RECV').
+##   header - An optional <MessageHeader>.
+##   link_adr - An optional INM link address (e.g. an (ip_adr, udp_port) pair).
+##   event_colw - Minimum width of the *event* column.
+##   timestamp - If this parameter is true, a representation of the current time
+##     will be included in the returned string. If this parameter is a nonempty string,
+##     it will be used as the timestamp format string.
+##
+## Returns:
+##   A string representation of the specified event, in the following format:
+## > '{timestamp} {event} [{header.srcadr}.{header.msg_id} => {header.dstadr}]{link_adr}: {obj}'
+def format_msg_info(obj, event=None, header=None, link_adr=None, event_colw=0, timestamp=False):
+	if isinstance(link_adr, tuple) and len(link_adr) > 1 and isinstance(link_adr[0], MessageChannel):
+		link_adr = link_adr[1]  # Extract channel-specific link address.
+	
+	timestamp_fmt = '%Y-%m-%dT%H:%M:%S.%f'
+	if timestamp and isinstance(timestamp, str):
+		timestamp_fmt = timestamp
+	
+	time_field = '' if not timestamp else f'{get_timestamp():{timestamp_fmt}} '
+	event_field = '' if event is None else f'{event:>{event_colw:d}} '
+	header_field = '' if header is None else f'[{header.srcadr}.{header.msg_id} => {header.dstadr}]'
+	link_adr_field = '' if link_adr is None else link_adr
+	
+	return f'{time_field}{event_field}{header_field}{link_adr_field}: {str(obj)}'
+
+
+## Section: Enum Types
 
 ## Enum: StandardTypes
 ## Standard INM message types. Message type identifiers are transmitted as 8-bit
@@ -304,6 +358,8 @@ class Strictness(enum.IntEnum):
 	Exact      = 3
 
 
+## Section: Messages and Message Processing
+
 ## Class: Message
 ## Instances of subclasses of this abstract class represent INM messages.
 ## This class provides methods that inspect and format the content of
@@ -353,7 +409,11 @@ class Message:
 		self.val = val
 	
 	## Method: __len__
-	## Object length.
+	## Message (value) length.
+	##
+	## NOTE: The return value does NOT include the size of the message type and
+	## length fields that are part of the standard binary on-wire representation
+	## of an INM message.
 	##
 	## Returns:
 	##   The INM message length, determined by the *len()* of the <val> attribute.
@@ -396,7 +456,7 @@ class Message:
 		return self.typ == typ and len(self) >= length
 	
 	## Method: format_str
-	## Apply string formatting to the INM message type and value.
+	## Applies string formatting to the INM message type and value.
 	##
 	## Parameters:
 	##   formatter - The message formatter to use, or *None* to use the default formatter.
@@ -408,7 +468,7 @@ class Message:
 		return self.format_type(formatter), self.format_val_str(formatter)
 	
 	## Method: format
-	## Apply formatting to the INM message type and value.
+	## Applies formatting to the INM message type and value.
 	##
 	## Parameters:
 	##   formatter - The message formatter to use, or *None* to use the default formatter.
@@ -422,7 +482,7 @@ class Message:
 		return self.format_type(formatter), self.format_val(formatter, conv)
 	
 	## Method: format_type
-	## Apply formatting to the INM message type.
+	## Applies formatting to the INM message type.
 	##
 	## Parameters:
 	##   formatter - The message formatter to use, or *None* to use the default formatter.
@@ -435,7 +495,7 @@ class Message:
 		return map_enum(formatter.type_enum_class, self.typ, self.typ)
 	
 	## Method: format_val_str
-	## Apply string formatting to the INM message value.
+	## Applies string formatting to the INM message value.
 	##
 	## Parameters:
 	##   formatter - The message formatter to use, or *None* to use the default formatter.
@@ -449,7 +509,7 @@ class Message:
 		return formatter.format_val_str(self.val, f_typ)
 	
 	## Method: format_val
-	## Apply formatting to the INM message value.
+	## Applies formatting to the INM message value.
 	##
 	## Parameters:
 	##   formatter - The message formatter to use, or *None* to use the default formatter.
@@ -465,7 +525,7 @@ class Message:
 		return formatter.format_val(self.val, conv, f_typ)
 	
 	## Method: format_mval
-	## Apply multipart formatting to the INM message value.
+	## Applies multipart formatting to the INM message value.
 	##
 	## Parameters:
 	##   formatter - The message formatter to use, or *None* to use the default formatter.
@@ -490,7 +550,7 @@ class Message:
 		return formatter.format_mval(self.val, conv, size, f_typ, n_vals, strict)
 	
 	## Method: format_mval_0
-	## Apply multipart formatting to the INM message value, but return only the first field.
+	## Applies multipart formatting to the INM message value, but returns only the first field.
 	## (I.e. return the field at index 0 in the list of formatted fields).
 	##
 	## Parameters:
@@ -514,7 +574,7 @@ class Message:
 		return mval[0] if mval is not None and len(mval) >= 1 else None
 	
 	## Method: to_bytes
-	## Convert *Message* to a bytes object representing the message in standard binary
+	## Converts the *Message* to a bytes object containing the message in standard binary
 	## on-wire format.
 	##
 	## Parameters:
@@ -522,8 +582,8 @@ class Message:
 	##     to use the default formatter.
 	##
 	## Returns:
-	##   A bytes object representing the standard binary on-wire format of the INM message
-	##   represented by this instance of *Message*.
+	##   A bytes object containing the INM message represented by this *Message*
+	##   in standard binary on-wire format.
 	def to_bytes(self, formatter=None):
 		if formatter is None:
 			formatter = default_msg_factory
@@ -1048,7 +1108,7 @@ class MessageFactory:
 		return b_mval
 	
 	## Method: format_val_str
-	## Apply string formatting to an INM message value.
+	## Applies string formatting to an INM message value.
 	##
 	## Parameters:
 	##   val - A bytes object containing the message value to format.
@@ -1062,7 +1122,7 @@ class MessageFactory:
 		return self.format_val(val, self.str_val_conv, tlv_type)
 	
 	## Method: format_val
-	## Apply formatting to an INM message value.
+	## Applies formatting to an INM message value.
 	##
 	## Parameters:
 	##   val - A bytes object containing the message value to format.
@@ -1126,7 +1186,7 @@ class MessageFactory:
 		return f_val
 	
 	## Method: format_mval
-	## Apply multipart formatting to an INM message value.
+	## Applies multipart formatting to an INM message value.
 	##
 	## Parameters:
 	##   mval - A bytes object containing the multipart message value to format.
@@ -1211,26 +1271,90 @@ class MessageFactory:
 	
 	# ISSUE: Check the type identifier range in the make*_msg* methods?
 	#        Are large messages even a good idea?
+	## Method: make_msg
+	## Constructs an INM <Message> with the specified type and value.
+	##
+	## Parameters:
+	##   typ - An INM message type specifier.
+	##   val - The object to convert to a message value.
+	##   int_size - The size in bytes of a message value produced from an integer.
+	##     If this is *None*, a default size will be used.
+	##
+	## Returns:
+	##   A <StandardMessage> with type *typ* and a value constructed by
+	##   applying <make_val> to *val*.
 	def make_msg(self, typ, val, int_size=None):
 		b_val = self.make_val(val, int_size, typ)
 		msg = StandardMessage(typ, b_val)
 		return msg
 	
+	## Method: make_msg_mval
+	## Constructs an INM <Message> with the specified type and multipart value.
+	##
+	## Parameters:
+	##   typ - An INM message type specifier.
+	##   mval - The objects to convert to a multipart message value. SHOULD be
+	##     a tuple or list of representable objects.
+	##   int_size - The sizes in bytes of message value fields produced from an
+	##     integer. May be a scalar (if all integer fields have the same size),
+	##     tuple or list. If this is *None*, default sizes will be used.
+	##
+	## Returns:
+	##   A <StandardMessage> with type *typ* and a value constructed by
+	##   applying <make_mval> to *mval*.
 	def make_msg_mval(self, typ, mval, int_size=None):
 		b_mval = self.make_mval(mval, int_size, typ)
 		msg = StandardMessage(typ, b_mval)
 		return msg
 	
+	## Method: make_large_msg
+	## Constructs a large INM <Message> with the specified type and value.
+	##
+	## Parameters:
+	##   typ - An INM message type specifier.
+	##   val - The object to convert to a message value.
+	##   int_size - The size in bytes of a message value produced from an integer.
+	##     If this is *None*, a default size will be used.
+	##
+	## Returns:
+	##   A <LargeMessage> with type *typ* and a value constructed by
+	##   applying <make_val> to *val*.
 	def make_large_msg(self, typ, val, int_size=None):
 		b_val = self.make_val(val, int_size, typ)
 		msg = LargeMessage(typ, b_val)
 		return msg
 	
+	## Method: make_large_msg_mval
+	## Constructs a large INM <Message> with the specified type and multipart value.
+	##
+	## Parameters:
+	##   typ - An INM message type specifier.
+	##   mval - The objects to convert to a multipart message value. SHOULD be
+	##     a tuple or list of representable objects.
+	##   int_size - The sizes in bytes of message value fields produced from an
+	##     integer. May be a scalar (if all integer fields have the same size),
+	##     tuple or list. If this is *None*, default sizes will be used.
+	##
+	## Returns:
+	##   A <LargeMessage> with type *typ* and a value constructed by
+	##   applying <make_mval> to *mval*.
 	def make_large_msg_mval(self, typ, mval, int_size=None):
 		b_mval = self.make_mval(mval, int_size, typ)
 		msg = LargeMessage(typ, b_mval)
 		return msg
 	
+	## Method: msg_to_bytes
+	## Converts a <Message> and <MessageHeader> to a bytes object containing the
+	## message and header in standard binary on-wire format.
+	##
+	## Parameters:
+	##   msg - An instance of <Message>.
+	##   header - An optional instance of <MessageHeader>.
+	##
+	## Returns:
+	##   A bytes object containing the INM message represented by *msg* in standard
+	##   binary on-wire format, preceded by *header* (also in standard binary on-wire
+	##   format), if that argument was provided.
 	def msg_to_bytes(self, msg, header=None):
 		msg_b = msg.to_bytes(self)
 		
@@ -1240,26 +1364,53 @@ class MessageFactory:
 		
 		return msg_b
 
-default_msg_factory = MessageFactory()
-
 
 ## Class: MessageHeader
 ## Represents the header of an INM message.
 class MessageHeader:
+	## Variable: MESSAGE_ID_SIZE
+	## Size in bytes of the message identifier field in an INM message header.
 	MESSAGE_ID_SIZE = 2
+	
+	## Variable: DSTADR_SIZE
+	## Size in bytes of the destination address field in an INM message header.
 	DSTADR_SIZE = 1
+	
+	## Variable: SRCADR_SIZE
+	## Size in bytes of the source address field in an INM message header.
 	SRCADR_SIZE = 1
+	
+	## Variable: HEADER_SIZE
+	## Size in bytes of a complete INM message header.
 	HEADER_SIZE = MESSAGE_ID_SIZE + DSTADR_SIZE + SRCADR_SIZE
 	
 	# ISSUE: Are 16-bit per-originating-channel message IDs enough to avoid ambiguity?
 	#        Can we generally assume that any response will be received on the channel
 	#        that originated the corresponding request, and that all requests to a given
 	#        node from a given node will be sent via the same originating channel?
+	## Variable: MAX_MESSAGE_ID
+	## Largest valid INM message identifier.
 	MAX_MESSAGE_ID = 0xffff
+	
+	## Variable: MAX_MESSAGE_ADR
+	## Largest valid INM node address.
 	MAX_MESSAGE_ADR = 0xff
+	
+	## Variable: LOCAL_ADR
+	## Reserved INM node address for the local node.
 	LOCAL_ADR = 0x00
+	
+	## Variable: BROADCAST_ADR
+	## Reserved INM node address for broadcast messages.
 	BROADCAST_ADR = MAX_MESSAGE_ADR
 	
+	## Method: __init__
+	## Instance initializer.
+	##
+	## Parameters:
+	##   msg_id - INM message identifier.
+	##   dstadr - Destionation INM address.
+	##   srcadr - Source INM address.
 	def __init__(self, msg_id, dstadr, srcadr):
 		# ISSUE: Is this the right place for these range checks? Better in send()?
 		if not (0 <= msg_id <= self.MAX_MESSAGE_ID):
@@ -1271,16 +1422,47 @@ class MessageHeader:
 		if not (0 <= srcadr <= self.MAX_MESSAGE_ADR):
 			raise ValueError()
 		
+		## Property: msg_id
+		## INM message identifier.
 		self.msg_id = msg_id
+		
+		## Property: dstadr
+		## Destination INM node address.
 		self.dstadr = dstadr
+		
+		## Property: srcadr
+		## Source INM node address.
 		self.srcadr = srcadr
 	
+	## Method: __str__
+	## String conversion.
+	##
+	## Returns:
+	##   A string representation of the *MessageHeader*, in the format
+	##   "MessageHeader(msg_id, dstadr, srcadr)".
 	def __str__(self):
 		return f'MessageHeader({self.msg_id}, {self.dstadr}, {self.srcadr})'
 	
+	## Method: __repr__
+	## String representation.
+	##
+	## Returns:
+	##   A string representation of the *MessageHeader*, in the format
+	##   "<MessageHeader(msg_id, dstadr, srcadr)>".
 	def __repr__(self):
 		return f'<{str(self)}>'
 	
+	## Method: to_bytes
+	## Converts the *MessageHeader* to a bytes object containing the header in standard
+	## binary on-wire format.
+	##
+	## Parameters:
+	##   formatter - Formatter to use for integer conversion, or *None* to use
+	##     the default formatter.
+	##
+	## Returns:
+	##   A bytes object containing the INM message header represented by this
+	##   *MessageHeader* in standard binary on-wire format.
 	def to_bytes(self, formatter=None):
 		if formatter is None:
 			formatter = default_msg_factory
@@ -1291,15 +1473,56 @@ class MessageHeader:
 		return msg_id_b + dstadr_b + srcadr_b
 
 
+## Section: Default Objects
+
+## Variable: default_msg_factory
+## A default instance of <MessageFactory>. Used by <Message>, <MessageHeader> and
+## <MessageChannel> if no other message formatter is provided. This is a module-level
+## attribute.
+default_msg_factory = MessageFactory()
+
+
+## Section: Message Channels
+
+## Class: MessageChannelError
+## Exception class for <MessageChannels>.
 class MessageChannelError(Exception):
 	pass
 
 ## Class: MessageChannel
 ## Abstract parent class for objects that send and receive INM messages.
+##
+## A *MessageChannel* can be used as a context manager, opening itself when
+## the context is entered and then closing itself upon exit from the context
+## (see <open> and <close>).
 class MessageChannel:
 	
+	## Variable: make_default_selector
+	## If this is true, a default selector object (from the standard library module
+	## *selectors*) will be created for each instance of *MessageChannel* that isn't
+	## provided with a custom selector at initialization.
 	make_default_selector = True
 	
+	## Method: __init__
+	## Instance initializer.
+	##
+	## Parameters:
+	##   srcadr - INM address of the local node. Will be placed in the source address
+	##     header field of sent messages for which no other source address is provided.
+	##   timeout - Receive timeout. MUST be an instance of the standard library class
+	##     *datetime.timedelta*. If this parameter is *None*, receive operations will
+	##     never time out.
+	##   msg_factory - The <MessageFactory> that the *MessageChannel* should use to create
+	##     INM <Message> objects. If this parameter is *None*, a default <MessageFactory>
+	##     will be used.
+	##   selector - A selector object compatible with the ones provided by the standard
+	##     library module *selectors*. The selector is used to implement <readable> and
+	##     may also be used internally. If this parameter is *None*, a default selector
+	##     may be created (see <make_default_selector>). If this parameter is *False*
+	##     (specifically, not some other false value), a default selector will NOT be
+	##     created.
+	##   ch_num - Channel number of the *MessageChannel*. SHOULD be either *None* or
+	##     a nonnegative integer.
 	def __init__(self, srcadr, timeout=None, msg_factory=None, selector=None, ch_num=None):
 		if msg_factory is None:
 			msg_factory = default_msg_factory
@@ -1309,23 +1532,53 @@ class MessageChannel:
 		elif selector is None and MessageChannel.make_default_selector:
 			selector = selectors.DefaultSelector()
 		
+		## Property: srcadr
+		## Default INM source address of messages sent via this *MessageChannel*.
 		self.srcadr = srcadr
+		
+		## Property: timeout
+		## Receive timeout. MUST be an instance of the standard library class
+		## *datetime.timedelta*. If this attribute is *None*, receive operations will
+		## never time out.
+		##
+		## NOTE: The method <set_timeout> SHOULD be used to change this attribute.
 		self.timeout = timeout
+		
+		## Property: msg_factory
+		## The <MessageFactory> that the *MessageChannel* uses to create INM <Message>
+		## objects.
 		self.msg_factory = msg_factory
+		
+		## Property: selector
+		## A selector object compatible with the ones provided by the standard
+		## library module *selectors*. May be *None*.
 		self.selector = selector
+		
+		## Property: ch_num
+		## Channel number of this *MessageChannel*. May be *None*.
 		self.ch_num = ch_num  # ISSUE: Should this be type/range checked?
 		
 		self._is_open = False
 		self._prev_msg_id = None
 		self._next_msg_id = 0
 	
+	## Method: __str__
+	## String conversion.
+	##
+	## Returns:
+	##   A string representation of the *MessageChannel*, in the format
+	##   "class_name(srcadr)".
 	def __str__(self):
 		return f'{type(self).__name__}({self.srcadr})'
-		#return '{0}({1})'.format(type(self).__name__, self.srcadr)
 	
+	## Method: __repr__
+	## String representation.
+	##
+	## Returns:
+	##   A string representation of the *MessageChannel*, in the format
+	##   "<class_name(srcadr)>".
 	def __repr__(self):
 		return f'<{str(self)}>'
-		#return '<{0}>'.format(str(self))
 	
 	def __enter__(self):
 		res = self.open()
@@ -1364,34 +1617,65 @@ class MessageChannel:
 		selected = self.selector.select(timeout_secs)
 		return (k for k, e in selected if e & selectors.EVENT_READ)
 	
-	#def _selectable_is_readable(self, selector_keys, timeout=0.0):
 	def _selectable_is_readable(self, timeout_secs=0.0):
 		if self.selector is None:
 			return False
 		
 		selected = self.selector.select(timeout_secs)
-		#return any((k, selectors.EVENT_READ) in selected for k in selector_keys)
 		return any(e & selectors.EVENT_READ for k, e in selected)
 	
-	# CAUTION: This is not any sort of thread safe.
+	## Method: peek_prev_msg_id
+	## Peeks at the most recently auto-generated INM message ID.
+	##
+	## CAUTION: This is not thread-safe. If this *MessageChannel* is thread-shared,
+	## other threads may go ahead and cause auto-generation of additional message IDs
+	## at any time, unless measures are taken (outside the *inm* module) to prevent
+	## or handle such occurrences.
+	##
+	## Returns:
+	##   The INM message ID most recently auto-generated by this *MessageChannel*.
 	def peek_prev_msg_id(self):
 		return self._prev_msg_id
 	
-	# CAUTION: This is not any sort of thread safe.
+	## Method: peek_next_msg_id
+	## Peeks at the next INM message ID to be auto-generated.
+	##
+	## CAUTION: This is not thread-safe. If this *MessageChannel* is thread-shared,
+	## other threads may go ahead and cause auto-generation of additional message IDs
+	## at any time, unless measures are taken (outside the *inm* module) to prevent
+	## or handle such occurrences.
+	##
+	## Returns:
+	##   The next INM message ID to be auto-generated by this *MessageChannel*.
 	def peek_next_msg_id(self):
 		return self._next_msg_id
 	
-	# CAUTION: This is not any sort of thread safe.
+	## Method: get_next_msg_id
+	## Auto-generates an INM message ID.
+	##
+	## CAUTION: This is not thread-safe. If this *MessageChannel* is thread-shared,
+	## other threads may interfere with the auto-generation, causing duplicate message
+	## IDs, unless measures are taken (outside the *inm* module) to prevent such
+	## occurrences.
+	##
+	## Returns:
+	##   An auto-generated INM message ID.
 	def get_next_msg_id(self):
 		msg_id = self._next_msg_id
 		self._next_msg_id = (msg_id + 1) % (MessageHeader.MAX_MESSAGE_ID + 1)
 		return msg_id
 	
+	## Method: is_open
+	## Checks whether the *MessageChannel* is open.
+	##
+	## Returns:
+	##   True if and only if this *MessageChannel* is currently open.
 	def is_open(self):
 		return self._is_open
 	
 	## Method: open
-	## Opens the <MessageChannel>.
+	## Opens the *MessageChannel*. Subclasses may need to override the base class
+	## implementation.
 	##
 	## Returns:
 	##   <ResultCode.SUCCESS> if the channel was successfully opened, otherwise another
@@ -1403,45 +1687,79 @@ class MessageChannel:
 		return ResultCode.SUCCESS
 	
 	## Method: close
-	## Closes the <MessageChannel>.
+	## Closes the *MessageChannel*. Subclasses may need to override the base class
+	## implementation.
 	def close(self):
 		self._is_open = False
 	
+	## Method: readable
+	## Checks whether the *MessageChannel* is readable.
+	##
+	## NOTE: The base class implementation of this method needs a <selector> to work.
+	##
+	## CAUTION: Even if this method returns true, a subsequent call to <recv> may
+	## not return a message without blocking.
+	##
+	## Returns:
+	##   True if and only if this *MessageChannel* is currently open and readable.
 	def readable(self):
 		if not self.is_open():
 			return False
 		
-		#selector_keys = self.get_selector_keys()
-		#return self._selectable_is_readable(selector_keys)
 		return self._selectable_is_readable()
 	
+	## Method: get_selector_keys
+	## Gets the selector keys of encapsulated selectable objects (e.g. sockets)
+	## from this *MessageChannel*.
+	##
+	## NOTE: The base class implementation always returns an empty tuple.
+	##
+	## Returns:
+	##   A tuple of selector keys compatible with the ones produced by the
+	##   *register* method of the standard library class *selectors.BaseSelector*.
 	def get_selector_keys(self):
 		return ()
 	
+	## Method: set_timeout
+	## Updates the <timeout> attribute. Subclasses may need to override the base class
+	## implementation.
+	##
+	## Parameters:
+	##   timeout - Receive timeout. MUST be an instance of the standard library class
+	##     *datetime.timedelta*. If this parameter is *None*, receive operations will
+	##     never time out.
 	def set_timeout(self, timeout):
 		self.timeout = timeout
 	
+	## Method: send
+	## Sends an INM message. This is an abstract method.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to send.
+	##   msg - The INM <Message> to send.
+	##   msg_id - INM message ID. If this is *None*, a message ID will be generated
+	##     internally.
+	##   srcadr - Source INM node address of the message to send. If this is *None*,
+	##     the configured <srcadr> of this *MessageChannel* will be used.
+	##   link_adr - INM link address to use when sending the message. If this is *None*,
+	##     the behavior is implementation-defined (e.g. some subclasses may not use link
+	##     addresses at all).
+	##
+	## Returns:
+	##   A <ResultCode> indicating the outcome of the attempted send operation.
 	def send(self, dstadr, msg, msg_id=None, srcadr=None, link_adr=None):
 		raise NotImplementedError()
 	
-	def recv(self): # Returns (res, header, msg, link_adr).
+	## Method: recv
+	## Attempts to receive an INM message. This is an abstract method.
+	##
+	## Returns:
+	##   res - A <ResultCode> indicating the outcome of the attempted receive operation.
+	##   header - The <MessageHeader> of the received message, or *None* in case of failure.
+	##   msg - The received <Message>, or *None* in case of failure.
+	##   link_adr - The link address of the received message, or *None* in case of failure.
+	def recv(self):
 		raise NotImplementedError()
-
-def format_msg_info(obj, event=None, header=None, link_adr=None, event_colw=0, timestamp=False):
-	if isinstance(link_adr, tuple) and len(link_adr) > 1 and isinstance(link_adr[0], MessageChannel):
-		link_adr = link_adr[1]
-	
-	timestamp_fmt = '%Y-%m-%dT%H:%M:%S.%f'
-	if timestamp and isinstance(timestamp, str):
-		timestamp_fmt = timestamp
-	
-	#time_field = '' if not timestamp else f'{get_timestamp().isoformat(timespec="milliseconds")} '
-	time_field = '' if not timestamp else f'{get_timestamp():{timestamp_fmt}} '
-	event_field = '' if event is None else f'{event:>{event_colw:d}} '
-	header_field = '' if header is None else f'[{header.srcadr}.{header.msg_id} => {header.dstadr}]'
-	link_adr_field = '' if link_adr is None else link_adr
-	
-	return f'{time_field}{event_field}{header_field}{link_adr_field}: {str(obj)}'
 
 
 ## Class: RoutingMessageChannel
@@ -1451,24 +1769,89 @@ def format_msg_info(obj, event=None, header=None, link_adr=None, event_colw=0, t
 ## channel to retransmit each incoming message.
 class RoutingMessageChannel(MessageChannel):
 	
+	## Variable: TIMEOUT_DIVISOR
+	## If a receive timeout is set on a *RoutingMessageChannel*, the timeout set on each
+	## of the <recv_channels> will be the primary timeout divided by *TIMEOUT_DIVISOR*
+	## times the number of receive channels.
 	TIMEOUT_DIVISOR = 10.0
+	
+	## Variable: DEFAULT_CH_TIMEOUT
+	## If no receive timeout is set on a *RoutingMessageChannel*, then the timeout
+	## set on each of the <recv_channels> will be *DEFAULT_CH_TIMEOUT*.
+	##
+	## NOTE: Setting a timeout on the receive channels even when there is no timeout
+	## on the RoutingMessageChannel itself prevents <recv> from blocking forever
+	## on one receive channel while another receive channel has data available.
 	DEFAULT_CH_TIMEOUT = get_timedelta(musecs=10000)
 	
+	## Method: __init__
+	## Instance initializer.
+	##
+	## Parameters:
+	##   srcadr - INM address of the local node. Will be placed in the source address
+	##     header field of sent messages for which no other source address is provided.
+	##   rtab - A routing table. Used to initialize the <rtab> attribute, see that entry
+	##     for more information.
+	##   recv_channels - A receive channel table. Used to initialize the <recv_channels>
+	##     attribute, see that entry for more information.
+	##   timeout - Receive timeout. MUST be an instance of the standard library class
+	##     *datetime.timedelta*. If this parameter is *None*, receive operations will
+	##     never time out.
+	##   msg_factory - The <MessageFactory> that the *RoutingMessageChannel* should use
+	##     to create INM <Message> objects. If this parameter is *None*, a default
+	##     <MessageFactory> will be used.
+	##   selector - A selector object compatible with the ones provided by the standard
+	##     library module *selectors*. This parameter is passed on to
+	##     <MessageChannel.__init__>, see that entry for for more information.
+	##   ch_num - Channel number of the *RoutingMessageChannel*. SHOULD be either *None*
+	##     or a nonnegative integer.
 	def __init__(self, srcadr, rtab, recv_channels, timeout=None, msg_factory=None, selector=None, ch_num=None):
 		super().__init__(srcadr, timeout, msg_factory, selector, ch_num)
 		
+		## Property: rtab
+		## The routing table. MUST be a dictionary that maps INM destination node
+		## addresses to lists of link address pairs. Each link address pair MUST consist
+		## of a <MessageChannel> for outgoing messages to the destination node and
+		## a channel-specific link address to use when sending messages on the outgoing
+		## message channel.
 		self.rtab = rtab
+		
+		## Property: recv_channels
+		## The receive channel table. MUST be a dictionary that maps channel numbers
+		## to <MessageChannels> for incoming messages.
 		self.recv_channels = recv_channels
+		
+		## Property: cc_to
+		## List of INM node addresses of CC message destinations. SHOULD be updated
+		## via <add_cc_adr> and <remove_cc_adr>.
+		##
+		## Any CC destination node on this list will be sent a copy of each non-broadcast,
+		## non-CC message sent by this *RoutingMessageChannel* (sent messages include
+		## both routed messages and messages sent from the local node), unless the CC
+		## destination is the source of the message.
 		self.cc_to = []
+		
+		## Property: close_recv_channels
+		## If this is true, all channels in <recv_channels> are closed when this
+		## *RoutingMessageChannel* is closed. Default: *True*
 		self.close_recv_channels = True
 		
-		# NOTE: Set this to True to apply routing even to messages where the
-		#       destination address equals the source address of the
-		#       RoutingMessageChannel.
+		## Property: relay_messages
+		## If this is true, routing is applied even to messages where the destination
+		## address equals the source address of the local node.
+		## Default: *False*
 		self.relay_messages = False
 		
 		self._selector_key_cache = None  # Cache of readable selector keys, used by recv().
 	
+	## Method: add_cc_adr
+	## Adds the INM address of a CC message destination node to <cc_to>.
+	##
+	## Parameters:
+	##   cc_adr - The INM address of a CC destination.
+	##
+	## Returns:
+	##   True if and only if *cc_adr* was successfully added to <cc_to>.
 	def add_cc_adr(self, cc_adr):
 		if cc_adr in self.cc_to:
 			return False
@@ -1476,6 +1859,14 @@ class RoutingMessageChannel(MessageChannel):
 		self.cc_to.append(cc_adr)
 		return True
 	
+	## Method: remove_cc_adr
+	## Removes the INM address of a CC message destination node from <cc_to>.
+	##
+	## Parameters:
+	##   cc_adr - The INM address of a CC destination.
+	##
+	## Returns:
+	##   True if and only if *cc_adr* was successfully removed from <cc_to>.
 	def remove_cc_adr(self, cc_adr):
 		if cc_adr not in self.cc_to:
 			return False
@@ -1483,6 +1874,8 @@ class RoutingMessageChannel(MessageChannel):
 		self.cc_to.remove(cc_adr)
 		return True
 	
+	## Method: open
+	## Overrides <MessageChannel.open>.
 	def open(self):
 		if self.is_open():
 			return ResultCode.INVALID_STATE
@@ -1497,6 +1890,8 @@ class RoutingMessageChannel(MessageChannel):
 		self._is_open = True
 		return ResultCode.SUCCESS
 	
+	## Method: close
+	## Overrides <MessageChannel.close>.
 	def close(self):
 		if not self.is_open():
 			return
@@ -1517,9 +1912,15 @@ class RoutingMessageChannel(MessageChannel):
 	#def readable(self):
 	#	return any(ch.readable() for ch in self.recv_channels.values())
 	
+	## Method: get_selector_keys
+	## Overrides <MessageChannel.get_selector_keys>. Returns all selector keys
+	## obtained by calling the *get_selector_keys* methods of the channels in
+	## <recv_channels>.
 	def get_selector_keys(self):
 		return (k for ch in self.recv_channels.values() for k in ch.get_selector_keys())
 	
+	## Method: set_timeout
+	## Overrides <MessageChannel.set_timeout>.
 	def set_timeout(self, timeout):
 		self.timeout = timeout
 		
@@ -1534,9 +1935,34 @@ class RoutingMessageChannel(MessageChannel):
 			ch_timeout = self.timeout / (self.TIMEOUT_DIVISOR * n_ch)
 		
 		for ch in self.recv_channels.values():
+			# ISSUE: Why am I setting ZERO_DURATION instead of ch_timeout here?
+			# I think I changed how this works, making it less loop-de-loopy,
+			# a while ago. Receive channel timeouts might not be a thing anymore.
 			#ch.set_timeout(ch_timeout)
 			ch.set_timeout(ZERO_DURATION)
 	
+	## Method: send
+	## Implements <MessageChannel.send>. Adds a few more some optional parameters.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to send.
+	##   msg - The INM <Message> to send.
+	##   msg_id - INM message ID. If this is *None*, a message ID will be generated
+	##     internally.
+	##   srcadr - Source INM node address of the message to send. If this is *None*,
+	##     the value of <MessageChannel.srcadr> will be used.
+	##   link_adr - INM link address to use when sending the message. If this is *None*,
+	##     the *dstadr* argument will be used to look up a link address in <rtab>.
+	##   in_link_adr - Optional link address via which routed message *msg* was received.
+	##   envelope_dstadr - Optional INM address that will be sent in the on-wire
+	##     destination address header field, but NOT used to look up the destination node
+	##     in <rtab> (the *dstadr* argument will be used for that).
+	##     This parameter is used when sending CC messages, since the original
+	##     destination address might be of interest to the CC target.
+	##   send_cc - If this is false, no CC message copies of *msg* will be sent.
+	##
+	## Returns:
+	##   A <ResultCode> indicating the outcome of the attempted send operation.
 	def send(self, dstadr, msg, msg_id=None, srcadr=None, link_adr=None, in_link_adr=None,
 	               envelope_dstadr=None, send_cc=True):
 		if msg_id is None:
@@ -1582,6 +2008,8 @@ class RoutingMessageChannel(MessageChannel):
 		
 		return res
 	
+	## Method: recv
+	## Implements <MessageChannel.recv>.
 	def recv(self):
 		timeout = self.timeout
 		timeout_remaining = timeout
@@ -1637,24 +2065,33 @@ class RoutingMessageChannel(MessageChannel):
 		
 		return res, header, msg, link_adr
 	
-	# Returns (delivery_flag, res, dstadr, srcadr, msg, link_adr).
+	## Method: route
+	## Attempts to receive and then route an INM message.
+	##
+	## Returns:
+	##   delivery_flag - True if and only if the local node is an INM destination of
+	##     the received message (as the unicast destination or as receiver of a broadcast
+	##     message).
+	##   res - A <ResultCode> indicating the outcome of the attempted route operation.
+	##   header - The <MessageHeader> of the received message, or *None* in case of failure.
+	##   msg - The received <Message>, or *None* in case of failure.
+	##   link_adr - The link address of the received message, or *None* in case of failure.
 	def route(self):
-		delivery_flag = False  # True iff the returned message should be processed by the router node.
-		res, header, msg, link_adr = self.recv()
+		delivery_flag = False
+		res, header, msg, link_adr = self.recv()  # Receive a message.
 		
-		if res == ResultCode.SUCCESS:
-			if header.dstadr == MessageHeader.BROADCAST_ADR:
-				res = self.send(
-					header.dstadr, msg, header.msg_id, header.srcadr, in_link_adr=link_adr)
+		if res == ResultCode.SUCCESS:  # Did we receive anything?
+			forward_flag = False
+			
+			if header.dstadr == self.srcadr:  # Message for us?
 				delivery_flag = True
-			elif header.dstadr == self.srcadr:
-				if self.relay_messages:
-					res = self.send(
-						header.dstadr, msg, header.msg_id, header.srcadr, in_link_adr=link_adr)
-				delivery_flag = True
-			else:
-				res = self.send(
-					header.dstadr, msg, header.msg_id, header.srcadr, in_link_adr=link_adr)
+				forward_flag = self.relay_messages  # Forward message iff relay enabled.
+			else:  # Message not specifically for us, but broadcast messages are for everyone.
+				delivery_flag = (header.dstadr == MessageHeader.BROADCAST_ADR)
+				forward_flag = True
+			
+			if forward_flag:  # Pass the message on?
+				res = self.send(header.dstadr, msg, header.msg_id, header.srcadr, in_link_adr=link_adr)
 		
 		return delivery_flag, res, header, msg, link_adr
 
@@ -1663,11 +2100,33 @@ class RoutingMessageChannel(MessageChannel):
 ## Abstract parent class for <MessageChannels> that send and receive INM messages
 ## encoded in the standard binary on-wire format.
 class BinaryMessageChannel(MessageChannel):
+	## Method: __init__
+	## Instance initializer.
+	##
+	## Parameters:
+	##   srcadr - INM address of the local node. Will be placed in the source address
+	##     header field of sent messages for which no other source address is provided.
+	##   timeout - Receive timeout. MUST be an instance of the standard library class
+	##     *datetime.timedelta*. If this parameter is *None*, receive operations will
+	##     never time out.
+	##   msg_factory - The <MessageFactory> that the *BinaryMessageChannel* should use
+	##     to create INM <Message> objects. If this parameter is *None*, a default
+	##     <MessageFactory> will be used.
+	##   selector - A selector object compatible with the ones provided by the standard
+	##     library module *selectors*. This parameter is passed on to
+	##     <MessageChannel.__init__>, see that entry for for more information.
+	##   ch_num - Channel number of the *BinaryMessageChannel*. SHOULD be either *None*
+	##     or a nonnegative integer.
+	##   send_bfr_size - Initial capacity in bytes of the send buffer.
+	##   recv_bfr_size - Initial capacity in bytes of the receive buffer.
 	def __init__(self, srcadr, timeout=None, msg_factory=None, selector=None, ch_num=None,
 	             send_bfr_size=0, recv_bfr_size=0):
 		
 		super().__init__(srcadr, timeout, msg_factory, selector, ch_num)
 		
+		# ISSUE: Should the send and receive buffers be "_protected" attributes?
+		# ISSUE: Does the send_bfr_size parameter help? Is previously allocated capacity
+		# retained when a bytearray is cleared?
 		self.send_buffer = bytearray(send_bfr_size)
 		self.recv_buffer = bytearray(recv_bfr_size)
 	
@@ -1756,12 +2215,47 @@ class BinaryMessageChannel(MessageChannel):
 ## Class: InetMessageChannel
 ## A <BinaryMessageChannel> that sends and receives messages via a UDP socket.
 class InetMessageChannel(BinaryMessageChannel):
+	## Variable: DEFAULT_IP_ADR
+	## Default IP socket address.
 	DEFAULT_IP_ADR = '127.0.0.1'
+	
+	## Variable: DEFAULT_UDP_PORT
+	## Default port number of UDP socket.
 	DEFAULT_UDP_PORT = 2357
+	
+	## Variable: DEFAULT_TCP_PORT
+	## Default port number of TCP socket.
 	DEFAULT_TCP_PORT = 2357
 	
+	## Variable: MAX_DATAGRAM_SIZE
+	## Maximum size of sent UDP datagrams.
 	MAX_DATAGRAM_SIZE = 0xffff
 	
+	## Method: __init__
+	## Instance initializer.
+	##
+	## Parameters:
+	##   srcadr - INM address of the local node. Will be placed in the source address
+	##     header field of sent messages for which no other source address is provided.
+	##   ip_adr - IP address of sockets created by the *InetMessageChannel*. If this
+	##     parameter is *None*, the value of <DEFAULT_IP_ADR> will be used.
+	##   udp_port - Port number of UDP socket created by the *InetMessageChannel*.
+	##     If this parameter is *None* or zero, the value of <DEFAULT_UDP_PORT> will
+	##     be used.
+	##   tcp_port - Port number of TCP socket created by the *InetMessageChannel*.
+	##     If this parameter is *None* or zero, the value of <DEFAULT_TCP_PORT> will
+	##     be used.
+	##   timeout - Receive timeout. MUST be an instance of the standard library class
+	##     *datetime.timedelta*. If this parameter is *None*, receive operations will
+	##     never time out.
+	##   msg_factory - The <MessageFactory> that the *InetMessageChannel* should use
+	##     to create INM <Message> objects. If this parameter is *None*, a default
+	##     <MessageFactory> will be used.
+	##   selector - A selector object compatible with the ones provided by the standard
+	##     library module *selectors*. This parameter is passed on to
+	##     <MessageChannel.__init__>, see that entry for for more information.
+	##   ch_num - Channel number of the *InetMessageChannel*. SHOULD be either *None*
+	##     or a nonnegative integer.
 	def __init__(self, srcadr, ip_adr=None, udp_port=None, tcp_port=None,
 		timeout=None, msg_factory=None, selector=None, ch_num=None):
 		
@@ -1774,6 +2268,7 @@ class InetMessageChannel(BinaryMessageChannel):
 		
 		super().__init__(srcadr, timeout, msg_factory, selector, ch_num, 0, self.MAX_DATAGRAM_SIZE)
 		
+		# ISSUE: Any point in these being public attributes? Maybe the address and port ones?
 		self.ip_adr = ip_adr
 		self.udp_port = udp_port
 		self.tcp_port = tcp_port
@@ -1782,11 +2277,17 @@ class InetMessageChannel(BinaryMessageChannel):
 		self.tcp_socket = None
 		self.tcp_selector_key = None
 	
+	## Method: __str__
+	## String conversion. Overrides <MessageChannel.__str__>.
+	##
+	## Returns:
+	##   A string representation of this *InetMessageChannel*, in the format
+	##   "class_name(srcadr, ip_adr, udp_port)".
 	def __str__(self):
 		return f'{type(self).__name__}({self.srcadr}, {self.ip_adr}, {self.udp_port})'
-		#return '{0}({1}, {2}, {3})'.format(
-		#	type(self).__name__, self.srcadr, self.ip_adr, self.udp_port)
 	
+	## Method: open
+	## Overrides <MessageChannel.open>.
 	def open(self):
 		if self.is_open():
 			return ResultCode.INVALID_STATE
@@ -1812,6 +2313,8 @@ class InetMessageChannel(BinaryMessageChannel):
 		self._is_open = True
 		return ResultCode.SUCCESS
 	
+	## Method: close
+	## Overrides <MessageChannel.close>.
 	def close(self):
 		if not self.is_open():
 			return
@@ -1827,11 +2330,16 @@ class InetMessageChannel(BinaryMessageChannel):
 		
 		# TODO: Shut down and close the TCP socket, if it exists.
 	
+	## Method: get_selector_keys
+	## Overrides <MessageChannel.get_selector_keys>. Returns the selector key
+	## of the UDP socket.
 	def get_selector_keys(self):
 		if self.udp_selector_key is None:
 			return ()
 		return (self.udp_selector_key,)
 	
+	## Method: set_timeout
+	## Overrides <MessageChannel.set_timeout>.
 	def set_timeout(self, timeout):
 		self.timeout = timeout
 		
@@ -1845,6 +2353,8 @@ class InetMessageChannel(BinaryMessageChannel):
 		
 		self.udp_socket.settimeout(timeout_seconds)
 	
+	## Method: send
+	## Implements <MessageChannel.send>.
 	def send(self, dstadr, msg, msg_id=None, srcadr=None, link_adr=None):
 		if srcadr is None:
 			srcadr = self.srcadr
@@ -1863,6 +2373,8 @@ class InetMessageChannel(BinaryMessageChannel):
 		
 		return ResultCode.SUCCESS
 	
+	## Method: recv
+	## Implements <MessageChannel.recv>.
 	def recv(self):
 		try:
 			# ISSUE: Does this always provide either nothing or a complete datagram?
@@ -1915,10 +2427,14 @@ class SerialMessageChannel(BinaryMessageChannel):
 		self.recv_msg_typ = None
 		self.recv_msg_len = None
 	
+	## Method: __str__
+	## String conversion. Overrides <MessageChannel.__str__>.
+	##
+	## Returns:
+	##   A string representation of this *SerialMessageChannel*, in the format
+	##   "class_name(srcadr, port)".
 	def __str__(self):
 		return f'{type(self).__name__}({self.srcadr}, {self.port})'
-		#return '{0}({1}, {2})'.format(
-		#	type(self).__name__, self.srcadr, self.port)
 	
 	def open(self):
 		if self.is_open():

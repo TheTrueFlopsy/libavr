@@ -66,6 +66,10 @@ from . import inm
 ## <MessageChannel> when the context is entered and then closing the channel
 ## upon exit from the context.
 ##
+## CAUTION: This module is NOT inherently thread-safe. In a multi-threaded
+## application, access to thread-shared objects from this module MUST be
+## synchronized in application code.
+##
 ## Code Example:
 ## > import inm.inm as inm
 ## > import inm.helper as helper
@@ -91,7 +95,7 @@ from . import inm
 ## >
 ## >   if res == Rc.SUCCESS:  # send/receive operation succeeded
 ## >     std_res, req_id = msg.format_mval(conv=C.Int)  # Unpack INM_RESULT payload.
-## >     if std_res = Rs.OK:  # successful register write at destination
+## >     if std_res == Rs.OK:  # successful register write at destination
 ## >       print(f'Wrote {debug0_val:#02x} to debug register 0.')
 class InmHelper:
 	## Variable: DEFAULT_SRCADR
@@ -125,13 +129,13 @@ class InmHelper:
 	##     of the encapsulated <MessageChannel> will be used.
 	##   srcadr - INM source address of the encapsulated <MessageChannel>. Used only if
 	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
-	##     the class attribute *DEFAULT_SRCADR* will be used.
+	##     the class attribute <DEFAULT_SRCADR> will be used.
 	##   ip_adr - IP address of the internal <InetMessageChannel> that is created if
 	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
-	##     the class attribute *DEFAULT_IP_ADR* will be used.
+	##     the class attribute <DEFAULT_IP_ADR> will be used.
 	##   udp_port - UDP port of the internal <InetMessageChannel> that is created if
 	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
-	##     the class attribute *DEFAULT_UDP_PORT* will be used.
+	##     the class attribute <DEFAULT_UDP_PORT> will be used.
 	##   tcp_port - TCP port of the internal <InetMessageChannel> that is created if
 	##     the *channel* parameter is *None*. If this parameter is *None*, the port
 	##     number used for the UDP port is also used for the TCP port.
@@ -139,7 +143,7 @@ class InmHelper:
 	##     NOTE: In the current implementation of <InetMessageChannel>, no TCP socket
 	##     is actually used, so this parameter makes no difference.
 	##   timeout - Receive timeout of the internal <InetMessageChannel> that is created if
-	##     the *channel* parameter is *None*. Should be an instance of the standard library
+	##     the *channel* parameter is *None*. MUST be an instance of the standard library
 	##     class *datetime.timedelta*. If this parameter is *None*, receive operations will
 	##     never time out.
 	##   link_adr - INM link address (think of it as the router address of an IP network)
@@ -147,7 +151,7 @@ class InmHelper:
 	##     is *None*. Should be a tuple of the format *(link_ip_adr, link_udp_port)*.
 	##     If this parameter is *None*, the used *link_ip_adr* will be the same as the IP
 	##     address of the encapsulated channel, while *link_udp_port* will have the value
-	##     of the class attribute *DEFAULT_LINK_UDP_PORT*.
+	##     of the class attribute <DEFAULT_LINK_UDP_PORT>.
 	def __init__(self, channel=None, msg_factory=None,
 	             srcadr=None, ip_adr=None, udp_port=None, tcp_port=None,
 	             timeout=None, link_adr=None):
