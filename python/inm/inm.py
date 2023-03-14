@@ -10,8 +10,8 @@ import serial
 
 ## File: inm.py
 ## The *inm* module provides a complete INM messaging API. This API is primarily
-## designed for flexibility, not ease of use. When implementing an INM client,
-## consider using an <InmHelper> to simplify the exchange of messages.
+## designed for flexibility, not ease of use (or performance). When implementing
+## an INM client, consider using an <InmHelper> to simplify the exchange of messages.
 ##
 ## CAUTION: This module is NOT inherently thread-safe. In a multi-threaded
 ## application, access to thread-shared objects from this module (including the
@@ -1551,11 +1551,13 @@ class MessageChannel:
 		
 		## Property: selector
 		## A selector object compatible with the ones provided by the standard
-		## library module *selectors*. May be *None*.
+		## library module *selectors*. May be *None*. SHOULD be treated as
+		## a read-only attribute.
 		self.selector = selector
 		
 		## Property: ch_num
-		## Channel number of this *MessageChannel*. May be *None*.
+		## Channel number of this *MessageChannel*. May be *None*. SHOULD be treated
+		## as a read-only attribute.
 		self.ch_num = ch_num  # ISSUE: Should this be type/range checked?
 		
 		self._is_open = False
@@ -1709,8 +1711,7 @@ class MessageChannel:
 		return self._selectable_is_readable()
 	
 	## Method: get_selector_keys
-	## Gets the selector keys of encapsulated selectable objects (e.g. sockets)
-	## from this *MessageChannel*.
+	## Gets the selector keys of encapsulated selectable objects from this *MessageChannel*.
 	##
 	## NOTE: The base class implementation always returns an empty tuple.
 	##
@@ -1907,15 +1908,14 @@ class RoutingMessageChannel(MessageChannel):
 		
 		self._selector_key_cache = None
 	
-	# NOTE: The default implementation works for all currently defined
-	#       MessageChannel types, and is more efficient.
+	# NOTE: The base class implementation works for all currently defined
+	#       MessageChannel subclasses, and is more efficient.
 	#def readable(self):
 	#	return any(ch.readable() for ch in self.recv_channels.values())
 	
 	## Method: get_selector_keys
-	## Overrides <MessageChannel.get_selector_keys>. Returns all selector keys
-	## obtained by calling the *get_selector_keys* methods of the channels in
-	## <recv_channels>.
+	## Returns all selector keys obtained by calling the *get_selector_keys* methods
+	## of the channels in <recv_channels>. Overrides <MessageChannel.get_selector_keys>.
 	def get_selector_keys(self):
 		return (k for ch in self.recv_channels.values() for k in ch.get_selector_keys())
 	
@@ -2124,11 +2124,10 @@ class BinaryMessageChannel(MessageChannel):
 		
 		super().__init__(srcadr, timeout, msg_factory, selector, ch_num)
 		
-		# ISSUE: Should the send and receive buffers be "_protected" attributes?
 		# ISSUE: Does the send_bfr_size parameter help? Is previously allocated capacity
 		# retained when a bytearray is cleared?
-		self.send_buffer = bytearray(send_bfr_size)
-		self.recv_buffer = bytearray(recv_bfr_size)
+		self._send_buffer = bytearray(send_bfr_size)
+		self._recv_buffer = bytearray(recv_bfr_size)
 	
 	# CAUTION: This is not any sort of thread safe.
 	def _prepare_send_buffer(self, dstadr, srcadr, msg, msg_id=None):
@@ -2141,13 +2140,13 @@ class BinaryMessageChannel(MessageChannel):
 		msg_typ_b = self.msg_factory.make_val(msg.typ, int_size=1)
 		msg_len_b = self.msg_factory.make_val(len(msg.val), int_size=msg.MESSAGE_LEN_SIZE)
 		
-		self.send_buffer.clear()
-		self.send_buffer.extend(msg_id_b)
-		self.send_buffer.extend(dstadr_b)
-		self.send_buffer.extend(srcadr_b)
-		self.send_buffer.extend(msg_typ_b)
-		self.send_buffer.extend(msg_len_b)
-		self.send_buffer.extend(msg.val)
+		self._send_buffer.clear()
+		self._send_buffer.extend(msg_id_b)
+		self._send_buffer.extend(dstadr_b)
+		self._send_buffer.extend(srcadr_b)
+		self._send_buffer.extend(msg_typ_b)
+		self._send_buffer.extend(msg_len_b)
+		self._send_buffer.extend(msg.val)
 		
 		# NOTE: Done for the benefit of calling code, which might want to call peek_prev_msg_id().
 		self._prev_msg_id = msg_id
@@ -2162,34 +2161,34 @@ class BinaryMessageChannel(MessageChannel):
 			return ResultCode.INVALID_MESSAGE, None, None, None, None
 		
 		#print(n_bytes) # DEBUG: 
-		#print(self.msg_factory.format_val(self.recv_buffer[:n_bytes], ValueConversions.Hex)) # DEBUG: 
+		#print(self.msg_factory.format_val(self._recv_buffer[:n_bytes], ValueConversions.Hex)) # DEBUG: 
 		
 		i = 0
 		msg_id = self.msg_factory.format_val(
-			self.recv_buffer[i:i+MessageHeader.MESSAGE_ID_SIZE], ValueConversions.Int)
+			self._recv_buffer[i:i+MessageHeader.MESSAGE_ID_SIZE], ValueConversions.Int)
 		i += MessageHeader.MESSAGE_ID_SIZE
-		dstadr = self.recv_buffer[i]
+		dstadr = self._recv_buffer[i]
 		i += 1
-		srcadr = self.recv_buffer[i]
+		srcadr = self._recv_buffer[i]
 		i += 1
-		msg_typ = self.recv_buffer[i]
+		msg_typ = self._recv_buffer[i]
 		i += 1
 		
 		# TODO: Check message IDs for duplicates.
 		
 		if msg_typ >= LargeMessage.MIN_TYPE_NUM:
 			msg_len = self.msg_factory.format_val(
-				self.recv_buffer[i:i+LargeMessage.MESSAGE_LEN_SIZE], ValueConversions.Int)
+				self._recv_buffer[i:i+LargeMessage.MESSAGE_LEN_SIZE], ValueConversions.Int)
 			i += LargeMessage.MESSAGE_LEN_SIZE
 		else:
-			msg_len = self.recv_buffer[i]
+			msg_len = self._recv_buffer[i]
 			i += 1
 		
 		header = MessageHeader(msg_id, dstadr, srcadr)
 		return ResultCode.SUCCESS, header, msg_typ, msg_len, i
 	
 	def _parse_recv_value(self, n_bytes, msg_typ, msg_len, start_i):
-		msg_val = bytes(self.recv_buffer[start_i:n_bytes])
+		msg_val = bytes(self._recv_buffer[start_i:n_bytes])
 		
 		if msg_typ >= LargeMessage.MIN_TYPE_NUM:
 			msg = LargeMessage(msg_typ, msg_val)
@@ -2237,8 +2236,9 @@ class InetMessageChannel(BinaryMessageChannel):
 	## Parameters:
 	##   srcadr - INM address of the local node. Will be placed in the source address
 	##     header field of sent messages for which no other source address is provided.
-	##   ip_adr - IP address of sockets created by the *InetMessageChannel*. If this
-	##     parameter is *None*, the value of <DEFAULT_IP_ADR> will be used.
+	##   ip_adr - IP address of sockets created by the *InetMessageChannel*. Specify
+	##     the address as a hostname or dotted-decimal string. If this parameter is
+	##     *None*, the value of <DEFAULT_IP_ADR> will be used.
 	##   udp_port - Port number of UDP socket created by the *InetMessageChannel*.
 	##     If this parameter is *None* or zero, the value of <DEFAULT_UDP_PORT> will
 	##     be used.
@@ -2268,14 +2268,27 @@ class InetMessageChannel(BinaryMessageChannel):
 		
 		super().__init__(srcadr, timeout, msg_factory, selector, ch_num, 0, self.MAX_DATAGRAM_SIZE)
 		
-		# ISSUE: Any point in these being public attributes? Maybe the address and port ones?
+		## Property: ip_adr
+		## IP address of sockets used by this *InetMessageChannel*, as a hostname or dotted-decimal
+		## string. This SHOULD be treated as a read-only attribute.
 		self.ip_adr = ip_adr
+		
+		## Property: udp_port
+		## Port number of UDP socket used by this *InetMessageChannel*. This SHOULD be treated as
+		## a read-only attribute.
 		self.udp_port = udp_port
+		
+		## Property: tcp_port
+		## Port number of TCP socket used by this *InetMessageChannel*. This SHOULD be treated as
+		## a read-only attribute.
+		##
+		## NOTE: No TCP socket is actually created or used by the current version of this class.
 		self.tcp_port = tcp_port
-		self.udp_socket = None
-		self.udp_selector_key = None
-		self.tcp_socket = None
-		self.tcp_selector_key = None
+		
+		self._udp_socket = None
+		self._udp_selector_key = None
+		self._tcp_socket = None
+		self._tcp_selector_key = None
 	
 	## Method: __str__
 	## String conversion. Overrides <MessageChannel.__str__>.
@@ -2307,8 +2320,8 @@ class InetMessageChannel(BinaryMessageChannel):
 		
 		# TODO: Implement TCP transport for large messages.
 		
-		self.udp_socket = udp_socket
-		self.udp_selector_key = self._register_selectable(self.udp_socket, self.ch_num)
+		self._udp_socket = udp_socket
+		self._udp_selector_key = self._register_selectable(self._udp_socket, self.ch_num)
 		
 		self._is_open = True
 		return ResultCode.SUCCESS
@@ -2321,22 +2334,22 @@ class InetMessageChannel(BinaryMessageChannel):
 		
 		self._is_open = False
 		
-		if self.udp_socket is not None:
-			self._unregister_selectable(self.udp_socket)
+		if self._udp_socket is not None:
+			self._unregister_selectable(self._udp_socket)
 			
-			self.udp_socket.close()
-			self.udp_socket = None
-			self.udp_selector_key = None
+			self._udp_socket.close()
+			self._udp_socket = None
+			self._udp_selector_key = None
 		
 		# TODO: Shut down and close the TCP socket, if it exists.
 	
 	## Method: get_selector_keys
-	## Overrides <MessageChannel.get_selector_keys>. Returns the selector key
-	## of the UDP socket.
+	## Returns the selector key of the UDP socket.
+	## Overrides <MessageChannel.get_selector_keys>. 
 	def get_selector_keys(self):
-		if self.udp_selector_key is None:
+		if self._udp_selector_key is None:
 			return ()
-		return (self.udp_selector_key,)
+		return (self._udp_selector_key,)
 	
 	## Method: set_timeout
 	## Overrides <MessageChannel.set_timeout>.
@@ -2351,7 +2364,7 @@ class InetMessageChannel(BinaryMessageChannel):
 		else:
 			timeout_seconds = None
 		
-		self.udp_socket.settimeout(timeout_seconds)
+		self._udp_socket.settimeout(timeout_seconds)
 	
 	## Method: send
 	## Implements <MessageChannel.send>.
@@ -2366,9 +2379,9 @@ class InetMessageChannel(BinaryMessageChannel):
 		
 		self._prepare_send_buffer(dstadr, srcadr, msg, msg_id)
 		
-		n_bytes = self.udp_socket.sendto(self.send_buffer, link_adr)
+		n_bytes = self._udp_socket.sendto(self._send_buffer, link_adr)
 		
-		if n_bytes != len(self.send_buffer):
+		if n_bytes != len(self._send_buffer):
 			return ResultCode.LINK_FAILURE
 		
 		return ResultCode.SUCCESS
@@ -2383,8 +2396,8 @@ class InetMessageChannel(BinaryMessageChannel):
 			#       Nothing is mentioned or implied about partial packets being
 			#       received. That makes sense, since it would just be a PITA for
 			#       no good reason.
-			n_bytes, link_adr = self.udp_socket.recvfrom_into(
-				self.recv_buffer, len(self.recv_buffer))
+			n_bytes, link_adr = self._udp_socket.recvfrom_into(
+				self._recv_buffer, len(self._recv_buffer))
 		except socket.timeout:
 			return ResultCode.RECV_TIMEOUT, None, None, None
 		# NOTE: The Python socket module docs state the following:
@@ -2404,28 +2417,69 @@ class InetMessageChannel(BinaryMessageChannel):
 ## Class: SerialMessageChannel
 ## A <BinaryMessageChannel> that sends and receives messages via a serial port.
 class SerialMessageChannel(BinaryMessageChannel):
-	#DEFAULT_BAUDRATE = 9600
+	## Variable: DEFAULT_BAUDRATE
+	## Default baud rate to set on the opened serial port.
 	DEFAULT_BAUDRATE = 38400
+	#DEFAULT_BAUDRATE = 9600
 	
+	## Variable: N_HEADER_BYTES
+	## Total size of the header, type and length fields of an INM message.
 	N_HEADER_BYTES = MessageHeader.HEADER_SIZE + StandardMessage.MIN_MESSAGE_SIZE
+	
+	## Variable: MAX_MESSAGE_LEN
+	## Maximum supported INM message (value) length.
 	MAX_MESSAGE_LEN = 0xff - N_HEADER_BYTES
 	
+	## Variable: TIMEOUT_DIVISOR
+	## If a receive timeout is set on a *SerialMessageChannel*, the timeout set for each
+	## attempt to read data from the underlying serial port API will be the primary
+	## timeout divided by *TIMEOUT_DIVISOR*. This is done because several reads may be
+	## needed to obtain a complete message, so if the primary timeout was used for each
+	## read, there could be significant overshoot.
 	TIMEOUT_DIVISOR = 10.0
 	
+	## Method: __init__
+	## Instance initializer.
+	##
+	## Parameters:
+	##   srcadr - INM address of the local node. Will be placed in the source address
+	##     header field of sent messages for which no other source address is provided.
+	##   port - Filesystem path of the serial port device to open.
+	##   baudrate - Baud rate to open the serial port at. If this parameter is *None*,
+	##     the value of <DEFAULT_BAUDRATE> will be used.
+	##   timeout - Receive timeout. MUST be an instance of the standard library class
+	##     *datetime.timedelta*. If this parameter is *None*, receive operations will
+	##     never time out.
+	##   msg_factory - The <MessageFactory> that the *SerialMessageChannel* should use
+	##     to create INM <Message> objects. If this parameter is *None*, a default
+	##     <MessageFactory> will be used.
+	##   selector - A selector object compatible with the ones provided by the standard
+	##     library module *selectors*. This parameter is passed on to
+	##     <MessageChannel.__init__>, see that entry for for more information.
+	##   ch_num - Channel number of the *SerialMessageChannel*. SHOULD be either *None*
+	##     or a nonnegative integer.
 	def __init__(self, srcadr, port, baudrate=None, timeout=None, msg_factory=None, selector=None, ch_num=None):
 		if baudrate is None:
 			baudrate = self.DEFAULT_BAUDRATE
 		
 		super().__init__(srcadr, timeout, msg_factory, selector, ch_num, 0, 0)
 		
+		## Property: port
+		## Filesystem path of the used serial port device. This SHOULD be treated as
+		## a read-only attribute.
 		self.port = port
-		self.baudrate = baudrate
-		self.serial_dev = None
-		self.serial_selector_key = None
 		
-		self.recv_header = None
-		self.recv_msg_typ = None
-		self.recv_msg_len = None
+		## Property: baudrate
+		## Baud rate to open the used serial port at. This SHOULD be treated as
+		## a read-only attribute.
+		self.baudrate = baudrate
+		
+		self._serial_dev = None
+		self._serial_selector_key = None
+		
+		self._recv_header = None
+		self._recv_msg_typ = None
+		self._recv_msg_len = None
 	
 	## Method: __str__
 	## String conversion. Overrides <MessageChannel.__str__>.
@@ -2436,6 +2490,8 @@ class SerialMessageChannel(BinaryMessageChannel):
 	def __str__(self):
 		return f'{type(self).__name__}({self.srcadr}, {self.port})'
 	
+	## Method: open
+	## Overrides <MessageChannel.open>.
 	def open(self):
 		if self.is_open():
 			return ResultCode.INVALID_STATE
@@ -2453,30 +2509,37 @@ class SerialMessageChannel(BinaryMessageChannel):
 		except Exception:
 			return ResultCode.LINK_FAILURE
 		
-		self.serial_dev = serial_dev
-		self.serial_selector_key = self._register_selectable(self.serial_dev, self.ch_num)
+		self._serial_dev = serial_dev
+		self._serial_selector_key = self._register_selectable(self._serial_dev, self.ch_num)
 		
 		self._is_open = True
 		return ResultCode.SUCCESS
 	
+	## Method: close
+	## Overrides <MessageChannel.close>.
 	def close(self):
 		if not self.is_open():
 			return
 		
 		self._is_open = False
 		
-		if self.serial_dev is not None:
-			self._unregister_selectable(self.serial_dev)
+		if self._serial_dev is not None:
+			self._unregister_selectable(self._serial_dev)
 			
-			self.serial_dev.close()
-			self.serial_dev = None
-			self.serial_selector_key = None
+			self._serial_dev.close()
+			self._serial_dev = None
+			self._serial_selector_key = None
 	
+	## Method: get_selector_keys
+	## Returns the selector key of the serial port device.
+	## Overrides <MessageChannel.get_selector_keys>. 
 	def get_selector_keys(self):
-		if self.serial_selector_key is None:
+		if self._serial_selector_key is None:
 			return ()
-		return (self.serial_selector_key,)
+		return (self._serial_selector_key,)
 	
+	## Method: set_timeout
+	## Overrides <MessageChannel.set_timeout>.
 	def set_timeout(self, timeout):
 		self.timeout = timeout
 		
@@ -2488,8 +2551,10 @@ class SerialMessageChannel(BinaryMessageChannel):
 		else:
 			timeout_seconds = None
 		
-		self.serial_dev.timeout = timeout_seconds
+		self._serial_dev.timeout = timeout_seconds
 	
+	## Method: send
+	## Implements <MessageChannel.send>.
 	def send(self, dstadr, msg, msg_id=None, srcadr=None, link_adr=None):
 		if srcadr is None:
 			srcadr = self.srcadr
@@ -2502,67 +2567,69 @@ class SerialMessageChannel(BinaryMessageChannel):
 		
 		self._prepare_send_buffer(dstadr, srcadr, msg, msg_id)
 		
-		n_bytes = self.serial_dev.write(self.send_buffer)
+		n_bytes = self._serial_dev.write(self._send_buffer)
 		
 		#print(f'msg={str(msg)}') # DEBUG:
-		#print(f'{len(self.send_buffer)} {self.send_buffer.hex()}') # DEBUG: 
+		#print(f'{len(self._send_buffer)} {self._send_buffer.hex()}') # DEBUG: 
 		#print(f'n_bytes={n_bytes}') # DEBUG: 
 		
-		if n_bytes != len(self.send_buffer):
+		if n_bytes != len(self._send_buffer):
 			return ResultCode.LINK_FAILURE
 		
 		return ResultCode.SUCCESS
 	
+	## Method: recv
+	## Implements <MessageChannel.recv>.
 	def recv(self):
 		if self.timeout is not None:
 			timeout_remaining = self.timeout
 			t0 = get_timestamp()
 		
 		while True:
-			if len(self.recv_buffer) < self.N_HEADER_BYTES: # Receive header.
-				bytes_to_read = self.N_HEADER_BYTES - len(self.recv_buffer)
-				header_bytes = self.serial_dev.read(bytes_to_read)
+			if len(self._recv_buffer) < self.N_HEADER_BYTES: # Receive header.
+				bytes_to_read = self.N_HEADER_BYTES - len(self._recv_buffer)
+				header_bytes = self._serial_dev.read(bytes_to_read)
 				
 				if len(header_bytes) > 0:
-					self.recv_buffer.extend(header_bytes)
+					self._recv_buffer.extend(header_bytes)
 					
-					if len(self.recv_buffer) == self.N_HEADER_BYTES:
+					if len(self._recv_buffer) == self.N_HEADER_BYTES:
 						res, header, msg_typ, msg_len, i = self._parse_recv_header(
-							len(self.recv_buffer))
+							len(self._recv_buffer))
 						
 						if res != ResultCode.SUCCESS:
 							return res
 						
-						self.recv_header = header
-						self.recv_msg_typ = msg_typ
-						self.recv_msg_len = msg_len
+						self._recv_header = header
+						self._recv_msg_typ = msg_typ
+						self._recv_msg_len = msg_len
 			else: # Header received. Receive value bytes.
-				n_message_bytes = self.N_HEADER_BYTES + self.recv_msg_len
+				n_message_bytes = self.N_HEADER_BYTES + self._recv_msg_len
 				
-				if len(self.recv_buffer) < n_message_bytes:
-					bytes_to_read = n_message_bytes - len(self.recv_buffer)
-					value_bytes = self.serial_dev.read(bytes_to_read)
+				if len(self._recv_buffer) < n_message_bytes:
+					bytes_to_read = n_message_bytes - len(self._recv_buffer)
+					value_bytes = self._serial_dev.read(bytes_to_read)
 					if len(value_bytes) > 0:
-						self.recv_buffer.extend(value_bytes)
+						self._recv_buffer.extend(value_bytes)
 				
-				if len(self.recv_buffer) == n_message_bytes:
+				if len(self._recv_buffer) == n_message_bytes:
 					res, msg = self._parse_recv_value(
-						len(self.recv_buffer), self.recv_msg_typ, self.recv_msg_len,
+						len(self._recv_buffer), self._recv_msg_typ, self._recv_msg_len,
 						self.N_HEADER_BYTES)
 					
 					if res != ResultCode.SUCCESS:
 						return res
 					
-					header = self.recv_header
+					header = self._recv_header
 					
-					self.recv_buffer.clear()
-					self.recv_header = None
-					self.recv_msg_typ = None
-					self.recv_msg_len = None
+					self._recv_buffer.clear()
+					self._recv_header = None
+					self._recv_msg_typ = None
+					self._recv_msg_len = None
 		
 					return ResultCode.SUCCESS, header, msg, None
 			
-			#print(f'{len(self.recv_buffer)} {self.recv_buffer.hex()}') # DEBUG: 
+			#print(f'{len(self._recv_buffer)} {self._recv_buffer.hex()}') # DEBUG: 
 			
 			if self.timeout is not None:
 				t1 = get_timestamp()

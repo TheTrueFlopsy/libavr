@@ -1,5 +1,6 @@
 
 from . import inm
+from .inm import ResultCode as _RC
 
 ## File: helper.py
 ## The *helper* module contains the <InmHelper>, a convenience class
@@ -75,9 +76,9 @@ from . import inm
 ## > import inm.helper as helper
 ## >
 ## > T  = inm.StandardTypes      # standard INM message types
-## > Rs = inm.StandardResults    # INM protocol result codes (sent in responses)
+## > SR = inm.StandardResults    # INM protocol result codes (sent in responses)
 ## > G  = inm.StandardRegisters  # standard logical registers for INM nodes
-## > Rc = inm.ResultCode         # INM module result codes (returned by methods)
+## > RC = inm.ResultCode         # INM module result codes (returned by methods)
 ## > C  = inm.ValueConversions   # INM message field type conversions
 ## > dstadr = 10
 ## > debug0_val = 0xdb
@@ -86,16 +87,16 @@ from . import inm
 ## >   # Ask node 10 about its firmware version.
 ## >   res, header, msg, link_adr = h.sendrecv(dstadr, T.REG_READ, G.FWVERSION)
 ## >
-## >   if res == Rc.SUCCESS:  # send/receive operation succeeded
+## >   if res == RC.SUCCESS:  # send/receive operation succeeded
 ## >     r_index, fw_ver, req_id = msg.format_mval(conv=C.Int)  # Unpack INM_REG_READ_RES payload.
 ## >     print(f'Node {dstadr} has firmware version {fw_ver}.')
 ## >
 ## >   # Write to debug register 0 at node 10.
 ## >   res, header, msg, link_adr = h.sendrecv_mval(dstadr, T.REG_WRITE, (G.DEBUG0, debug0_val))
 ## >
-## >   if res == Rc.SUCCESS:  # send/receive operation succeeded
+## >   if res == RC.SUCCESS:  # send/receive operation succeeded
 ## >     std_res, req_id = msg.format_mval(conv=C.Int)  # Unpack INM_RESULT payload.
-## >     if std_res == Rs.OK:  # successful register write at destination
+## >     if std_res == SR.OK:  # successful register write at destination
 ## >       print(f'Wrote {debug0_val:#02x} to debug register 0.')
 class InmHelper:
 	## Variable: DEFAULT_SRCADR
@@ -114,6 +115,11 @@ class InmHelper:
 	## Default target UDP port of internal <InetMessageChannel>.
 	DEFAULT_LINK_UDP_PORT = 3000
 	
+	_SM_MIN_TYPE = inm.StandardMessage.MIN_TYPE_NUM
+	_SM_MAX_TYPE = inm.StandardMessage.MAX_TYPE_NUM
+	_LM_MIN_TYPE = inm.LargeMessage.MIN_TYPE_NUM
+	_LM_MAX_TYPE = inm.LargeMessage.MAX_TYPE_NUM
+	
 	## Method: __init__
 	## Instance initializer. Offers convenient default behaviors. For example, creating
 	## an *InmHelper* with zero arguments should result in an internal <InetMessageChannel>
@@ -131,8 +137,9 @@ class InmHelper:
 	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
 	##     the class attribute <DEFAULT_SRCADR> will be used.
 	##   ip_adr - IP address of the internal <InetMessageChannel> that is created if
-	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
-	##     the class attribute <DEFAULT_IP_ADR> will be used.
+	##     the *channel* parameter is *None*. Specify the address as a hostname or
+	##     dotted-decimal string. If this parameter is *None*, the value of the class
+	##     attribute <DEFAULT_IP_ADR> will be used.
 	##   udp_port - UDP port of the internal <InetMessageChannel> that is created if
 	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
 	##     the class attribute <DEFAULT_UDP_PORT> will be used.
@@ -231,12 +238,12 @@ class InmHelper:
 	## Returns:
 	##   A <ResultCode> indicating the outcome of the attempted send operation.
 	def send(self, dstadr, typ, val, int_size=None, msg_id=None, srcadr=None, link_adr=None):
-		if typ >= inm.StandardMessage.MIN_TYPE_NUM and typ <= inm.StandardMessage.MAX_TYPE_NUM:
+		if self._SM_MIN_TYPE <= typ <= self._SM_MAX_TYPE:
 			msg = self.msg_factory.make_msg(typ, val, int_size)
-		elif typ >= inm.LargeMessage.MIN_TYPE_NUM and typ <= inm.LargeMessage.MAX_TYPE_NUM:
+		elif self._LM_MIN_TYPE <= typ <= self._LM_MAX_TYPE:
 			msg = self.msg_factory.make_large_msg(typ, val, int_size)
 		else:
-			return inm.ResultCode.INVALID_ARGUMENT
+			return _RC.INVALID_ARGUMENT
 		
 		if link_adr is None:
 			link_adr = self.link_adr
@@ -264,12 +271,12 @@ class InmHelper:
 	## Returns:
 	##   A <ResultCode> indicating the outcome of the attempted send operation.
 	def send_mval(self, dstadr, typ, mval, int_size=None, msg_id=None, srcadr=None, link_adr=None):
-		if typ >= inm.StandardMessage.MIN_TYPE_NUM and typ <= inm.StandardMessage.MAX_TYPE_NUM:
+		if self._SM_MIN_TYPE <= typ <= self._SM_MAX_TYPE:
 			msg = self.msg_factory.make_msg_mval(typ, mval, int_size)
-		elif typ >= inm.LargeMessage.MIN_TYPE_NUM and typ <= inm.LargeMessage.MAX_TYPE_NUM:
+		elif self._LM_MIN_TYPE <= typ <= self._LM_MAX_TYPE:
 			msg = self.msg_factory.make_large_msg_mval(typ, mval, int_size)
 		else:
-			return inm.ResultCode.INVALID_ARGUMENT
+			return _RC.INVALID_ARGUMENT
 		
 		if link_adr is None:
 			link_adr = self.link_adr
@@ -310,7 +317,7 @@ class InmHelper:
 	##   link_adr - The link address of the received message, or *None* in case of failure.
 	def sendrecv(self, dstadr, typ, val, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		res = self.send(dstadr, typ, val, int_size, msg_id, srcadr, link_adr)
-		if res != inm.ResultCode.SUCCESS:
+		if res != _RC.SUCCESS:
 			return res, None, None, None
 		
 		return self.recv()
@@ -341,7 +348,7 @@ class InmHelper:
 	##   link_adr - The link address of the received message, or *None* in case of failure.
 	def sendrecv_mval(self, dstadr, typ, mval, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		res = self.send_mval(dstadr, typ, mval, int_size, msg_id, srcadr, link_adr)
-		if res != inm.ResultCode.SUCCESS:
+		if res != _RC.SUCCESS:
 			return res, None, None, None
 		
 		return self.recv()

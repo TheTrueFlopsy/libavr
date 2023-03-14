@@ -9,7 +9,7 @@ import selectors
 import sys
 
 import inm.inm as inm
-from inm.inm import ValueConversions as _VC
+from inm.inm import ResultCode as _RC, ValueConversions as _VC
 from inm.inm import StandardTypes as _ST, StandardResults as _SRes, StandardRegisters as _SR
 
 
@@ -128,14 +128,14 @@ def _parse_args(args=None, namespace=None):
 def _parse_inm_adr(s):
 	# NOTE: Because an int argument to int() is suddenly verboten when you specify a base.
 	inm_adr = s if isinstance(s, int) else int(s, 0)
-	if inm_adr < 0 or inm_adr > _MAX_INM_ADR:
+	if not (0 <= inm_adr <= _MAX_INM_ADR):
 		_log.error(f'Invalid INM address {inm_adr} specified. Exiting.')
 		sys.exit(2)
 	return inm_adr
 
 def _parse_ch_num(s, channels=None):
 	ch_num = int(s, 0)  # Allow prefixed integer arguments in base 2, 8, or 16.
-	if ch_num < 0 or ch_num > 0xffff:
+	if not (0 <= ch_num <= 0xffff):
 		_log.error(f'Invalid channel number {ch_num} specified. Exiting.')
 		sys.exit(3)
 	
@@ -147,7 +147,7 @@ def _parse_ch_num(s, channels=None):
 
 def _parse_port_num(s):
 	port_num = int(s, 0)  # Allow prefixed integer arguments in base 2, 8, or 16.
-	if port_num < 0 or port_num > 0xffff:
+	if not (0 <= port_num <= 0xffff):
 		_log.error(f'Invalid port number {port_num} specified. Exiting.')
 		sys.exit(5)
 	elif port_num == 0:
@@ -156,7 +156,7 @@ def _parse_port_num(s):
 
 def _parse_baud_rate(s):
 	baud = int(s)
-	if baud < 0 or baud > _MAX_BAUDRATE:
+	if not (0 <= baud <= _MAX_BAUDRATE):
 		_log.error(f'Invalid baud rate {baud} specified. Exiting.')
 		sys.exit(6)
 	elif baud == 0:
@@ -383,7 +383,7 @@ def main():
 					#_log.info(f'Musecs in route():             {t_d_r: 8d}')
 					#t0 = inm.get_timestamp()
 					
-					if res == inm.ResultCode.SUCCESS:
+					if res == _RC.SUCCESS:
 						if msg_for_me:
 							_log.debug(inm.format_msg_info(msg, 'RECV', header, link_adr, 8))
 							
@@ -392,12 +392,12 @@ def main():
 							if response is not None:
 								res = rch.send(header.srcadr, response, link_adr=link_adr)
 								
-								if res != inm.ResultCode.SUCCESS:
+								if res != _RC.SUCCESS:
 									_log.info(inm.format_msg_info(res.name, 'REPLY_E', header, link_adr, 8))
 						else:
 							# IDEA: Add a "message routed" hook.
 							_log.debug(inm.format_msg_info(msg, 'ROUTE', header, link_adr, 8))
-					elif res != inm.ResultCode.RECV_TIMEOUT:
+					elif res != _RC.RECV_TIMEOUT:
 						# IDEA: Add a "routing error" hook.
 						_log.info(inm.format_msg_info(res.name, 'ERROR', header, link_adr, 8))
 					
