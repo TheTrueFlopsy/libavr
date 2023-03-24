@@ -125,6 +125,9 @@
 /**
 	Enum: TTLV Module State/Result Codes
 	
+	NOTE: The error codes are those starting with "TTLV_E_". These all have
+	numeric values greater than or equal to *TTLV_E_UNSPECIFIED*.
+	
 	TTLV_SUCCESS       - operation or function finished successfully
 	TTLV_DISABLED      - module is disabled
 	TTLV_READY         - module is idle and ready to transmit or receive
@@ -628,8 +631,8 @@ uint8_t ttlv_try_put_bytes(uint8_t n, const uint8_t *data_p);
 	uncommitted data bytes in the transmit buffer will be committed for transmission.
 	
 	Returns:
-		An integer result code, which will be an error code iff the attempt to initiate
-		transmission failed.
+		An integer result code, which will be an error code if and only if
+		the attempt to initiate transmission failed.
 */
 ttlv_state ttlv_begin_xmit(void);
 
@@ -646,8 +649,8 @@ ttlv_state ttlv_begin_xmit(void);
 	cleared and ready to begin transmission of another, unrelated message.
 	
 	Returns:
-		An integer result code, which will be an error code iff the attempt to initiate
-		transmission failed.
+		An integer result code, which will be an error code if and only if
+		the attempt to initiate transmission failed.
 */
 ttlv_state ttlv_try_begin_xmit(void);
 
@@ -673,8 +676,8 @@ ttlv_state ttlv_try_begin_xmit(void);
 		data_p - Pointer to the data bytes (TLV value) of the message to transmit.
 	
 	Returns:
-		An integer result code, which will be an error code iff the attempt to initiate
-		transmission failed.
+		An integer result code, which will be an error code if and only if
+		the attempt to initiate transmission failed.
 */
 ttlv_state ttlv_xmit(uint8_t dstadr, uint8_t type, uint8_t length, const uint8_t *data_p);
 
@@ -709,8 +712,8 @@ uint8_t ttlv_get_bytes(uint8_t n, uint8_t *data_p);
 	the received message itself is not of interest.
 	
 	Returns:
-		An integer result code, which will be an error code iff the attempt to finish
-		reception failed.
+		An integer result code, which will be an error code if and only if
+		the attempt to finish reception failed.
 */
 ttlv_state ttlv_finish_recv(void);
 
@@ -734,8 +737,8 @@ ttlv_state ttlv_finish_recv(void);
 			of the <ttlv_recv_header> struct).
 	
 	Returns:
-		An integer result code, which will be an error code iff the attempt
-		to retrieve data bytes and finish reception failed.
+		An integer result code, which will be an error code if and only if
+		the attempt to retrieve data bytes and finish reception failed.
 */
 ttlv_state ttlv_recv(uint8_t *data_p);
 

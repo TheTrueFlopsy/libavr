@@ -247,6 +247,40 @@ static ttlv_result remtcam_set_var(
 	return TTLV_RES_OK;
 }
 
+static remtcam_sensor_id select_sensor(uint8_t count, uint8_t flags) {
+	remtcam_sensor_id next_sensor = NO_SENSOR_ID;
+	
+	switch (count) {
+	case COUNT_LIGHT_METER:
+		next_sensor = ID_LIGHT_METER;
+		break;
+	// TODO: etc.
+	}
+	
+	// If not at the sampling slot of an enabled slow sensor...
+	if (next_sensor == NO_SENSOR_ID || !(flags & BV(next_sensor))) {
+		// ...then sample the fast sensor if it's enabled, otherwise be idle
+		// during the next interval.
+		if (flags & BV(ID_MICROPHONE))
+			next_sensor = ID_MICROPHONE;
+		else
+			next_sensor = NO_SENSOR_ID;
+	}
+	
+	return next_sensor;
+}
+
+static uint16_t update_microphone(uint16_t state, uint16_t adc_value) {
+	int16_t tmp_value = (int16_t)(adc_value);    // [0,1023]
+	tmp_value -= MICROPHONE_BIAS;                // [-512,511]
+	tmp_value = abs(tmp_value);                  // [0,512]
+	
+	if (tmp_value >= MICROPHONE_BIAS)            // [0,511]
+		tmp_value = MICROPHONE_BIAS - 1;
+	
+	return state + ((uint16_t)(tmp_value) >> 1); // [0,255]
+}
+
 
 // ---<<< Task Handlers >>>---
 static void command_handler(sched_task *task) {
@@ -369,7 +403,7 @@ static void command_handler(sched_task *task) {
 		ttlv_finish_recv();
 	}
 	
-	if (res != TTLV_RES_OK && res != TTLV_RES_NONE)
+	if (res != TTLV_RES_NONE)
 		ttlv_xmit_inm_result(res);
 }
 
@@ -407,40 +441,6 @@ static void led_handler(sched_task *task) {
 	LED_PORT = led_states | (LED_PORT & ~LED_PIN_MASK);
 	
 	task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
-}
-
-static remtcam_sensor_id select_sensor(uint8_t count, uint8_t flags) {
-	remtcam_sensor_id next_sensor = NO_SENSOR_ID;
-	
-	switch (count) {
-	case COUNT_LIGHT_METER:
-		next_sensor = ID_LIGHT_METER;
-		break;
-	// TODO: etc.
-	}
-	
-	// If not at the sampling slot of an enabled slow sensor...
-	if (next_sensor == NO_SENSOR_ID || !(flags & BV(next_sensor))) {
-		// ...then sample the fast sensor if it's enabled, otherwise be idle
-		// during the next interval.
-		if (flags & BV(ID_MICROPHONE))
-			next_sensor = ID_MICROPHONE;
-		else
-			next_sensor = NO_SENSOR_ID;
-	}
-	
-	return next_sensor;
-}
-
-static uint16_t update_microphone(uint16_t state, uint16_t adc_value) {
-	int16_t tmp_value = (int16_t)(adc_value);    // [0,1023]
-	tmp_value -= MICROPHONE_BIAS;                // [-512,511]
-	tmp_value = abs(tmp_value);                  // [0,512]
-	
-	if (tmp_value >= MICROPHONE_BIAS)            // [0,511]
-		tmp_value = MICROPHONE_BIAS - 1;
-	
-	return state + ((uint16_t)(tmp_value) >> 1); // [0,255]
 }
 
 // NOTE: This handler samples the "fast" microphone input repetitively,

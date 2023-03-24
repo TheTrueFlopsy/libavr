@@ -1,6 +1,5 @@
 
 from . import inm
-from .inm import ResultCode as _RC
 
 ## File: helper.py
 ## The *helper* module contains the <InmHelper>, a convenience class
@@ -58,46 +57,52 @@ from .inm import ResultCode as _RC
 # NOTE: The flattening of a structure is obtained by decomposing it fully into a sequence
 #       of simple (i.e. non-composite) fields of known size.
 
-# TODO: Verify that the code example works.
+# TODO: Verify that the code example works. Make the example available as a script.
+# TODO: To simplify the above, create a firmware example that supports the operations
+#       in the code example. (Or modify an existing one.)
 ## Class: InmHelper
 ## Convenience class for INM communication. Encapsulates a <MessageChannel> and provides
 ## a simplified interface for sending and receiving messages via that channel.
 ##
 ## An *InmHelper* can be used as a context manager, opening the encapsulated
 ## <MessageChannel> when the context is entered and then closing the channel
-## upon exit from the context.
+## upon exit from the context. If the attempt to open the message channel fails,
+## a <MessageChannelError> is thrown by the *__enter__* method.
 ##
 ## CAUTION: This module is NOT inherently thread-safe. In a multi-threaded
 ## application, access to thread-shared objects from this module MUST be
 ## synchronized in application code.
 ##
 ## Code Example:
-## > import inm.inm as inm
 ## > import inm.helper as helper
 ## >
-## > T  = inm.StandardTypes      # standard INM message types
-## > SR = inm.StandardResults    # INM protocol result codes (sent in responses)
-## > G  = inm.StandardRegisters  # standard logical registers for INM nodes
-## > RC = inm.ResultCode         # INM module result codes (returned by methods)
-## > C  = inm.ValueConversions   # INM message field type conversions
-## > dstadr = 10
-## > debug0_val = 0xdb
+## > dstadr = 1
+## > debug0_val = 0x02
 ## >
-## > with helper.InmHelper() as h:  # Create InmHelper with default message channel.
-## >   # Ask node 10 about its firmware version.
-## >   res, header, msg, link_adr = h.sendrecv(dstadr, T.REG_READ, G.FWVERSION)
+## > h = helper.InmHelper()  # Create InmHelper with default message channel.
 ## >
-## >   if res == RC.SUCCESS:  # send/receive operation succeeded
-## >     r_index, fw_ver, req_id = msg.format_mval(conv=C.Int)  # Unpack INM_REG_READ_RES payload.
-## >     print(f'Node {dstadr} has firmware version {fw_ver}.')
+## > res = h.open()  # Open the message channel.
+## > if res != h.RC.SUCCESS:  # Use convenient shorthand reference to enum type.
+## >   print(f'Failed to open message channel: {res.name}')
 ## >
-## >   # Write to debug register 0 at node 10.
-## >   res, header, msg, link_adr = h.sendrecv_mval(dstadr, T.REG_WRITE, (G.DEBUG0, debug0_val))
+## > # Ask INM node 1 about its firmware version.
+## > res, header, msg, link_adr = h.sendrecv(dstadr, h.Typ.REG_READ, h.Reg.FWVERSION)
+## > if res != h.RC.SUCCESS:
+## >   print(f'Failed to read from FWVERSION: {res.name}')
 ## >
-## >   if res == RC.SUCCESS:  # send/receive operation succeeded
-## >     std_res, req_id = msg.format_mval(conv=C.Int)  # Unpack INM_RESULT payload.
-## >     if std_res == SR.OK:  # successful register write at destination
-## >       print(f'Wrote {debug0_val:#02x} to debug register 0.')
+## > r_index, fw_ver, req_id = msg.format_mval(conv=h.VC.Int)  # Unpack INM_REG_READ_RES payload.
+## > print(f'Node {dstadr} has firmware version {fw_ver}.')
+## >
+## > # Write to debug register 0 at node 1.
+## > res, header, msg, link_adr = h.sendrecv_mval(dstadr, h.Typ.REG_WRITE, (h.Reg.DEBUG0, debug0_val))
+## > if res != h.RC.SUCCESS:
+## >   print(f'Failed to write to DEBUG0: {res.name}')
+## >
+## > std_res, req_id = msg.format_mval(conv=h.VC.Int)  # Unpack INM_RESULT payload.
+## > if std_res == h.Res.OK:  # successful register write at destination
+## >   print(f'Wrote {debug0_val:#04x} to DEBUG0.')
+## >
+## > h.close()  # Close the message channel.
 class InmHelper:
 	## Variable: DEFAULT_SRCADR
 	## Default INM source address.
@@ -114,6 +119,26 @@ class InmHelper:
 	## Variable: DEFAULT_LINK_UDP_PORT
 	## Default target UDP port of internal <InetMessageChannel>.
 	DEFAULT_LINK_UDP_PORT = 3000
+	
+	## Variable: Typ
+	## Shorthand alias of <StandardTypes>.
+	Typ = inm.StandardTypes
+	
+	## Variable: Res
+	## Shorthand alias of <StandardResults>.
+	Res = inm.StandardResults
+	
+	## Variable: Reg
+	## Shorthand alias of <StandardRegisters>.
+	Reg = inm.StandardRegisters
+	
+	## Variable: RC
+	## Shorthand alias of <ResultCode>.
+	RC = inm.ResultCode
+	
+	## Variable: VC
+	## Shorthand alias of <ValueConversions>.
+	VC = inm.ValueConversions
 	
 	_SM_MIN_TYPE = inm.StandardMessage.MIN_TYPE_NUM
 	_SM_MAX_TYPE = inm.StandardMessage.MAX_TYPE_NUM
@@ -243,7 +268,7 @@ class InmHelper:
 		elif self._LM_MIN_TYPE <= typ <= self._LM_MAX_TYPE:
 			msg = self.msg_factory.make_large_msg(typ, val, int_size)
 		else:
-			return _RC.INVALID_ARGUMENT
+			return self.RC.INVALID_ARGUMENT
 		
 		if link_adr is None:
 			link_adr = self.link_adr
@@ -276,7 +301,7 @@ class InmHelper:
 		elif self._LM_MIN_TYPE <= typ <= self._LM_MAX_TYPE:
 			msg = self.msg_factory.make_large_msg_mval(typ, mval, int_size)
 		else:
-			return _RC.INVALID_ARGUMENT
+			return self.RC.INVALID_ARGUMENT
 		
 		if link_adr is None:
 			link_adr = self.link_adr
@@ -317,7 +342,7 @@ class InmHelper:
 	##   link_adr - The link address of the received message, or *None* in case of failure.
 	def sendrecv(self, dstadr, typ, val, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		res = self.send(dstadr, typ, val, int_size, msg_id, srcadr, link_adr)
-		if res != _RC.SUCCESS:
+		if res != self.RC.SUCCESS:
 			return res, None, None, None
 		
 		return self.recv()
@@ -348,7 +373,7 @@ class InmHelper:
 	##   link_adr - The link address of the received message, or *None* in case of failure.
 	def sendrecv_mval(self, dstadr, typ, mval, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		res = self.send_mval(dstadr, typ, mval, int_size, msg_id, srcadr, link_adr)
-		if res != _RC.SUCCESS:
+		if res != self.RC.SUCCESS:
 			return res, None, None, None
 		
 		return self.recv()

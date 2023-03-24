@@ -632,7 +632,11 @@ typedef struct sched_task {
 		as garbage by the scheduler, which means that it will be removed
 		from the task list at the start of a scheduler iteration. For
 		this reason, assigning instance number 7 to a task in category 15
-		is generally something to be avoided. (See <TASK_ST_GARBAGE>.)
+		is generally something to be avoided (since putting such a task to
+		sleep is equivalent to marking it as garbage). Also note that any
+		task marked as garbage will effectively be in category 15, which
+		can be confusing if that category is also used for non-garbage tasks.
+		(See <TASK_ST_GARBAGE>.)
 	*/
 	uint8_t st;
 	
@@ -902,8 +906,8 @@ sched_task *sched_find(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
 	NOTE: Before handler invocation, sleeping tasks are awakened (i.e. have the
 	      sleep bit in their TCSB cleared) and elapsing delays canceled.
 	
-	NOTE: A matched task marked as garbage is NOT invoked, but the index
-	      where the task was found is still returned.
+	NOTE: A matched task marked as garbage is NOT invoked or awakened,
+	      but the index where the task was found is still returned.
 	
 	NOTE: The task handler procedure is invoked synchronously.
 	
