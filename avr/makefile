@@ -70,9 +70,9 @@ docdirs := $(doc_dir) $(doc_conf_dir)
 
 # --- Filename Variables ---
 ifdef libavr_attiny
-common := task_sched tbouncer
+common := watchdog task_sched tbouncer
 else
-common := task_sched tbouncer task_tlv std_tlv memmon spihelper i2chelper mcp4x mcp23018
+common := watchdog task_sched tbouncer task_tlv std_tlv memmon spihelper i2chelper mcp4x mcp23018
 endif
 
 test_common    := tbouncer

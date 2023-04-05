@@ -1,142 +1,148 @@
 
 #include <avr/io.h>
 
-// NOTE: When "auto_watchdog.h" is included, the watchdog timer is automatically
-//       disabled following an MCU reset.
 #include "auto_watchdog.h"
+//#include "watchdog.h"
+
 #include "task_sched.h"
 #include "tbouncer.h"
 #include "std_tlv.h"
 
+// ---<<< Test Procedures >>>---
+// --- Test Case 1: Verify software reset and disable-on-startup ---
+/*
+	1: Power up the circuit.
+		! LEDs should switch back and forth a few times, LED 1 (green) should then be on steady.
+	2: Push button 0 (LED 1 toggle).
+		! LED 1 should turn off.
+	3: Push button 1 (software reset).
+		! Behavior should be the same as at power-on.
+	4: Push hardware reset button.
+		! Behavior should be the same as at power-on.
+*/
+
+// --- Test Case 2: Verify behavior without disable-on-startup ---
+/*
+	1: Comment out the include of "auto_watchdog.h", uncomment include of "watchdog.h",
+	   recompile and reupload the firmware. (Alternative: Define WATCHDOG_DO_NOT_AUTODISABLE
+	   in the makefile.)
+	2: Power up the circuit.
+		! LEDs should switch back and forth a few times, LED 1 (green) should then be on steady.
+	3: Push button 0 (LED 1 toggle).
+		! LED 1 should turn off.
+	4: Push button 1 (software reset).
+		! LED 0 (red) should be on (almost) steady.
+	5: Push hardware reset button.
+		! Behavior should be the same as at power-on.
+*/
+
 
 // ---<<< Constant Definitions >>>---
-#define FWID_L 0x02
+#define FWID_L 0x03
 #define FWID_H 0x01
 #define FWVERSION 0x01
 
-#define BLINK_DDR DDRD
-#define BLINK_PORT PORTD
-#define BLINK_PINR PIND
-#define BLINK_PIN0 4
-#define BLINK_PIN1 2
+#define LED_DDR DDRD
+#define LED_PORT PORTD
+#define LED_PINR PIND
+#define LED_PIN0 4
+#define LED_PIN1 2
 
-#define BLINK_INPUT_PINR PINB
-#define BLINK_INPUT_PORT PORTB
-#define BLINK_INPUT_PIN0 1
-#define BLINK_INPUT_PIN1 0
+#define LED_INPUT_PINR PINB
+#define LED_INPUT_PORT PORTB
+#define LED_INPUT_PIN0 1
+#define LED_INPUT_PIN1 0
 
-#define BLINK_INPUT_RISING TBOUNCER_B_RISING
+#define LED_INPUT_RISING TBOUNCER_B_RISING
 
 #define TBOUNCER_TASK_CAT 15
 #define TTLV_TASK_CAT 14
-#define BLINKER_TASK_CAT 0
+#define TEST_TASK_CAT 0
 #define MESSENGER_TASK_CAT 1
 
 #define BAUD_RATE 38400
 //#define BAUD_RATE 9600
 #define USE_U2X 0
 
+#define N_LEDS 2
+#define MAX_LED_TOGGLE 11
+
 #define INM_ADDR 0x01
-#define N_BLINKERS 2
+#define MAX_MSG_LEN 8
 
-#define BLINK_MAX_MSG_LEN 8
-
-enum {
-	BLINK_MSG_T_GET_STATE     = 0x01 + TTLV_MSG_T_APPLICATION,
-	BLINK_MSG_T_GET_STATE_RES = 0x02 + TTLV_MSG_T_APPLICATION
+static const uint8_t led_pins[N_LEDS] = {
+	BV(LED_PIN0),
+	BV(LED_PIN1)
 };
 
-enum {
-	BLINK_STATE_START    = 0,
-	BLINK_STATE_ENABLED  = 1,
-	BLINK_STATE_STOP     = 2,
-	BLINK_STATE_DISABLED = 3
+static const uint8_t led_input_pins[N_LEDS] = {
+	BV(LED_INPUT_PIN0),
+	BV(LED_INPUT_PIN1)
 };
 
-static const uint8_t blink_pins[N_BLINKERS] = {
-	BV(BLINK_PIN0),
-	BV(BLINK_PIN1)
-};
-
-static const uint8_t blink_input_pins[N_BLINKERS] = {
-	BV(BLINK_INPUT_PIN0),
-	BV(BLINK_INPUT_PIN1)
-};
-
-static const sched_time blink_delays[N_BLINKERS] = {
-	SCHED_TIME_MS(450),
-	SCHED_TIME_MS(200)
-};
+static const sched_time led_toggle_delay = SCHED_TIME_MS(200);
 
 
 // ---<<< Program State >>>---
-static sched_time blink_timestamps[N_BLINKERS] = {
-	SCHED_TIME_ZERO,
-	SCHED_TIME_ZERO
-};
+static uint8_t led_states[N_LEDS] = { 1, 0 };
 
-static uint8_t blink_states[N_BLINKERS] = {
-	BLINK_STATE_START,
-	BLINK_STATE_START
-};
+static sched_time led_toggle_timestamp = SCHED_TIME_ZERO;
+
+static uint8_t led_toggle_counter = 0;
 
 static union {
-	uint8_t b[BLINK_MAX_MSG_LEN];
+	uint8_t b[MAX_MSG_LEN];
 	ttlv_msg_inm_reg r;
 	ttlv_msg_inm_regpair rp;
 } msg_data_out;
 
 static union {
-	uint8_t b[BLINK_MAX_MSG_LEN];
+	uint8_t b[MAX_MSG_LEN];
 	ttlv_msg_reg r;
 } msg_data_in;
 
 
 // ---<<< Helper Functions >>>---
-static void update_blink_state(uint8_t blinker_num, uint8_t blink_flag) {
-	uint8_t blink_state = blink_states[blinker_num];
+static void update_led_state(uint8_t led_num, uint8_t led_flag) {
+	uint8_t led_state = led_states[led_num];
 	
-	if (blink_flag) {  // Enable blinking.
-		if (blink_state == BLINK_STATE_DISABLED || blink_state == BLINK_STATE_STOP) {
-			blink_states[blinker_num] = BLINK_STATE_START;
-			sched_task_tcww |= SCHED_CATFLAG(BLINKER_TASK_CAT);  // Notify blinker tasks.
-		}
+	if (led_flag && !led_state) {  // Turn on LED.
+		led_states[led_num] = 1;
+		LED_PORT |= led_pins[led_num];
 	}
-	else {  // Disable blinking.
-		if (blink_state == BLINK_STATE_ENABLED || blink_state == BLINK_STATE_START) {
-			blink_states[blinker_num] = BLINK_STATE_STOP;
-			sched_task_tcww |= SCHED_CATFLAG(BLINKER_TASK_CAT);  // Notify blinker tasks.
-		}
+	else if (!led_flag && led_state) {  // Turn off LED.
+		led_states[led_num] = 0;
+		LED_PORT &= ~led_pins[led_num];
 	}
 }
 
-static uint8_t get_blink_flags(void) {
-	uint8_t blink_flags = 0;
+static uint8_t get_led_flags(void) {
+	uint8_t led_flags = 0;
 	
-	for (uint8_t i = 0; i < N_BLINKERS; i++)
-		if (blink_states[i] == BLINK_STATE_ENABLED)
-			blink_flags |= BV(i);
+	for (uint8_t i = 0; i < N_LEDS; i++)
+		if (led_states[i])
+			led_flags |= BV(i);
 	
-	return blink_flags;
+	return led_flags;
 }
 
-static void set_blink_flags(uint8_t blink_flags) {
-	for (uint8_t i = 0; i < N_BLINKERS; i++) {
-		update_blink_state(i, 1 & blink_flags);
-		blink_flags >>= 1;
+static void set_led_flags(uint8_t led_flags) {
+	for (uint8_t i = 0; i < N_LEDS; i++) {
+		update_led_state(i, 1 & led_flags);
+		led_flags >>= 1;
 	}
 }
 
 static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) {
 	switch (index) {
-	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
-		*value_p = get_blink_flags();
+	case TTLV_REG_DEBUG0:  // LED states as bits (1 if enabled, otherwise 0).
+		*value_p = get_led_flags();
 		break;
-	case TTLV_REG_DEBUG1:  // LED blinker state 0.
-		*value_p = blink_states[0];
+	case TTLV_REG_DEBUG1:  // State of LED 0.
+		*value_p = led_states[0];
 		break;
-	case TTLV_REG_DEBUG2:  // LED blinker state 1.
-		*value_p = blink_states[1];
+	case TTLV_REG_DEBUG2:  // State of LED 1.
+		*value_p = led_states[1];
 		break;
 	case TTLV_REG_FWID_L:
 		*value_p = FWID_L;
@@ -156,8 +162,8 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 
 static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
 	switch (index) {
-	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
-		set_blink_flags(value);
+	case TTLV_REG_DEBUG0:  // LED states as bits (1 if enabled, otherwise 0).
+		set_led_flags(value);
 		break;
 	default:
 		return TTLV_RES_REGISTER;
@@ -176,55 +182,35 @@ TTLV_STD_REGPAIR_READ(ttlv_reg_read, ttlv_regpair_read)
 
 
 // ---<<< Task Handlers >>>---
-static void blink_handler(sched_task *task) {
-	uint8_t num = TASK_ST_GET_NUM(task->st);
-	uint8_t blink_state = blink_states[num];
+static void test_handler(sched_task *task) {
 	sched_time delay_elapsed;
 	
-	if (BLINK_INPUT_RISING & blink_input_pins[num]) {  // Detect input events.
-		if (blink_state == BLINK_STATE_ENABLED || blink_state == BLINK_STATE_START)
-			blink_state = BLINK_STATE_STOP;  // Disable blinking.
-		else
-			blink_state = BLINK_STATE_START;  // Enable blinking.
+	// Detect and handle input events.
+	if (LED_INPUT_RISING & led_input_pins[0])  // Button 0 pushed.
+		update_led_state(1, !led_states[1]);  // Toggle LED 1.
+	
+	if (LED_INPUT_RISING & led_input_pins[1]) {  // Button 1 pushed.
+		update_led_state(0, 1);  // Turn on both LEDs.
+		update_led_state(1, 1);
+		watchdog_reset_mcu();    // Trigger an MCU reset via the watchdog timer.
 	}
 	
-	switch (blink_state) {  // Pretty blink state machine
-	case BLINK_STATE_START:  // Enable blinking.
-		blink_states[num] = BLINK_STATE_ENABLED;
-		BLINK_PORT |= blink_pins[num];  // Turn on LED.
-		blink_timestamps[num] = sched_ticks;  // Remember start time of delay.
-		task->delay = blink_delays[num];  // Reset delay.
-		
-		// Send broadcast message about updated blink state.
-		ttlv_xmit(TTLV_BROADCAST_ADR, BLINK_MSG_T_GET_STATE_RES, N_BLINKERS, blink_states);
-		
-		break;
-	case BLINK_STATE_ENABLED:  // Blinking enabled.
+	if (led_toggle_counter < MAX_LED_TOGGLE) {  // Still toggling the LEDs?
 		// Check whether the LED toggle delay has expired.
-		delay_elapsed = sched_time_sub(sched_ticks, blink_timestamps[num]);
+		delay_elapsed = sched_time_sub(sched_ticks, led_toggle_timestamp);
 		
-		if (sched_time_gte(delay_elapsed, blink_delays[num])) {
-			BLINK_PINR = blink_pins[num];  // Toggle LED by writing 1 to PIN register.
-			blink_timestamps[num] = sched_ticks;  // Remember start time of delay.
-			task->delay = blink_delays[num];  // Reset delay.
+		if (sched_time_gte(delay_elapsed, led_toggle_delay)) {
+			update_led_state(0, !led_states[0]);   // Toggle LEDs.
+			update_led_state(1, !led_states[1]);
+			led_toggle_counter++;                  // Increment toggle counter.
+			led_toggle_timestamp = sched_ticks;    // Remember start time of delay.
+			task->delay = led_toggle_timestamp;    // Reset delay.
 		}
 		else
-			task->delay = sched_time_sub(blink_delays[num], delay_elapsed);  // Resume delay.
-		
-		break;
-	case BLINK_STATE_STOP:  // Disable blinking.
-		blink_states[num] = BLINK_STATE_DISABLED;
-		BLINK_PORT &= ~blink_pins[num];  // Turn off LED.
-		
-		// Send broadcast message about updated blink state.
-		ttlv_xmit(TTLV_BROADCAST_ADR, BLINK_MSG_T_GET_STATE_RES, N_BLINKERS, blink_states);
-		
-		// fallthrough
-	case BLINK_STATE_DISABLED:  // Blinking disabled.
-	default:
-		task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
-		break;
+			task->delay = sched_time_sub(led_toggle_delay, delay_elapsed);  // Resume delay.
 	}
+	else
+		task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
 }
 
 static void message_handler(sched_task *task) {
@@ -308,10 +294,6 @@ static void message_handler(sched_task *task) {
 			res = TTLV_RES_NONE;
 		}
 	}
-	else if (TTLV_CHECK_TL(BLINK_MSG_T_GET_STATE, 0)) {  // Get blink states.
-		ttlv_finish_recv();
-		ttlv_xmit_response(BLINK_MSG_T_GET_STATE_RES, N_BLINKERS, blink_states);
-	}
 	else {  // Unrecognized message.
 		// NOTE: Probably not a good idea to always send error messages in
 		//       response to unrecognized messages. Doing so can easily
@@ -328,14 +310,12 @@ static void message_handler(sched_task *task) {
 static void init_tasks(void) {
 	sched_task task;
 	
-	for (uint8_t i = 0; i < N_BLINKERS; i++) {
-		task = (sched_task) {
-			.st = TASK_ST_MAKE(i, BLINKER_TASK_CAT, 0),
-			.delay = SCHED_TIME_ZERO,
-			.handler = blink_handler
-		};
-		sched_add(&task);
-	}
+	task = (sched_task) {
+		.st = TASK_ST_MAKE(0, TEST_TASK_CAT, 0),
+		.delay = led_toggle_delay,
+		.handler = test_handler
+	};
+	sched_add(&task);
 	
 	task = (sched_task) {
 		.st = TASK_ST_MAKE(0, MESSENGER_TASK_CAT, 0),
@@ -345,22 +325,40 @@ static void init_tasks(void) {
 	sched_add(&task);
 }
 
+// Ensure that the pesky watchdog timer is disabled.
+//WATCHDOG_DISABLE_ON_MCU_RESET
+
+//WATCHDOG_DISABLE_ON_MCU_RESET_SAVE_FLAGS
+
+/*void watchdog_disable_on_mcu_reset(void)
+	__attribute__ ((naked))
+	__attribute__ ((used))
+	__attribute__ ((section (".init3")));
+void watchdog_disable_on_mcu_reset(void) {
+	MCUSR = 0;  // Clear MCU reset flags. (Necessary to ensure that the WDT is disabled.)
+	wdt_disable();  // Disable the watchdog timer.
+}*/
+
 // NOTE: This is the entry point, tell compiler not to save/restore registers.
 int main(void) __attribute__ ((OS_main));
 
 int main(void) {
-	// Set blinky LED pins as outputs.
-	BLINK_DDR |= BV(BLINK_PIN0) | BV(BLINK_PIN1);
+	// Ensure that the pesky watchdog timer is disabled.
+	//watchdog_disable_on_mcu_reset();
+	
+	// Set LED pins as outputs. Turn on LED 0.
+	LED_DDR |= BV(LED_PIN0) | BV(LED_PIN1);
+	LED_PORT |= BV(LED_PIN0);
 	
 	// Enable pull-ups on input pins.
-	BLINK_INPUT_PORT |= BV(BLINK_INPUT_PIN0) | BV(BLINK_INPUT_PIN1);
+	LED_INPUT_PORT |= BV(LED_INPUT_PIN0) | BV(LED_INPUT_PIN1);
 	
 	sched_init();
 	
 	TBOUNCER_INIT(
 		TASK_ST_MAKE(0, TBOUNCER_TASK_CAT, 0), SCHED_TIME_MS(4),
-		BV(BLINK_INPUT_PIN0) | BV(BLINK_INPUT_PIN1), 0, 0,
-		0, TASK_ST_CAT_MASK, TASK_ST_CAT(BLINKER_TASK_CAT));
+		BV(LED_INPUT_PIN0) | BV(LED_INPUT_PIN1), 0, 0,
+		0, TASK_ST_CAT_MASK, TASK_ST_CAT(TEST_TASK_CAT));
 	
 	ttlv_init(
 		TASK_ST_MAKE(0, TTLV_TASK_CAT, 0),

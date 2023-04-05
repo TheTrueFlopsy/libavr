@@ -57,9 +57,6 @@ from . import inm
 # NOTE: The flattening of a structure is obtained by decomposing it fully into a sequence
 #       of simple (i.e. non-composite) fields of known size.
 
-# TODO: Verify that the code example works. Make the example available as a script.
-# TODO: To simplify the above, create a firmware example that supports the operations
-#       in the code example. (Or modify an existing one.)
 ## Class: InmHelper
 ## Convenience class for INM communication. Encapsulates a <MessageChannel> and provides
 ## a simplified interface for sending and receiving messages via that channel.
