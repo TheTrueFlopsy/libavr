@@ -19,11 +19,21 @@ mcu := atmega328p
 
 avrdude := avrdude
 
+# Arduino Uno settings:
 avrdude_port ?= /dev/ttyUSB0
-#avrdude_port ?= /dev/ttyACM0
 avrdude_device := m328p
 avrdude_prog := arduino
 avrdude_baud := 115200
+avrdude_args := -D
+
+# Bus Pirate settings:
+#avrdude_prog := buspirate
+#avrdude_args := -x spifreq=1
+
+# Pololu programmer settings:
+#avrdude_port ?= /dev/ttyACM0
+#avrdude_prog := avrisp2
+#avrdude_args := -B 100kHz
 
 # --- Directory Variables ---
 out_dir := .
@@ -68,8 +78,7 @@ ldirs := $(addprefix -L, $(ldirs_paths))
 lnames := -lavrtask -lm
 
 CFLAGS := -std=c11 $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto
-#LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--relax
-LDFLAGS := -fuse-linker-plugin -Wl,--relax
+LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--relax
 
 # --- Phony Targets ---
 .PHONY : all $(programs) $(targets) clean clean-libavr libavr
@@ -78,16 +87,7 @@ all : $(targets)
 
 $(programs) : prog-% : %
 $(programs) : prog-% : $(bdir)/%.hex
-	$(avrdude) -v -p $(avrdude_device) -c $(avrdude_prog) -P $(avrdude_port) -b $(avrdude_baud) -D -U flash:w:$<
-
-# Bus Pirate settings:
-#$(avrdude) -v -p $(avrdude_device) -c buspirate -x spifreq=1 -P $(avrdude_port) -U flash:w:$<
-# Pololu programmer settings:
-#$(avrdude) -v -p $(avrdude_device) -c avrisp2 -B 100kHz -P $(avrdude_port) -U flash:w:$<
-# CAUTION: The -D option disables automatic chip erase before programming.
-#          Not including that option might have unpleasant consequences.
-# Arduino settings:
-#$(avrdude) -v -p $(avrdude_device) -c arduino -P $(avrdude_port) -b $(avrdude_baud) -D -U flash:w:$<
+	$(avrdude) -v -p $(avrdude_device) -c $(avrdude_prog) -P $(avrdude_port) -b $(avrdude_baud) $(avrdude_args) -U flash:w:$<
 
 # TODO: Add a command that programs the EEPROM (with a hex file that only
 #       contains the .eeprom section).

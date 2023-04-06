@@ -23,8 +23,8 @@
 #define BLINKER_TASK_CAT 0
 #define MESSENGER_TASK_CAT 1
 
-#define BAUD_RATE 38400
-//#define BAUD_RATE 9600
+//#define BAUD_RATE 38400
+#define BAUD_RATE 9600
 #define USE_U2X 0
 
 #define INM_ADDR 0x02
@@ -158,6 +158,17 @@ static void message_handler(sched_task *task) {
 	task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
 }
 
+static void disable_usb(void) {
+	// TODO: Investigate precisely which USB features the Leonardo bootloader
+	//       leaves enabled.
+	USBCON &= ~BV(VBUSTE);
+	USBINT &= ~BV(VBUSTI);
+	UDIEN &= ~(BV(UPRSME) | BV(EORSME) | BV(WAKEUPE) | BV(EORSTE) | BV(SOFE) | BV(SUSPE));
+	UDINT &= ~(BV(UPRSMI) | BV(EORSMI) | BV(WAKEUPI) | BV(EORSTI) | BV(SOFI) | BV(SUSPI));
+	USBCON &= ~BV(USBE);
+	//USBCON |= BV(FRZCLK);
+}
+
 static void init_tasks(void) {
 	sched_task task;
 	
@@ -182,6 +193,10 @@ static void init_tasks(void) {
 int main(void) __attribute__ ((OS_main));
 
 int main(void) {
+	// The Arduino Leonardo bootloader leaves some USB interrupts enabled, which causes trouble
+	// when you're not using the Arduino application framework.
+	disable_usb();
+	
 	// Set blinky LED pins as outputs.
 	BLINK_DDR |= BV(BLINK_PIN0) | BV(BLINK_PIN1);
 	

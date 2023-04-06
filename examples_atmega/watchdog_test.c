@@ -31,7 +31,7 @@
 	3: Push button 0 (LED 1 toggle).
 		! LED 1 should turn off.
 	4: Push button 1 (software reset).
-		! LED 0 (red) should be on (almost) steady.
+		! LED 0 (red) should flash rapidly.
 	5: Push hardware reset button.
 		! Behavior should be the same as at power-on.
 */
@@ -183,8 +183,6 @@ TTLV_STD_REGPAIR_READ(ttlv_reg_read, ttlv_regpair_read)
 
 // ---<<< Task Handlers >>>---
 static void test_handler(sched_task *task) {
-	sched_time delay_elapsed;
-	
 	// Detect and handle input events.
 	if (LED_INPUT_RISING & led_input_pins[0])  // Button 0 pushed.
 		update_led_state(1, !led_states[1]);  // Toggle LED 1.
@@ -197,14 +195,14 @@ static void test_handler(sched_task *task) {
 	
 	if (led_toggle_counter < MAX_LED_TOGGLE) {  // Still toggling the LEDs?
 		// Check whether the LED toggle delay has expired.
-		delay_elapsed = sched_time_sub(sched_ticks, led_toggle_timestamp);
+		sched_time delay_elapsed = sched_time_sub(sched_ticks, led_toggle_timestamp);
 		
 		if (sched_time_gte(delay_elapsed, led_toggle_delay)) {
 			update_led_state(0, !led_states[0]);   // Toggle LEDs.
 			update_led_state(1, !led_states[1]);
 			led_toggle_counter++;                  // Increment toggle counter.
 			led_toggle_timestamp = sched_ticks;    // Remember start time of delay.
-			task->delay = led_toggle_timestamp;    // Reset delay.
+			task->delay = led_toggle_delay;        // Reset delay.
 		}
 		else
 			task->delay = sched_time_sub(led_toggle_delay, delay_elapsed);  // Resume delay.
