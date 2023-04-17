@@ -316,6 +316,31 @@ void sched_invoke_all(uint8_t st_mask, uint8_t st_val) {
 	} while (i < SCHED_MAX_TASKS);
 }
 
+uint8_t sched_wake(uint8_t st_mask, uint8_t st_val, uint8_t start_i, uint8_t notify) {
+	sched_task *task_p = sched_ptr_query(st_mask, st_val, start_i, &start_i);
+	
+	if (!task_p)
+		return SCHED_MAX_TASKS;
+	else if (task_p->st != TASK_ST_GARBAGE) {  // Detect and refuse to wake garbage tasks.
+		task_p->st &= ~TASK_SLEEP_BIT;  // Wakey wakey.
+		if (notify)
+			task_p->delay = SCHED_TIME_ZERO;  // Cancel delay, execute task ASAP.
+	}
+	
+	// NOTE: We return the task index (instead of SCHED_MAX_TASKS) even if
+	//       the task we found was garbage and not awakened, to avoid breaking
+	//       sched_wake_all().
+	return start_i;
+}
+
+void sched_wake_all(uint8_t st_mask, uint8_t st_val, uint8_t notify) {
+	uint8_t i = UINT8_MAX;
+	
+	do {
+		i = sched_wake(st_mask, st_val, i+1, notify);
+	} while (i < SCHED_MAX_TASKS);
+}
+
 sched_task *sched_get_at(uint8_t i) {
 	return (i < sched_list_size) ? task_list + i : NULL;
 }

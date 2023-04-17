@@ -38,6 +38,7 @@ Timestamp: Generated on yyyy-mm-dd
 # --------------------------------------------------------------------------
 
 
+File: auto_watchdog.h  (auto_watchdog.h)
 File: i2chelper.h  (i2chelper.h)
 File: mcp23018.h  (mcp23018.h)
 File: mcp4x.h  (mcp4x.h)
@@ -47,6 +48,7 @@ File: std_tlv.h  (no auto-title, std_tlv.h)
 File: task_sched.h  (no auto-title, task_sched.h)
 File: task_tlv.h  (no auto-title, task_tlv.h)
 File: tbouncer.h  (tbouncer.h)
+File: watchdog.h  (watchdog.h)
 
 Group: Index  {
 

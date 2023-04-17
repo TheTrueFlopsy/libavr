@@ -680,10 +680,10 @@ typedef struct sched_task {
 	Variable: sched_isr_tcww
 	This is the ISR-Task Category Wakeup Word (I-TCWW), a variable that
 	contains bit flags representing a set of task categories that should
-	be awakened at the start of the next scheduler iteration.
+	be notified at the start of the next scheduler iteration.
 	
 	The I-TCWW is a volatile variable and should be used by ISRs that need
-	to awaken categories of tasks.
+	to notify categories of tasks.
 */
 extern volatile sched_catflags sched_isr_tcww;
 
@@ -691,10 +691,10 @@ extern volatile sched_catflags sched_isr_tcww;
 	Variable: sched_task_tcww
 	This is the Task-Task Category Wakeup Word (T-TCWW), a variable that
 	contains bit flags representing a set of task categories that should
-	be awakened at the start of the next scheduler iteration.
+	be notified at the start of the next scheduler iteration.
 	
 	The T-TCWW is a non-volatile variable and should be used by task
-	handler procedures that need to awaken categories of tasks.
+	handler procedures that need to notify categories of tasks.
 */
 extern sched_catflags sched_task_tcww;
 
@@ -940,7 +940,49 @@ uint8_t sched_invoke(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
 */
 void sched_invoke_all(uint8_t st_mask, uint8_t st_val);
 
-// IDEA: Add sched_wake() and sched_wake_all()?
+/**
+	Function: sched_wake
+	Awakens and optionally notifies a matching task on the task list. Awakens and
+	returns the task list index of the first encountered task on the list for
+	which the TCSB bits selected (i.e. set to one) in *st_mask* are equal to the
+	corresponding bits in *st_val*. The search starts at index *start_i* in the
+	task list. If no matching task is found, then <SCHED_MAX_TASKS> is returned.
+	
+	NOTE: A matched task marked as garbage is NOT awakened, but the index where
+	      the task was found is still returned.
+	
+	NOTE: This function delegates to <sched_ptr_query>, and the notes for that
+	      function also apply to this one.
+	
+	Parameters:
+		st_mask - Bit mask to apply to the task control and status byte.
+		st_val - Bit pattern to compare with the task control and status byte.
+		start_i - Starting index of the forward search of the task list.
+		notify - If this is true, a matched task will be notified (i.e. have its
+			execution delay set to zero) instead of just awakened.
+	
+	Returns:
+		The task list index of the matched task, or <SCHED_MAX_TASKS> if there
+		are no matching tasks.
+*/
+uint8_t sched_wake(uint8_t st_mask, uint8_t st_val, uint8_t start_i, uint8_t notify);
+
+/**
+	Function: sched_wake_all
+	Awakens and optionally notifies all matching tasks on the task list. Awakens every
+	non-garbage task on the list for which the TCSB bits selected (i.e. set to one)
+	in *st_mask* are equal to the corresponding bits in *st_val*.
+	
+	NOTE: This function delegates to <sched_wake>, and the notes for that
+	      function also apply to this one.
+	
+	Parameters:
+		st_mask - Bit mask to apply to the task control and status byte.
+		st_val - Bit pattern to compare with the task control and status byte.
+		notify - If this is true, matched tasks will be notified (i.e. have their
+			execution delay set to zero) instead of just awakened.
+*/
+void sched_wake_all(uint8_t st_mask, uint8_t st_val, uint8_t notify);
 
 /**
 	Function: sched_get_at

@@ -371,7 +371,7 @@ static void ttlv_handler(sched_task *task) {
 		run_recv_state_machine();
 	}
 	
-	task->st |= TASK_ST_SLP(1); // Go back to sleep.
+	task->st |= TASK_SLEEP_BIT; // Go back to sleep.
 }
 
 

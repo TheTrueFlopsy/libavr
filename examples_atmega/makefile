@@ -7,15 +7,17 @@ CC := avr-gcc
 testcc := gcc
 OBJ2HEX := avr-objcopy
 
-# Good settings for Arduino Uno
+mcu := atmega328p
+
+# Settings for Arduino Uno:
 # 16 MHz MCU clock, 32 clock cycles per scheduler tick
 f_cpu := 16000000
 f_cpu_prescale := 5
-# Good settings for ATmega328 out-of-the-box
+
+# Settings for ATmega328 out-of-the-box:
 # 1 MHz MCU clock (factory default: 8 MHz osc. / MCU prescale 8), 8 clock cycles per scheduler tick
 #f_cpu := 1000000
 #f_cpu_prescale := 3
-mcu := atmega328p
 
 avrdude := avrdude
 
@@ -78,7 +80,7 @@ ldirs := $(addprefix -L, $(ldirs_paths))
 lnames := -lavrtask -lm
 
 CFLAGS := -std=c11 $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto
-LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--relax
+LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--print-gc-sections -Wl,--relax
 
 # --- Phony Targets ---
 .PHONY : all $(programs) $(targets) clean clean-libavr libavr
