@@ -303,9 +303,9 @@ extern ttlv_mode ttlv_mode_flags;
 /**
 	Variable: ttlv_xmit_task_cats
 	Contains a set of task category bit flags. Tasks in the indicated categories will
-	be awakened in response to certain events in the TTLV transmitter.
+	be notified in response to certain events in the TTLV transmitter.
 	
-	The following transmitter events will trigger awakening of tasks:
+	The following transmitter events will trigger task notification:
 		+ Additional transmit buffer space becomes available while a message is being
 		  transmitted in streaming mode.
 */
@@ -314,9 +314,9 @@ extern sched_catflags ttlv_xmit_task_cats;
 /**
 	Variable: ttlv_recv_task_cats
 	Contains a set of task category bit flags. Tasks in the indicated categories will
-	be awakened in response to certain events in the TTLV receiver.
+	be notified in response to certain events in the TTLV receiver.
 	
-	The following receiver events will trigger awakening of tasks:
+	The following receiver events will trigger task notification:
 		+ A complete INM header is received in INM mode.
 		+ A complete TLV header is received.
 		+ A complete message is received.
@@ -548,10 +548,10 @@ extern ttlv_header ttlv_recv_header;
 		mode - A set of bit flags specifying the mode the TTLV module should
 			operate in,
 		xmit_task_cats - A set of bit flags specifying task categories whose
-			members should be awakened in response to certain events in the
+			members should be notified in response to certain events in the
 			TTLV transmitter. See <ttlv_xmit_task_cats> for details.
 		recv_task_cats - A set of bit flags specifying task categories whose
-			members should be awakened in response to certain events in the
+			members should be notified in response to certain events in the
 			TTLV receiver. See <ttlv_recv_task_cats> for details.
 */
 void ttlv_init(

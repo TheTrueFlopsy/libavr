@@ -11,7 +11,7 @@
 	File: memmon.h
 	A memory monitor module that uses the <task_sched.h> scheduler
 	to periodically execute a task that sends messages about the content
-	of specfied memory locations via the <task_tlv.h> module. The set of
+	of specified memory locations via the <task_tlv.h> module. The set of
 	monitored memory locations can be updated while the task scheduler
 	is running.
 */

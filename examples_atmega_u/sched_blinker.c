@@ -1,6 +1,9 @@
 
 #include <avr/io.h>
 
+// NOTE: When "auto_watchdog.h" is included, the watchdog timer is automatically
+//       disabled following an MCU reset.
+#include "auto_watchdog.h"
 #include "task_sched.h"
 #include "tbouncer.h"
 #include "std_tlv.h"
@@ -193,8 +196,8 @@ static void init_tasks(void) {
 int main(void) __attribute__ ((OS_main));
 
 int main(void) {
-	// The Arduino Leonardo bootloader leaves some USB interrupts enabled, which causes trouble
-	// when you're not using the Arduino application framework.
+	// NOTE: The Arduino Leonardo bootloader leaves some USB interrupts enabled, which
+	// causes trouble when you're not using the Arduino application framework.
 	disable_usb();
 	
 	// Set blinky LED pins as outputs.

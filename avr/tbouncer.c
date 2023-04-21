@@ -214,12 +214,12 @@ static void tbouncer_handler(sched_task *task) {
 void tbouncer_init(
 	uint8_t task_num_cat, sched_time poll_delay,
 	uint8_t a_mask, uint8_t b_mask, uint8_t c_mask, uint8_t d_mask,
-	sched_catflags awaken_cats, uint8_t invoke_mask, uint8_t invoke_st)
+	sched_catflags notify_cats, uint8_t invoke_mask, uint8_t invoke_st)
 {
 	sched_task task;
 	
 	// Initialize debouncer state.
-	tbouncer_task_cats = awaken_cats;
+	tbouncer_task_cats = notify_cats;
 	tbouncer_invoke_mask = invoke_mask;
 	tbouncer_invoke_st = invoke_st;
 	

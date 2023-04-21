@@ -93,7 +93,7 @@ typedef uint8_t i2c_state;
 /**
 	Variable: i2c_task_cats
 	Tasks in the categories indicated by this <sched_catflags> value will be
-	awakened by the I2C module's ISR when a request operation finishes (either
+	notified by the I2C module's ISR when a request operation finishes (either
 	successfully or with an error).
 */
 extern volatile sched_catflags i2c_task_cats;
@@ -128,7 +128,7 @@ extern volatile i2c_state i2c_request_state;
 	Parameters:
 		twbr - A clock divisor value that is used to control the I2C bit rate.
 		task_cats - A set of bit flags specifying task categories whose
-			members should be awakened in response to certain events in the
+			members should be notified in response to certain events in the
 			I2C module. Used to initialize <i2c_task_cats>.
 */
 void i2chelper_mstr_init(uint8_t twbr, sched_catflags task_cats);
@@ -141,7 +141,7 @@ void i2chelper_mstr_init(uint8_t twbr, sched_catflags task_cats);
 	
 	Completion of an I2C request initiated by this function can be
 	detected by polling <i2c_request_state> (e.g. via the <I2C_IS_ACTIVE>
-	macro) and by specifying task categories to be awakened via <i2c_task_cats>.
+	macro) and by specifying task categories to be notified via <i2c_task_cats>.
 	
 	Parameters:
 		addr - The 7-bit I2C slave address of the target device. The address MUST

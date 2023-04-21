@@ -55,14 +55,14 @@ the best choice.
 Writing, building and uploading firmware is not hard once you know how to do it.
 When developing AVR firmware, I rely heavily on MCU datasheets (available on the
  [web site](https://www.microchip.com/en-us/document-listing?docCategory=datasheets)
-of Microchip Corporation) and the AVR Libc documentation. The source code and makefiles
+of Microchip Inc.) and the AVR Libc documentation. The source code and makefiles
 for the example firmware should provide some useful hints. It's basically a matter of
 writing C (and sometimes assembly) code that correctly uses library and hardware
 interfaces to accomplish your goals, compiling and uploading the code (which a script
 can do for you in seconds once you have a setup that works, getting to that point is
 unfortunately beyond the scope of this readme) and then verifying that your system works
 as intended. I've found
- [_Make: AVR Programming_](https://www.makershed.com/products/make-avr-programming-1ed-pdf)
+ [_AVR Programming_](https://www.makershed.com/products/make-avr-programming-1ed-pdf)
 by Elliot Williams to be a useful introduction. Apparently there are tools (debugWIRE,
 JTAG and all that) that allow you to debug firmware as it runs in the MCU, but I must
 admit that I have zero experience with those. I'm more of an "upload, observe behavior,
@@ -71,7 +71,7 @@ the first time, of course.
 
 Each library module has a corresponding C header file that defines the API of the module.
 Keep in mind that some library modules need to be initialized, typically by calling a
-function named `<module prefix>_init`, before use.
+function named `{module_prefix}_init`, before use.
 
 All module header files have [Natural Docs](https://www.naturaldocs.org/) doc comments
 that describe the module's API. These were written for the legacy version (1.5x) of Natural
@@ -106,7 +106,7 @@ in the Python source directory (i.e. `python/`).
 
 ## Library Modules
 
-### avr/watchdog.h - Watchdog Timer Control
+### avr/watchdog.h – Watchdog Timer Control
 This module provides facilities that control the MCU's watchdog timer. There is
 a function that performs a software reset of the MCU via the watchdog, as well as
 macros that disable the watchdog immediately after reset (the watchdog timer remains
@@ -116,7 +116,7 @@ enabled after a watchdog reset).
 
 **NOTE:** This module does not depend on the task scheduler.
 
-### avr/task_sched.h - Task Scheduler
+### avr/task_sched.h – Task Scheduler
 Task scheduler with run-time task management and delayed execution. Some of the other
 library modules depend on the task scheduler.
 
@@ -158,75 +158,149 @@ is no less than the intended delay (the library functions `sched_time_sub` and
 
 **NOTE:** This module is compatible with ATtiny devices.
 
-### avr/task_tlv.h - Asynchronous TLV/INM Communication
+### avr/task_tlv.h – Asynchronous TLV/INM Communication
+The TLV/INM module provides a way for the firmware to exchange messages via the USART.
+Communication via this module is asynchronous, meaning that firmware execution is not
+held up waiting for incoming messages or transmitting outgoing messages. Incoming
+messages received by the module and awaiting processing by application code can be
+detected by polling or task notification. Outgoing messages can be submitted to the
+module, which will then transmit them without further intervention by the code that
+submitted them.
+
+Messages exchanged via this module have a type-length-value (TLV) format. An 8-bit
+message type identifier is followed by an 8-bit payload length field and zero or more
+arbitrary payload bytes.
+
+The module can operate in different modes. In INM mode, a header containing source and
+destination node addresses, plus a sequential message identifier, is prepended to each
+message. In plain TLV (i.e. non-INM) mode, messages are exchanged over a point-to-point
+link, without any addressing or sequencing. In stream mode, the module will report
+reception of and perform transmission of partial messages (instead of waiting for
+a complete message to be received or submitted for transmission).
 
 **NOTE:** This module depends on the task scheduler and will not work if the
 scheduler isn't running.
 
-### avr/std_tlv.h - Standard Types and Helpers for TLV/INM
+### avr/std_tlv.h – Standard Types and Helpers for TLV/INM
+This module defines standard message types for TLV/INM communication, as well as
+convenience macros and functions to simplify implementation of firmware support
+for these standard message types. A key concept is to design the remote interfaces
+of firmware in terms of logical registers on which a standard set of generic
+operations (read, update, toggle, etc.) may be performed. Some logical registers
+are themselves standardized and intended to form the basis of a general,
+firmware-agnostic remote interface. For example, it should be possible to query
+the firmware ID and version of any system that supports INM in a generic way.
+
+**CAUTION:** The current logical register specification has bothersome and
+unnecessary limitations (e.g. all registers being one byte large) and is therefore
+being considered for compatibility-breaking replacement in a future release of libavr.
 
 **NOTE:** This module depends on the task scheduler (via `task_tlv.h`) and will
 not work if the scheduler isn't running.
 
-### avr/memmon.h - Memory Monitors
-Memory monitoring via TLV messages.
+### avr/memmon.h – Memory Monitors
+Memory monitors let the firmware set up periodic TLV/INM transmission of the
+content of specified locations in the MCU's data address space. They are primarily
+intended as a debugging facility.
 
 **NOTE:** This module depends on the task scheduler and will not work if the
 scheduler isn't running.
 
-### avr/tbouncer.h - Input Debouncing
-GPIO input debouncing with task notification.
+### avr/tbouncer.h – Input Debouncing
+This module provides software debouncing of GPIO inputs. The debouncing algorithm
+can filter out both switch bounce (i.e. a legitimate transition in the input logic
+state being accompanied by additional rapid, spurious transitions) and spikes
+(i.e. isolated, brief, spurious changes in logic state) in the input signals.
+
+The interface of the debouncing module is entirely event-based. At module
+initialization, the firmware selects GPIO pins to perform debouncing on and tasks
+to notify or invoke in response to changes in the debounced logic states. When
+the selected input handling tasks execute, they can poll global variables exposed
+by the module to determine which pin states have changed and the direction of the
+changes.
 
 **NOTE:** This module is compatible with ATtiny devices.
 
 **NOTE:** This module depends on the task scheduler and will not work if the
 scheduler isn't running.
 
-### avr/i2chelper.h - Asynchronous I2C/TWI Communication
-Asynchronous, interrupt-driven I2C (aka TWI) helper module.
+### avr/i2chelper.h – Asynchronous I<sup>2</sup>C/TWI Communication
+Asynchronous, interrupt-driven I<sup>2</sup>C (aka TWI) helper module. Currently
+only supports master mode. Provides an API that lets the firmware initiate a
+request-response operation and then be notified when the operation finishes,
+or poll the transaction status.
 
-**NOTE:** This module can notify tasks when an I2C operation finishes, but does
-not need the task scheduler to function.
+**NOTE:** This module can notify tasks when an I<sup>2</sup>C operation finishes,
+but does not need a running task scheduler to function.
 
-### avr/spihelper.h - SPI Helpers
-Helper functions and macros for SPI communication.
+### avr/spihelper.h – SPI Helpers
+Helper module SPI communication. Currently only provides initialization routines
+for the SPI hardware peripheral.
 
 **NOTE:** This module does not depend on the task scheduler.
 
-### avr/mcp23018.h - MCP23018 I/O Expander Interface
-Helper module for controlling an MCP23018 I/O expander via I2C.
+### avr/mcp23018.h – MCP23018 I/O Expander Interface
+Helper module for controlling an MCP23018 I/O expander via I<sup>2</sup>C. Uses
+the `i2chelper.h` module to communicate with the expander. Defines the register
+addresses and control register pin numbers of an MCP23018 as enum constants.
+Provides synchronous and asynchronous register read and write operations.
 
-**NOTE:** This module can notify tasks when an I2C operation finishes, but does
-not need the task scheduler to function.
+**NOTE:** This module can notify tasks when an I<sup>2</sup>C operation finishes,
+but does not need a running task scheduler to function.
 
-### avr/mcp4x.h - MCP4x Potentiometer Interface
-Helper module for controlling an MCP4x potentiometer via SPI.
+### avr/mcp4x.h – MCP4x Potentiometer Interface
+Helper module for controlling an MCP4x potentiometer IC via SPI. Provides a basic
+synchronous API for updating the wiper setting of a potentiometer, or disabling it.
 
 **NOTE:** This module does not depend on the task scheduler.
 
 
 ## Example Firmware
 
-### examples_atmega/sched_blinker.c - Simple LED Blinker
-A simple LED blinker.
+### examples_atmega/sched_blinker.c – Simple LED Blinker
+This is a simple example program that blinks two LEDs. The blinking can be turned
+on and off via GPIO inputs and INM messages. An INM notification message is sent every
+time the blink state of a LED changes. The program provides basic usage examples for
+the task scheduler (`task_sched.h`), TLV/INM modules (`task_tlv.h` and `std_tlv.h`),
+input debouncer (`tbouncer.h`) and automatic disabling of the watchdog timer
+(`auto_watchdog.h`).
 
-### examples_atmega/watchdog_test.c - Watchdog Timer Demo
-Demonstration of the watchdog timer control module.
+### examples_atmega/watchdog_test.c – Watchdog Timer Test
+Test program for the watchdog timer control module (`watchdog.h`). Derived from
+`sched_blinker.c`, designed to simplify testing whether software-triggered MCU reset
+via the watchdog timer works as intended.
 
-### examples_atmega/inm_node_demo.c - Sensors and Comms
-Sensor sampling and notifications. WIP for a home security system.
+### examples_atmega/inm_node_demo.c – Sensors and Messages
+Example of sensor sampling and INM messaging. Two analog inputs, a light sensor
+and a microphone, are sampled by the same task, with the microphone being sampled
+at a higher rate than the light sensor. INM notification messages are sent to report
+the sensor values, for the microphone these are aggregated amplitude values instead
+of the raw input data. The program provides examples of using the task scheduler
+(`task_sched.h`), TLV/INM modules (`task_tlv.h` and `std_tlv.h`), the input
+debouncer (`tbouncer.h`) and memory monitors (`memmon.h`).
 
-### examples_attiny/sched_test.c - Tiny Scheduler Test
-Minimal test of the task scheduler.
+### examples_attiny/sched_test.c – Tiny Scheduler Test
+Minimal test of the task scheduler (`task_sched.h`). Starts a task that blinks a LED
+until you pull the plug.
 
-### examples_attiny/stepper_test.c - Stepper Motor Demo
-* `stepper_test`: Demonstration of stepper motor control via PWM generator.
+### examples_attiny/stepper_test.c – Stepper Motor Demo
+Demonstration of two-phase unipolar stepper motor (a 28BYJ-48, specifically) control
+via a PWM generator in the MCU (generating two square waves that are 90° out of phase)
+and a couple of external inverters (providing waves that are 180° and 270° out of phase
+with the first wave, completing a full-step motor driving cycle). Provides examples
+of using the task scheduler (`task_sched.h`) and input debouncer (`tbouncer.h`).
 
-### examples_atmega_u/sched_blinker.c - Simple LED Blinker
-Simple LED blinker for the ATmegaU.
+### examples_atmega_u/sched_blinker.c – Simple LED Blinker
+Simple LED blinker for the ATmegaU. Basically the same program as `sched_blinker.c`
+for regular ATmegas, but adapted to the ATmegaU pinout.
 
-### examples_atmega_u/lcd_driver.c - 7-seg LCD Demo
-Driving a seven-segment LCD via PWM generator and a MCP23018 I/O expander.
+### examples_atmega_u/lcd_driver.c – 7-seg LCD Demo
+This program is designed to drive a seven-segment LCD via a PWM generator, an MCP23018
+I/O expander and four 4066 quad transmission gates. The generated PWM signals can be
+fed through an RC filter to obtain a makeshift AC supply that's good enough to drive
+some LCD segments with. Provides usage examples for the task scheduler (`task_sched.h`),
+input debouncer (`tbouncer.h`), I2C helper module (`i2chelper.h`) and MCP23018 interface
+(`mcp23018.h`).
 
 
 ## Python Modules and Scripts
@@ -235,14 +309,14 @@ These Python modules use [pySerial](https://pyserial.readthedocs.io/en/latest/py
 for serial port communication. No other third-party modules are used. Python 3.6 or later is
 required.
 
-### python/inm/inm.py - General API for INM
+### python/inm/inm.py – General API for INM
 INM communication API. Supports serial port and UDP/IP links.
 
-### python/inm/helper.py - Convenience API for INM
+### python/inm/helper.py – Convenience API for INM
 Convenience wrapper for an INM communication channel.
 
-### python/inm_router.py - INM Router Script
+### python/inm_router.py – INM Router Script
 INM message router script. May be installed as a Linux service.
 
-### python/inm_memmon.py - Memory Monitor Visualization
+### python/inm_memmon.py – Memory Monitor Visualization
 Text-based visualization script for libavr memory monitors.

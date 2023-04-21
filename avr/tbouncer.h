@@ -10,7 +10,7 @@
 	Input debouncing module that uses the <task_sched.h> task scheduler.
 	
 	NOTE: To disable debouncing on an I/O port, define the macro
-	*TBOUNCER_DISABLE_PORT_{x}*, where {x} is "A", "B", "C" or "D". Doing
+	*TBOUNCER_DISABLE_PORT_{x}*, where *{x}* is "A", "B", "C" or "D". Doing
 	this saves both some clock cycles and about 12 bytes of RAM per
 	disabled port.
 	
@@ -340,13 +340,13 @@ extern uint8_t tbouncer_d_diff;
 /**
 	Variable: tbouncer_task_cats
 	Contains a set of task category bit flags. Tasks in the indicated categories will
-	be awakened by the debouncer task when there is a change in the debounced value
+	be notified by the debouncer task when there is a change in the debounced value
 	of any I/O pin that is selected in one of the pin change notification bit masks
 	(i.e. <tbouncer_b_mask>, <tbouncer_c_mask> and <tbouncer_d_mask>).
 	
-	CAUTION: When the tasks awakened via this variable are executed, the debounced pin
-	values may have changed again. If it's important not to miss any pin changes, use
-	the <tbouncer_invoke_mask> and <tbouncer_invoke_st> variables to invoke tasks
+	CAUTION: By the time tasks notified via this variable are executed, the debounced
+	pin values may have changed again. If it's important not to miss any pin changes,
+	use the <tbouncer_invoke_mask> and <tbouncer_invoke_st> variables to invoke tasks
 	synchronously.
 */
 extern sched_catflags tbouncer_task_cats;
@@ -387,7 +387,7 @@ extern uint8_t tbouncer_invoke_st;
 			to initialize <tbouncer_c_mask>.
 		d_mask - Pin change notification bit mask for I/O port D. Will be used
 			to initialize <tbouncer_d_mask>.
-		awaken_cats - Target task categories for pin change notifications.
+		notify_cats - Target task categories for pin change notifications.
 			Will be used to initialize <tbouncer_task_cats>.
 		invoke_mask - Bit mask of pin change notification query. Will be used
 			to initialize <tbouncer_invoke_mask>.
@@ -397,7 +397,7 @@ extern uint8_t tbouncer_invoke_st;
 void tbouncer_init(
 	uint8_t task_num_cat, sched_time poll_delay,
 	uint8_t a_mask, uint8_t b_mask, uint8_t c_mask, uint8_t d_mask,
-	sched_catflags awaken_cats, uint8_t invoke_mask, uint8_t invoke_st);
+	sched_catflags notify_cats, uint8_t invoke_mask, uint8_t invoke_st);
 
 /**
 	Function: tbouncer_shutdown

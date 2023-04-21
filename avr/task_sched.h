@@ -904,7 +904,7 @@ sched_task *sched_find(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
 	matching task is found, then <SCHED_MAX_TASKS> is returned.
 	
 	NOTE: Before handler invocation, sleeping tasks are awakened (i.e. have the
-	      sleep bit in their TCSB cleared) and elapsing delays canceled.
+	      sleep bit in their TCSB cleared) and elapsing execution delays canceled.
 	
 	NOTE: A matched task marked as garbage is NOT invoked or awakened,
 	      but the index where the task was found is still returned.
