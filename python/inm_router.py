@@ -85,9 +85,16 @@ class _BetterArgumentParser(argparse.ArgumentParser):
 			return arg_line.split()
 
 def _parse_args(args=None, namespace=None):
-	arg_p = _BetterArgumentParser(
-		description='A console-based TLV/INM message router.',
-		fromfile_prefix_chars='@')
+	desc_text = '''A TLV/INM message router script. Any argument
+prefixed with a '@' is interpreted as the path of a file to read additional
+arguments from. In such argument files, any line starting with a '#' is
+interpreted as a comment and ignored. Any line starting with a ':' is
+interpreted as a single verbatim argument. All other lines are interpreted
+as zero or more whitespace-separated arguments. Note that the special cases
+only apply if the '#' or ':' is the very first character on the line, it
+must not be predeced by whitespace or anything else.'''
+	
+	arg_p = _BetterArgumentParser(description=desc_text, fromfile_prefix_chars='@')
 	int0 = lambda x: int(x, 0)  # Allow prefixed integer arguments in base 2, 8, or 16.
 	
 	arg_p.add_argument('-A', '--inm-adr',
@@ -101,8 +108,8 @@ def _parse_args(args=None, namespace=None):
 	arg_p.add_argument('-H', '--hook-module',
 		help='name of application hook module', metavar='NAME', dest='hook_module')
 	arg_p.add_argument('-I', '--ip-ch',
-		help='<channel number> <IP address> <UDP port>', metavar=('CH', 'IPADR', 'PORT'),
-		nargs=3, action='append', dest='ip_channels')
+		help='IP channel specification: {channel number} {IP address} {UDP port}',
+		metavar=('CH', 'IPADR', 'PORT'), nargs=3, action='append', dest='ip_channels')
 	arg_p.add_argument('-L', '--loglevel',
 		help='set numeric log level', default=_def_loglevel, type=int,
 		metavar='LOGLEVEL', dest='loglevel')
@@ -110,16 +117,16 @@ def _parse_args(args=None, namespace=None):
 		help='relay mode, route messages even when the router is the destination',
 		action='store_true', dest='relay')
 	arg_p.add_argument('-S', '--serial-ch',
-		help='<channel number> <serial port> <baud rate>', metavar=('CH', 'PORT', 'BAUD'),
-		nargs=3, action='append', dest='serial_channels')
+		help='serial channel specification: {channel number} {serial port} {baud rate}',
+		metavar=('CH', 'PORT', 'BAUD'), nargs=3, action='append', dest='serial_channels')
 	arg_p.add_argument('-T', '--hook-interval',
 		help='seconds between main loop hook invocations', metavar='SECS',
 		default=_DEFAULT_HOOK_INTERVAL, type=float, dest='hook_interval')
 	arg_p.add_argument('-V', '--version',
 		help='print version number and exit', action='store_true', dest='print_version')
 	arg_p.add_argument('-r', '--route',
-		help='<INM destination> <channel number> <option,...> <link address ...>', metavar=('INMADR', 'ARG'),
-		nargs='+', action='append', dest='routes')
+		help='route specification: {INM destination} {channel number} {option,...} {link address ...}',
+		metavar=('INMADR', 'ARG'), nargs='+', action='append', dest='routes')
 	arg_p.add_argument('-v', '--verbose',
 		help='increase log verbosity', action='count', default=0, dest='verbosity')
 	

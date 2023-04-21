@@ -234,7 +234,7 @@ or poll the transaction status.
 but does not need a running task scheduler to function.
 
 ### avr/spihelper.h – SPI Helpers
-Helper module SPI communication. Currently only provides initialization routines
+Helper module for SPI communication. Currently only provides initialization routines
 for the SPI hardware peripheral.
 
 **NOTE:** This module does not depend on the task scheduler.
@@ -291,7 +291,7 @@ with the first wave, completing a full-step motor driving cycle). Provides examp
 of using the task scheduler (`task_sched.h`) and input debouncer (`tbouncer.h`).
 
 ### examples_atmega_u/sched_blinker.c – Simple LED Blinker
-Simple LED blinker for the ATmegaU. Basically the same program as `sched_blinker.c`
+Simple LED blinker for ATmegaU devices. Basically the same program as `sched_blinker.c`
 for regular ATmegas, but adapted to the ATmegaU pinout.
 
 ### examples_atmega_u/lcd_driver.c – 7-seg LCD Demo
@@ -310,13 +310,39 @@ for serial port communication. No other third-party modules are used. Python 3.6
 required.
 
 ### python/inm/inm.py – General API for INM
-INM communication API. Supports serial port and UDP/IP links.
+This is a general-purpose Python API for INM communication. The primary abstraction used is
+the _message channel_, representing a communication interface by which INM messages can be
+exchanged with other INM nodes. The current version provides serial port and UDP/IP channels.
+There is also a special message channel class that provides basic routing functionality, using
+a static routing table to forward incoming messages via one of a set of encapsulated message
+channels. Message channels currently only support synchronous I/O, with timeouts.
+
+_Message factory_ objects are used to perform conversions between application-specific message
+payloads and the generic TLV message objects that message channels send and receive. Message
+payloads generally consist of a sequence of fields, where each field may be converted to or
+from a sequence of bytes by a message factory. Message factories have configuration parameters
+and conversion tables that associate message types with payload formats. Together, these allow
+extensive customization, reducing the amount of message packing and unpacking that needs to
+be done in application code.
 
 ### python/inm/helper.py – Convenience API for INM
-Convenience wrapper for an INM communication channel.
+This module is intended to simplify the implementation of INM in client nodes. It provides
+a convenience wrapper class for an INM message channel, with an API for constructing,
+sending and/or receiving messages that is more simple than using the `inm.py` API directly.
 
 ### python/inm_router.py – INM Router Script
-INM message router script. May be installed as a Linux service.
+INM message router script. Typically configured via CLI arguments read from a file. May be
+installed as a Linux service via the makefile in the Python directory. Based on the routing
+message channel in the `inm.py` module.
+
+Run the script with the `-h` option to get a list of available options.
+The file `router_args.example` in the Python directory shows how the script may be configured.
 
 ### python/inm_memmon.py – Memory Monitor Visualization
-Text-based visualization script for libavr memory monitors.
+Text-based visualization script for libavr memory monitors (`memmon.h`). Listens for INM
+messages of a specified type and outputs their payloads (assumed to have the format
+of a standard `MEMMON_DATA` message) as an ASCII graph on standard output. Typically
+configured via CLI arguments read from a file.
+
+Run the script with the `-h` option to get a list of available options.
+The file `memmon_args.example` in the Python directory shows how the script may be configured.

@@ -157,9 +157,16 @@ class _BetterArgumentParser(argparse.ArgumentParser):
 			return arg_line.split()
 
 def _parse_args(args=None, namespace=None):
-	arg_p = _BetterArgumentParser(
-		description='A console-based TLV/INM memory monitor visualization tool.',
-		fromfile_prefix_chars='@')
+	desc_text = '''A text-based TLV/INM memory monitor visualization tool.
+Any argument prefixed with a '@' is interpreted as the path of a file to
+read additional arguments from. In such argument files, any line starting
+with a '#' is interpreted as a comment and ignored. Any line starting with
+a ':' is interpreted as a single verbatim argument. All other lines are
+interpreted as zero or more whitespace-separated arguments. Note that the
+special cases only apply if the '#' or ':' is the very first character on
+the line, it must not be predeced by whitespace or anything else.'''
+	
+	arg_p = _BetterArgumentParser(description=desc_text, fromfile_prefix_chars='@')
 	int0 = lambda x: int(x, 0)  # Allow prefixed integer arguments in base 2, 8, or 16.
 	
 	arg_p.add_argument('-A', '--inm-adr',

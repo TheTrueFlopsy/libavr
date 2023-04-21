@@ -4,6 +4,10 @@ from . import inm
 ## File: helper.py
 ## The *helper* module contains the <InmHelper>, a convenience class
 ## for INM communication.
+##
+## CAUTION: This module is NOT inherently thread-safe. In a multi-threaded
+## application, access to thread-shared objects from this module MUST be
+## synchronized in application code.
 
 # ISSUE: Correctly entering INM commands at the Python prompt is still
 #        tedious and error-prone. For example, to turn on a LED via the
@@ -65,10 +69,6 @@ from . import inm
 ## <MessageChannel> when the context is entered and then closing the channel
 ## upon exit from the context. If the attempt to open the message channel fails,
 ## a <MessageChannelError> is thrown by the *__enter__* method.
-##
-## CAUTION: This module is NOT inherently thread-safe. In a multi-threaded
-## application, access to thread-shared objects from this module MUST be
-## synchronized in application code.
 ##
 ## Code Example:
 ## > import inm.helper as helper

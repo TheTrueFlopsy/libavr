@@ -1,4 +1,5 @@
 
+### Router Parameters ###
 # The router's own INM address.
 --inm-adr 17
 # Enable relay routing (route even when the router is the destination).
@@ -8,28 +9,36 @@
 # Interval between main loop hook invocations.
 --hook-interval 3.0
 
-# Serial-over-USB channel. Use default baud rate.
---serial-ch 1 /dev/ttyUSB0 0
+
+### Channel Specifications ###
+# CH_TYPE   CH_NUM  CH_ARGS
+
+# Serial-over-USB channel. Use the default baud rate.
+--serial-ch 1       /dev/ttyUSB0 0
 # IP channel. Use the default UDP port for INM.
---ip-ch     2 192.168.1.17 0
-# Loopback IP channel for monitoring.
---ip-ch     3 127.0.0.1 3000
+--ip-ch     2       192.168.1.17 0
+# Loopback IP channel for monitoring. Use UDP port 3000.
+--ip-ch     3       127.0.0.1 3000
+
+
+### Route Specifications ###
+#       DST_ADR  CH_NUM  OPT  LINK_ADR
 
 # Reach INM node 1 via the virtual serial port.
---route 1  1 -
+--route 1        1       -
 # Reach INM node 12 via IP address [192.168.1.12].
---route 12 2 - 192.168.1.12
+--route 12       2       -    192.168.1.12
 # Reach INM node 13 via IP address [192.168.1.13].
---route 13 2 - 192.168.1.13
+--route 13       2       -    192.168.1.13
 # Reach INM node 14 via IP address [192.168.1.14].
---route 14 2 - 192.168.1.14
+--route 14       2       -    192.168.1.14
 
 # Relay any traffic to the router itself on the loopback channel.
---route 17 3 - 127.0.0.1 2997
+--route 17       3       -    127.0.0.1 2997
 
-# Debugging/CC route (e.g. for the inm_memmon.py script).
---route 98 3 - 127.0.0.1 2998
+# Debugging/CC route (e.g. for the "inm_memmon.py" script).
+--route 98       3       -    127.0.0.1 2998
 --cc-to 98
 
-# Debugging route (default InmHelper route).
---route 99 3 no-broadcast 127.0.0.1 2999
+# Debugging route (using default INM and link addresses of InmHelper objects).
+--route 99       3       no-broadcast  127.0.0.1 2999
