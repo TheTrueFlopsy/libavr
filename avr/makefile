@@ -21,24 +21,29 @@ $(error Unrecognized build type: $(build))
 endif
 endif
 
-ifdef libavr_attiny  # Good settings for ATtiny84 out-of-the-box
+# NOTE: If this makefile is being processed by a recursive invocation of make,
+#       to produce a project-specific build of libavr, then the build configuration
+#       variables below are still defined, but typically not used. The project makefile
+#       that invokes make recursively should specify a project-specific value for the
+#       CFLAGS variable, overriding the definition where these variables are used.
+ifdef libavr_attiny  # Settings for ATtiny84 out-of-the-box
+mcu := attiny84
 # 1 MHz MCU clock (factory default: 8 MHz osc. / MCU prescale 8), 8 clock cycles per scheduler tick
 f_cpu := 1000000
 f_cpu_prescale := 3
-mcu := attiny84
-else ifdef libavr_atmega_u  # Good settings for Arduino Leonardo
+else ifdef libavr_atmega_u  # Settings for Arduino Leonardo
+mcu := atmega32u4
 # 16 MHz MCU clock, 64 clock cycles per scheduler tick
 f_cpu := 16000000
 f_cpu_prescale := 6
-mcu := atmega32u4
-else  # Good settings for Arduino Uno / ATmega328 out-of-the-box
+else  # Settings for Arduino Uno and for ATmega328 out-of-the-box
+mcu := atmega328p
 # 16 MHz MCU clock, 32 clock cycles per scheduler tick
 f_cpu := 16000000
 f_cpu_prescale := 5
 # 1 MHz MCU clock (factory default: 8 MHz osc. / MCU prescale 8), 8 clock cycles per scheduler tick
 #f_cpu := 1000000
 #f_cpu_prescale := 3
-mcu := atmega328p
 endif
 
 # --- Directory Variables ---

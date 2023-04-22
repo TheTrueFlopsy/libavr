@@ -6,19 +6,16 @@
 #include <avr/pgmspace.h>
 #include <util/delay.h>
 
+// NOTE: When "auto_watchdog.h" is included, the watchdog timer is automatically
+//       disabled following an MCU reset.
+#include "auto_watchdog.h"
 #include "i2chelper.h"
 #include "mcp23018.h"
 #include "task_sched.h"
 #include "tbouncer.h"
 
-#define TBOUNCER_TASK_CAT 14
-#define LCD_DRIVE_TASK_CAT 1
-#define ADC_INPUT_TASK_CAT 2
-#define IOEXP_CTRL_TASK_CAT 3
 
-#define TBOUNCER_DELAY_MS 4
-#define OUTPUT_SHUTDOWN_DELAY_MS 100
-
+// ---<<< I/O Constants >>>---
 // Input: LDC drive enable
 #define EN_DRIVE_DDR  DDRD
 #define EN_DRIVE_PORT PORTD
@@ -97,7 +94,15 @@
 
 
 // ---<<< Type and Constant Definitions >>>---
-typedef uint16_t output_freq;
+#define TBOUNCER_DELAY_MS 4
+#define OUTPUT_SHUTDOWN_DELAY_MS 100
+
+enum {
+	LCD_DRIVE_TASK_CAT  =  1,
+	ADC_INPUT_TASK_CAT  =  2,
+	IOEXP_CTRL_TASK_CAT =  3,
+	TBOUNCER_TASK_CAT   = 14
+};
 
 enum {
 	OUTPUT_STATE_NONE   = 0,
@@ -127,6 +132,8 @@ enum {
 	LCD_CH_F  = 0b11100010   // AEFG
 };
 
+typedef uint16_t output_freq;
+
 const uint8_t lcd_hex_digits[16] PROGMEM = {
 	LCD_CH_0, LCD_CH_1, LCD_CH_2, LCD_CH_3,
 	LCD_CH_4, LCD_CH_5, LCD_CH_6, LCD_CH_7,
@@ -135,7 +142,7 @@ const uint8_t lcd_hex_digits[16] PROGMEM = {
 };
 
 
-// ---<<< Data Definitions >>>---
+// ---<<< Program State >>>---
 static output_freq pulse_freq   = PWM_FREQ_INIT;     // square wave frequency in Hz
 static uint8_t     pulse_output = OUTPUT_STATE_OFF;  // LCD drive output disabled
 
@@ -151,7 +158,7 @@ static uint8_t ioexp_b_committed = 0x00;
 
 
 // ---<<< ISRs >>>---
-ISR(ADC_vect) {  // ADC conversion complete.
+ISR(ADC_vect) {  // ADC conversion complete
 	sched_isr_tcww |= SCHED_CATFLAG(ADC_INPUT_TASK_CAT);  // Awaken the ADC input task.
 }
 
@@ -349,7 +356,7 @@ static void ioexp_ctrl_handler(sched_task *task) {
 }
 
 
-// ---<<< Entry Point and Initializers >>>---
+// ---<<< Initialization Routines and Main Function >>>---
 static void disable_usb(void) {
 	// TODO: Investigate precisely which USB features the Leonardo bootloader
 	//       leaves enabled.
@@ -456,12 +463,11 @@ static void init_tasks(void) {
 int main(void) __attribute__ ((OS_main));
 
 int main(void) {
-	// The Arduino Leonardo bootloader leaves some USB interrupts enabled, which causes trouble
-	// when you're not using the Arduino application framework.
+	// NOTE: The Arduino Leonardo bootloader leaves some USB interrupts enabled, which
+	// causes trouble when you're not using the Arduino application framework.
 	disable_usb();
 	
-	// Initialize the PWM generator.
-	init_pwm_generator();
+	init_pwm_generator();  // Initialize the PWM generator.
 	
 	// Other I/O initialization.
 	EN_DRIVE_PORT |= EN_DRIVE_PORT_PIN;  // Enable pull-up on drive-enable input pin.
@@ -473,18 +479,17 @@ int main(void) {
 	LED_OK_DDR |= LED_OK_DDR_PIN;  // Make success indicator LED pin an output.
 	LED_ERR_DDR |= LED_ERR_DDR_PIN;  // Make error indicator LED pin an output.
 	
-	// Initialize the ADC. (For pot/sensor input.)
-	init_adc();
+	init_adc();  // Initialize the ADC. (For pot/sensor input.)
 	
-	// Initialize task scheduler and debouncer module.
-	sched_init();
+	sched_init();  // Initialize the task scheduler.
+	
+	// Configure the input debouncer module.
 	TBOUNCER_INIT(
 		TASK_ST_MAKE(0, TBOUNCER_TASK_CAT, 0), SCHED_TIME_MS(TBOUNCER_DELAY_MS),
 		0, 0, 0, EN_BLITE_PIN_PIN | EN_DRIVE_PIN_PIN,
 		0, TASK_ST_CAT_MASK, TASK_ST_CAT(LCD_DRIVE_TASK_CAT));
 	
-	// Schedule tasks.
-	init_tasks();
+	init_tasks();  // Schedule tasks.
 	
 	// Initialize the MCP23018 I/O expander.
 	if (!init_ioexp()) {  // Initialization failed.
@@ -492,8 +497,7 @@ int main(void) {
 		return 1;  // Die.
 	}
 	
-	// Signal successful initialization.
-	LED_OK_PORT &= ~LED_OK_PORT_PIN;
+	LED_OK_PORT &= ~LED_OK_PORT_PIN;  // Signal successful initialization.
 	
 	sched_run();  // Enter the task scheduler's main loop.
 	

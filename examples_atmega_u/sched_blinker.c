@@ -8,6 +8,12 @@
 #include "tbouncer.h"
 #include "std_tlv.h"
 
+
+// ---<<< Constant Definitions >>>---
+#define FWID_L 0x04
+#define FWID_H 0x01
+#define FWVERSION 0x01
+
 #define BLINK_DDR DDRD
 #define BLINK_PORT PORTD
 #define BLINK_PINR PIND
@@ -21,11 +27,6 @@
 
 #define BLINK_INPUT_RISING TBOUNCER_B_RISING
 
-#define TBOUNCER_TASK_CAT 15
-#define TTLV_TASK_CAT 14
-#define BLINKER_TASK_CAT 0
-#define MESSENGER_TASK_CAT 1
-
 //#define BAUD_RATE 38400
 #define BAUD_RATE 9600
 #define USE_U2X 0
@@ -33,10 +34,26 @@
 #define INM_ADDR 0x02
 #define N_BLINKERS 2
 
-#define BLINK_STATE_MSG_TYPE (TTLV_MSG_T_APPLICATION + 0x01)
-#define BLINK_SET_STATE_MSG_TYPE (TTLV_MSG_T_APPLICATION + 0x02)
+#define BLINK_MAX_MSG_LEN 8
 
-#define BLINK_RESPONSE_MSG_TYPE (TTLV_MSG_T_APPLICATION + 0x03)
+enum {
+	BLINKER_TASK_CAT   =  0,
+	MESSENGER_TASK_CAT =  1,
+	TTLV_TASK_CAT      = 14,
+	TBOUNCER_TASK_CAT  = 15
+};
+
+enum {
+	BLINK_MSG_T_GET_STATE     = 0x01 + TTLV_MSG_T_APPLICATION,
+	BLINK_MSG_T_GET_STATE_RES = 0x02 + TTLV_MSG_T_APPLICATION
+};
+
+enum {
+	BLINK_STATE_START    = 0,
+	BLINK_STATE_ENABLED  = 1,
+	BLINK_STATE_STOP     = 2,
+	BLINK_STATE_DISABLED = 3
+};
 
 static const uint8_t blink_pins[N_BLINKERS] = {
 	BV(BLINK_PIN0),
@@ -53,16 +70,11 @@ static const sched_time blink_delays[N_BLINKERS] = {
 	SCHED_TIME_MS(200)
 };
 
+
+// ---<<< Program State >>>---
 static sched_time blink_timestamps[N_BLINKERS] = {
 	SCHED_TIME_ZERO,
 	SCHED_TIME_ZERO
-};
-
-enum {
-	BLINK_STATE_START    = 0,
-	BLINK_STATE_ENABLED  = 1,
-	BLINK_STATE_STOP     = 2,
-	BLINK_STATE_DISABLED = 3
 };
 
 static uint8_t blink_states[N_BLINKERS] = {
@@ -70,6 +82,19 @@ static uint8_t blink_states[N_BLINKERS] = {
 	BLINK_STATE_START
 };
 
+static union {
+	uint8_t b[BLINK_MAX_MSG_LEN];
+	ttlv_msg_inm_reg r;
+	ttlv_msg_inm_regpair rp;
+} msg_data_out;
+
+static union {
+	uint8_t b[BLINK_MAX_MSG_LEN];
+	ttlv_msg_reg r;
+} msg_data_in;
+
+
+// ---<<< Helper Functions >>>---
 static void update_blink_state(uint8_t blinker_num, uint8_t blink_flag) {
 	uint8_t blink_state = blink_states[blinker_num];
 	
@@ -87,6 +112,72 @@ static void update_blink_state(uint8_t blinker_num, uint8_t blink_flag) {
 	}
 }
 
+static uint8_t get_blink_flags(void) {
+	uint8_t blink_flags = 0;
+	
+	for (uint8_t i = 0; i < N_BLINKERS; i++)
+		if (blink_states[i] == BLINK_STATE_ENABLED)
+			blink_flags |= BV(i);
+	
+	return blink_flags;
+}
+
+static void set_blink_flags(uint8_t blink_flags) {
+	for (uint8_t i = 0; i < N_BLINKERS; i++) {
+		update_blink_state(i, 1 & blink_flags);
+		blink_flags >>= 1;
+	}
+}
+
+static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) {
+	switch (index) {
+	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
+		*value_p = get_blink_flags();
+		break;
+	case TTLV_REG_DEBUG1:  // LED blinker state 0.
+		*value_p = blink_states[0];
+		break;
+	case TTLV_REG_DEBUG2:  // LED blinker state 1.
+		*value_p = blink_states[1];
+		break;
+	case TTLV_REG_FWID_L:
+		*value_p = FWID_L;
+		break;
+	case TTLV_REG_FWID_H:
+		*value_p = FWID_H;
+		break;
+	case TTLV_REG_FWVERSION:
+		*value_p = FWVERSION;
+		break;
+	default:
+		return TTLV_RES_REGISTER;
+	}
+	
+	return TTLV_RES_OK;
+}
+
+static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
+	switch (index) {
+	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
+		set_blink_flags(value);
+		break;
+	default:
+		return TTLV_RES_REGISTER;
+	}
+	
+	return TTLV_RES_OK;
+}
+
+TTLV_STD_REG_TOGGLE(ttlv_reg_read, ttlv_reg_write, ttlv_reg_toggle)
+
+TTLV_STD_REG_RW_EXCH(ttlv_reg_read, ttlv_reg_write, ttlv_reg_rw_exch)
+
+TTLV_STD_REG_WR_EXCH(ttlv_reg_read, ttlv_reg_write, ttlv_reg_wr_exch)
+
+TTLV_STD_REGPAIR_READ(ttlv_reg_read, ttlv_regpair_read)
+
+
+// ---<<< Task Handlers >>>---
 static void blink_handler(sched_task *task) {
 	uint8_t num = TASK_ST_GET_NUM(task->st);
 	uint8_t blink_state = blink_states[num];
@@ -107,7 +198,7 @@ static void blink_handler(sched_task *task) {
 		task->delay = blink_delays[num];  // Reset delay.
 		
 		// Send broadcast message about updated blink state.
-		ttlv_xmit(TTLV_BROADCAST_ADR, BLINK_STATE_MSG_TYPE, N_BLINKERS, blink_states);
+		ttlv_xmit(TTLV_BROADCAST_ADR, BLINK_MSG_T_GET_STATE_RES, N_BLINKERS, blink_states);
 		
 		break;
 	case BLINK_STATE_ENABLED:  // Blinking enabled.
@@ -128,7 +219,7 @@ static void blink_handler(sched_task *task) {
 		BLINK_PORT &= ~blink_pins[num];  // Turn off LED.
 		
 		// Send broadcast message about updated blink state.
-		ttlv_xmit(TTLV_BROADCAST_ADR, BLINK_STATE_MSG_TYPE, N_BLINKERS, blink_states);
+		ttlv_xmit(TTLV_BROADCAST_ADR, BLINK_MSG_T_GET_STATE_RES, N_BLINKERS, blink_states);
 		
 		// fallthrough
 	case BLINK_STATE_DISABLED:  // Blinking disabled.
@@ -139,28 +230,103 @@ static void blink_handler(sched_task *task) {
 }
 
 static void message_handler(sched_task *task) {
-	if (TTLV_HAS_MESSAGE) {
-		if (TTLV_CHECK_TL(BLINK_SET_STATE_MSG_TYPE, N_BLINKERS)) {  // Set blink state.
-			uint8_t blink_flags[N_BLINKERS];
-			
-			ttlv_get_bytes(N_BLINKERS, blink_flags);
-			ttlv_finish_recv();
-			
-			for (uint8_t i = 0; i < N_BLINKERS; i++)
-				update_blink_state(i, blink_flags[i]);
-			
-			ttlv_xmit_response(BLINK_RESPONSE_MSG_TYPE, 2, TTLV_DATA_CPTR("OK"));
-		}
-		else {  // Assume that whoever it is wants to know about your blink state.
-			ttlv_finish_recv();
-			//ttlv_xmit_response(BLINK_RESPONSE_MSG_TYPE, 2, TTLV_DATA_CPTR("NO"));  // Or just say NO.
-			ttlv_xmit_response(BLINK_STATE_MSG_TYPE, N_BLINKERS, blink_states);
-		}
+	ttlv_result res = TTLV_RES_NONE;
+	
+	if (!TTLV_HAS_MESSAGE) {
+		task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
+		return;
 	}
 	
-	task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
+	if (TTLV_CHECK_REG_READ) {
+		ttlv_recv(msg_data_in.b);
+		
+		msg_data_out.r.index = msg_data_in.b[0];
+		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+		
+		res = ttlv_reg_read(msg_data_out.r.index, &msg_data_out.r.value);
+		
+		if (res == TTLV_RES_OK) {
+			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+			res = TTLV_RES_NONE;
+		}
+	}
+	else if (TTLV_CHECK_REG_WRITE) {
+		ttlv_recv(msg_data_in.b);
+		
+		res = ttlv_reg_write(msg_data_in.r.index, msg_data_in.r.value);
+	}
+	else if (TTLV_CHECK_REG_TOGGLE) {
+		ttlv_recv(msg_data_in.b);
+		
+		msg_data_out.r.index = msg_data_in.r.index;
+		msg_data_out.r.value = msg_data_in.r.value;
+		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+		
+		res = ttlv_reg_toggle(msg_data_out.r.index, &msg_data_out.r.value);
+		
+		if (res == TTLV_RES_OK) {
+			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+			res = TTLV_RES_NONE;
+		}
+	}
+	else if (TTLV_CHECK_REG_RW_EXCH) {
+		ttlv_recv(msg_data_in.b);
+		
+		msg_data_out.r.index = msg_data_in.r.index;
+		msg_data_out.r.value = msg_data_in.r.value;
+		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+		
+		res = ttlv_reg_rw_exch(msg_data_out.r.index, &msg_data_out.r.value);
+		
+		if (res == TTLV_RES_OK) {
+			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+			res = TTLV_RES_NONE;
+		}
+	}
+	else if (TTLV_CHECK_REG_WR_EXCH) {
+		ttlv_recv(msg_data_in.b);
+		
+		msg_data_out.r.index = msg_data_in.r.index;
+		msg_data_out.r.value = msg_data_in.r.value;
+		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+		
+		res = ttlv_reg_wr_exch(msg_data_out.r.index, &msg_data_out.r.value);
+		
+		if (res == TTLV_RES_OK) {
+			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+			res = TTLV_RES_NONE;
+		}
+	}
+	else if (TTLV_CHECK_REGPAIR_READ) {
+		ttlv_recv(msg_data_in.b);
+		
+		msg_data_out.rp.index = msg_data_in.b[0];
+		msg_data_out.rp.request_id = ttlv_recv_inm_header.h.msg_id;
+		
+		res = ttlv_regpair_read(msg_data_out.rp.index, &msg_data_out.rp.value);
+		
+		if (res == TTLV_RES_OK) {
+			ttlv_xmit_response(TTLV_MSG_T_INM_REGPAIR_READ_RES, TTLV_MSG_L_INM_REGPAIR_READ_RES, msg_data_out.b);
+			res = TTLV_RES_NONE;
+		}
+	}
+	else if (TTLV_CHECK_TL(BLINK_MSG_T_GET_STATE, 0)) {  // Get blink states.
+		ttlv_finish_recv();
+		ttlv_xmit_response(BLINK_MSG_T_GET_STATE_RES, N_BLINKERS, blink_states);
+	}
+	else {  // Unrecognized message.
+		// NOTE: Probably not a good idea to always send error messages in
+		//       response to unrecognized messages. Doing so can easily
+		//       trigger self-sustaining message cascades.
+		ttlv_finish_recv();
+	}
+	
+	if (res != TTLV_RES_NONE)
+		ttlv_xmit_inm_result(res);
 }
 
+
+// ---<<< Initialization Routines and Main Function >>>---
 static void disable_usb(void) {
 	// TODO: Investigate precisely which USB features the Leonardo bootloader
 	//       leaves enabled.

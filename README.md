@@ -311,7 +311,7 @@ required.
 
 ### python/inm/inm.py – General API for INM
 This is a general-purpose Python API for INM communication. The primary abstraction used is
-the _message channel_, representing a communication interface by which INM messages can be
+the _message channel_, representing a communication interface by which messages can be
 exchanged with other INM nodes. The current version provides serial port and UDP/IP channels.
 There is also a special message channel class that provides basic routing functionality, using
 a static routing table to forward incoming messages via one of a set of encapsulated message

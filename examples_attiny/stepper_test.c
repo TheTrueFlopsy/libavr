@@ -3,17 +3,14 @@
 #include <avr/interrupt.h>
 #include <avr/io.h>
 
+// NOTE: When "auto_watchdog.h" is included, the watchdog timer is automatically
+//       disabled following an MCU reset.
+#include "auto_watchdog.h"
 #include "task_sched.h"
 #include "tbouncer.h"
 
 
 // ---<<< I/O Constants >>>---
-#define TBOUNCER_TASK_CAT 14
-#define STEPPER_TASK_CAT 1
-
-#define TBOUNCER_DELAY_MS 20
-#define OUTPUT_SHUTDOWN_DELAY_MS 100
-
 #define ENABLE_DDR  DDRA
 #define ENABLE_PORT PORTA
 
@@ -62,6 +59,9 @@
 
 
 // ---<<< Type and Constant Definitions >>>---
+#define TBOUNCER_DELAY_MS 20
+#define OUTPUT_SHUTDOWN_DELAY_MS 100
+
 #define E_POW_X_SHIFT 3
 #define POLY_VAR_SHIFT 11
 #define FRACTION_SHIFT 4
@@ -84,6 +84,11 @@
 typedef uint16_t output_freq;
 
 enum {
+	STEPPER_TASK_CAT  =  1,
+	TBOUNCER_TASK_CAT = 14
+};
+
+enum {
 	STATE_NONE     = 0,
 	STATE_STARTUP  = 1,  // Waiting for ADC.
 	STATE_CANCELED = 2,  // Stopped during startup.
@@ -100,7 +105,7 @@ enum {
 };
 
 
-// ---<<< Data Definitions >>>---
+// ---<<< Program State >>>---
 static volatile uint16_t adc_input = INVALID_ADC_INPUT;
 
 static output_freq pulse_freq      = 16 * PWM_FREQ_INIT;  // square wave frequency in Hz/16
@@ -112,7 +117,7 @@ static uint8_t     pulse_output    = OUTPUT_STATE_OFF;  // motor control output 
 
 
 // ---<<< ISRs >>>---
-ISR(ADC_vect) {
+ISR(ADC_vect) {  // ADC conversion complete
 	adc_input = ADC;
 	sched_isr_tcww |= SCHED_CATFLAG(STEPPER_TASK_CAT);
 }
@@ -379,6 +384,7 @@ int main(void) {
 	DIRECTION_PORT |= DIRECTION_PORT_PIN;  // Enable pull-up on output direction input pin.
 	
 	sched_init();
+	
 	TBOUNCER_INIT(
 		TASK_ST_MAKE(0, TBOUNCER_TASK_CAT, 0), SCHED_TIME_MS(TBOUNCER_DELAY_MS),
 		ENABLE_PIN_PIN, 0,

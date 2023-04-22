@@ -22,18 +22,18 @@ f_cpu_prescale := 5
 avrdude := avrdude
 
 # Arduino Uno settings:
-avrdude_port ?= /dev/ttyUSB0
+avrdude_port := /dev/ttyUSB0
 avrdude_device := m328p
 avrdude_prog := arduino
 avrdude_baud := 115200
 avrdude_args := -D
 
-# Bus Pirate settings:
+# Settings for Bus Pirate:
 #avrdude_prog := buspirate
 #avrdude_args := -x spifreq=1
 
-# Pololu programmer settings:
-#avrdude_port ?= /dev/ttyACM0
+# Settings for Pololu programmer:
+#avrdude_port := /dev/ttyACM0
 #avrdude_prog := avrisp2
 #avrdude_args := -B 100kHz
 
@@ -89,7 +89,8 @@ all : $(targets)
 
 $(programs) : prog-% : %
 $(programs) : prog-% : $(bdir)/%.hex
-	$(avrdude) -v -p $(avrdude_device) -c $(avrdude_prog) -P $(avrdude_port) -b $(avrdude_baud) $(avrdude_args) -U flash:w:$<
+	$(avrdude) -v -p $(avrdude_device) -c $(avrdude_prog) -P $(avrdude_port) -b $(avrdude_baud) \
+	           $(avrdude_args) -U flash:w:$<
 
 # TODO: Add a command that programs the EEPROM (with a hex file that only
 #       contains the .eeprom section).

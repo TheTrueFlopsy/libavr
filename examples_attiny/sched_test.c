@@ -3,9 +3,13 @@
 #include <avr/interrupt.h>
 #include <avr/io.h>
 
-#include "watchdog.h"
+// NOTE: When "auto_watchdog.h" is included, the watchdog timer is automatically
+//       disabled following an MCU reset.
+#include "auto_watchdog.h"
 #include "task_sched.h"
 
+
+// ---<<< Constant Definitions >>>---
 #define TEST_TASK_CAT 1
 
 #define LED_DDR  DDRA
@@ -41,9 +45,6 @@ static void init_tasks(void) {
 int main(void) __attribute__ ((OS_main));
 
 int main(void) {
-	// Ensure that the pesky watchdog timer is disabled.
-	watchdog_disable_on_mcu_reset();
-	
 	// Other I/O initialization.
 	LED_DDR |= LED_DDR_PIN;  // Make LED pin an output.
 	

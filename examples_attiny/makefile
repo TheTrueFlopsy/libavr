@@ -7,17 +7,20 @@ CC := avr-gcc
 testcc := gcc
 OBJ2HEX := avr-objcopy
 
+mcu := attiny84
+
+# Settings for ATtiny84 out-of-the-box:
 # 1 MHz MCU clock (factory default: 8 MHz osc. / MCU prescale 8), 8 clock cycles per scheduler tick
 f_cpu := 1000000
 f_cpu_prescale := 3
-mcu := attiny84
 
 avrdude := avrdude
 
-avrdude_port ?= /dev/ttyUSB0
-#avrdude_port ?= /dev/ttyACM0
+# Settings for Bus Pirate:
+avrdude_port := /dev/ttyUSB0
 avrdude_device := t84
 avrdude_prog := buspirate
+avrdude_args := -x spifreq=1
 
 # --- Directory Variables ---
 out_dir := .
@@ -62,7 +65,7 @@ ldirs := $(addprefix -L, $(ldirs_paths))
 lnames := -lavrtask -lm
 
 CFLAGS := -std=c11 $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto
-LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--relax
+LDFLAGS := -fuse-linker-plugin -Wl,--gc-sections -Wl,--print-gc-sections -Wl,--relax
 
 # --- Phony Targets ---
 .PHONY : all $(programs) $(targets) clean clean-libavr libavr
@@ -71,12 +74,8 @@ all : $(targets)
 
 $(programs) : prog-% : %
 $(programs) : prog-% : $(bdir)/%.hex
-	$(avrdude) -v -p $(avrdude_device) -c $(avrdude_prog) -x spifreq=1 -P $(avrdude_port) -U flash:w:$<
-
-# Bus Pirate settings:
-#$(avrdude) -v -p $(avrdude_device) -c buspirate -x spifreq=1 -P $(avrdude_port) -U flash:w:$<
-# Pololu programmer settings:
-#$(avrdude) -v -p $(avrdude_device) -c avrisp2 -B 100kHz -P $(avrdude_port) -U flash:w:$<
+	$(avrdude) -v -p $(avrdude_device) -c $(avrdude_prog) -P $(avrdude_port) \
+	           $(avrdude_args) -U flash:w:$<
 
 # TODO: Add a command that programs the EEPROM (with a hex file that only
 #       contains the .eeprom section).

@@ -1,9 +1,10 @@
 
 #include <avr/io.h>
 
+// NOTE: When "auto_watchdog.h" is included, the watchdog timer is automatically
+//       disabled following an MCU reset.
 #include "auto_watchdog.h"
 //#include "watchdog.h"
-
 #include "task_sched.h"
 #include "tbouncer.h"
 #include "std_tlv.h"
@@ -55,11 +56,6 @@
 
 #define LED_INPUT_RISING TBOUNCER_B_RISING
 
-#define TBOUNCER_TASK_CAT 15
-#define TTLV_TASK_CAT 14
-#define TEST_TASK_CAT 0
-#define MESSENGER_TASK_CAT 1
-
 #define BAUD_RATE 38400
 //#define BAUD_RATE 9600
 #define USE_U2X 0
@@ -69,6 +65,13 @@
 
 #define INM_ADDR 0x01
 #define MAX_MSG_LEN 8
+
+enum {
+	TEST_TASK_CAT      =  0,
+	MESSENGER_TASK_CAT =  1,
+	TTLV_TASK_CAT      = 14,
+	TBOUNCER_TASK_CAT  = 15
+};
 
 static const uint8_t led_pins[N_LEDS] = {
 	BV(LED_PIN0),
@@ -323,27 +326,10 @@ static void init_tasks(void) {
 	sched_add(&task);
 }
 
-// Ensure that the pesky watchdog timer is disabled.
-//WATCHDOG_DISABLE_ON_MCU_RESET
-
-//WATCHDOG_DISABLE_ON_MCU_RESET_SAVE_FLAGS
-
-/*void watchdog_disable_on_mcu_reset(void)
-	__attribute__ ((naked))
-	__attribute__ ((used))
-	__attribute__ ((section (".init3")));
-void watchdog_disable_on_mcu_reset(void) {
-	MCUSR = 0;  // Clear MCU reset flags. (Necessary to ensure that the WDT is disabled.)
-	wdt_disable();  // Disable the watchdog timer.
-}*/
-
 // NOTE: This is the entry point, tell compiler not to save/restore registers.
 int main(void) __attribute__ ((OS_main));
 
 int main(void) {
-	// Ensure that the pesky watchdog timer is disabled.
-	//watchdog_disable_on_mcu_reset();
-	
 	// Set LED pins as outputs. Turn on LED 0.
 	LED_DDR |= BV(LED_PIN0) | BV(LED_PIN1);
 	LED_PORT |= BV(LED_PIN0);
