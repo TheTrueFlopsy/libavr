@@ -54,6 +54,9 @@
 /**
 	Enum: I2C Module State/Result Codes
 	
+	NOTE: The error codes are those with names starting with "I2C_E_". These all have
+	numeric values greater than or equal to *I2C_E_UNSPECIFIED*.
+	
 	I2C_DISABLED      - module is disabled
 	I2C_READY         - module is idle and ready to begin a new operation
 	I2C_ACTIVE        - module is currently performing an operation

@@ -163,26 +163,19 @@ uint8_t sched_time_lte(sched_time a, sched_time b) {  // Tests whether A <= B.
 	return !sched_time_gt(a, b);
 }
 
-// TODO: Explain how this produces the correct difference even when
-//       the subtraction overflows.
-/*
-	0 (-2^M)        0               0 (2^M)         0 (2*2^M)
-	|===============|===============|===============|===============|
-			 A   C  B        A   C  B        A   C  B        A   C  B
-					 C<=========-B
-	0<======-C      +B=========>B
-															+C======>A
-	
-	A := 5.
-	B := 12.
-	A - B = -7.
-	C := usub_4(A, B) = (A - B) % 2^4 = -7 % 16 = 16 - 7 = 9.
-	uadd_4(B, C) = (B + C) % 2^4 = 21 % 16 = 5 = A.
-*/
+// NOTE: This function performs an operation equivalent to subtraction (with
+//       wraparound) of 24-bit unsigned smalltick counts and will always produce
+//       a result (in smallticks) that is equal to the minimum number of times
+//       that one needs to increment 'b' (with wraparound at b == 2^24) to obtain 'a'.
+//       If (a >= b), then this is obvious. If (a < b), then the result is equal
+//       to the one that would've been obtained if 'b' had been subtracted from
+//       (2^24 + a), which is obviously equal to the number of times to
+//       increment 'b' to obtain (2^24 + a). But since the first 24 bits
+//       of (2^24 + a) are equal to 'a', this is also the (minimum) number of
+//       times to increment 'b' to obtain 'a', taking the wraparound from (2^24 - 1)
+//       to 0 into account.
 sched_time sched_time_sub(sched_time a, sched_time b) {  // Subtracts B from A.
-	a.h -= b.h;
-	if (b.l > a.l) // Must borrow.
-		a.h--;       // Borrow from 'a.h'.
+	a.h -= ((b.l > a.l) ? b.h + 1 : b.h);  // Borrow from 'a.h' if necessary.
 	a.l -= b.l;
 	return a;
 }
@@ -207,40 +200,6 @@ void sched_init(void) {
 	SCHED_TCCRB = SCHED_TCCRB_INIT_VAL; // Normal mode, counter stopped.
 }
 
-/*sched_task *sched_find_ptr(uint8_t st_mask, uint8_t st_val, sched_task *start_p) {
-	if (st_val == TASK_ST_GARBAGE && st_mask == 0xff)
-		return NULL;
-	
-	st_val &= st_mask;
-	
-	sched_task task_p = (start_p) ? start_p : task_list;
-	
-	for (uint8_t i = start_i; i < sched_list_size; i++, task_p++) {
-		uint8_t masked_st = st_mask & task_p->st;
-		if (masked_st == st_val)
-			return task_p;
-	}
-	
-	return NULL;
-}
-
-sched_task *sched_find(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
-	if (st_val == TASK_ST_GARBAGE && st_mask == 0xff)
-		return NULL;
-	
-	st_val &= st_mask;
-	
-	sched_task task_p = task_list;
-	
-	for (uint8_t i = start_i; i < sched_list_size; i++, task_p++) {
-		uint8_t masked_st = st_mask & task_p->st;
-		if (masked_st == st_val)
-			return task_p;
-	}
-	
-	return NULL;
-}*/
-
 sched_task *sched_ptr_query(
 	uint8_t st_mask, uint8_t st_val, uint8_t start_i, uint8_t *task_i_p)
 {
@@ -262,25 +221,6 @@ sched_task *sched_ptr_query(
 	
 	return NULL;
 }
-
-/*uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
-	if (st_val == TASK_ST_GARBAGE && st_mask == 0xff)
-		return SCHED_MAX_TASKS;
-	
-	st_val &= st_mask;
-	
-	sched_task *task_p = task_list;
-	if (start_i > 0)
-		task_p += start_i;
-	
-	for (uint8_t i = start_i; i < sched_list_size; i++, task_p++) {
-		uint8_t masked_st = st_mask & task_p->st;
-		if (masked_st == st_val)
-			return i;
-	}
-	
-	return SCHED_MAX_TASKS;
-}*/
 
 uint8_t sched_query(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
 	sched_task *task_p = sched_ptr_query(st_mask, st_val, start_i, &start_i);

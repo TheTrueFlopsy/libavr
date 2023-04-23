@@ -125,7 +125,7 @@
 /**
 	Enum: TTLV Module State/Result Codes
 	
-	NOTE: The error codes are those starting with "TTLV_E_". These all have
+	NOTE: The error codes are those with names starting with "TTLV_E_". These all have
 	numeric values greater than or equal to *TTLV_E_UNSPECIFIED*.
 	
 	TTLV_SUCCESS       - operation or function finished successfully
@@ -200,6 +200,31 @@ typedef uint8_t ttlv_mode;
 typedef uint8_t ttlv_state;
 
 /**
+	Macro: TTLV_HEADER_BYTES_TLV
+	Size in bytes of a TLV header. Constant macro.
+*/
+#define TTLV_HEADER_BYTES_TLV sizeof(ttlv_header)
+
+/**
+	Macro: TTLV_HEADER_BYTES_INM
+	Combined size in bytes of an INM header and a TLV header.
+*/
+#define TTLV_HEADER_BYTES_INM (sizeof(ttlv_inm_header) + sizeof(ttlv_header))
+
+// TODO: Get rid of these limitations if they become a problem.
+/**
+	Macro: TTLV_MAX_LEN_TLV
+	Maximum TLV length of a plain TLV message handled by the TTLV module.
+*/
+#define TTLV_MAX_LEN_TLV (0xff - TTLV_HEADER_BYTES_TLV)
+
+/**
+	Macro: TTLV_MAX_LEN_INM
+	Maximum TLV length of an INM message handled by the TTLV module.
+*/
+#define TTLV_MAX_LEN_INM (0xff - TTLV_HEADER_BYTES_INM)
+
+/**
 	Struct: ttlv_s_inm_header
 	Specifies the byte format of an INM message header.
 */
@@ -261,31 +286,6 @@ typedef union ttlv_header {
 	ttlv_s_header h;
 	uint8_t b[sizeof(ttlv_s_header)];
 } ttlv_header;
-
-/**
-	Macro: TTLV_HEADER_BYTES_TLV
-	Size in bytes of a TLV header. Constant macro.
-*/
-#define TTLV_HEADER_BYTES_TLV sizeof(ttlv_header)
-
-/**
-	Macro: TTLV_HEADER_BYTES_INM
-	Combined size in bytes of an INM header and a TLV header.
-*/
-#define TTLV_HEADER_BYTES_INM (sizeof(ttlv_inm_header) + sizeof(ttlv_header))
-
-// TODO: Get rid of these limitations if they become a problem.
-/**
-	Macro: TTLV_MAX_LEN_TLV
-	Maximum TLV length of a plain TLV message handled by the TTLV module.
-*/
-#define TTLV_MAX_LEN_TLV (0xff - TTLV_HEADER_BYTES_TLV)
-
-/**
-	Macro: TTLV_MAX_LEN_INM
-	Maximum TLV length of an INM message handled by the TTLV module.
-*/
-#define TTLV_MAX_LEN_INM (0xff - TTLV_HEADER_BYTES_INM)
 
 
 /// Section: API Variables

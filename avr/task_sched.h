@@ -28,7 +28,7 @@
 // for as long as it pleases, use Timer2 and the task list memory
 // for other things, etc., and then hand control back to the scheduler.
 
-// IDEA: Add way to pause and restart the scheduler in a controlled fashion,
+// IDEA: Add a way to pause and restart the scheduler in a controlled fashion,
 // for low-power modes, etc. Even handle low-power modes in the scheduler
 // itself?
 
@@ -146,7 +146,7 @@
 /**
 	Macro: SCHED_CLOCK_PRESCALE
 	The CPU clock prescale value of the timer that the scheduler uses to keep track
-	of elapsed time. It is usually best to set this via *SCHED_CLOCK_PRESCALE_LOG*.
+	of elapsed time. It is usually best to set this via <SCHED_CLOCK_PRESCALE_LOG>.
 	Constant macro.
 */
 #define SCHED_CLOCK_PRESCALE (1 << SCHED_CLOCK_PRESCALE_LOG)
@@ -178,54 +178,6 @@
 #define SCHED_MIN_DELTA_TICKS MUSECS_TO_SCHED_TICKS(SCHED_MIN_DELTA_MUSECS)
 #define SCHED_MIN_DELTA_L ((uint8_t)MUSECS_TO_SCHED_SMALLTICKS(SCHED_MIN_DELTA_MUSECS))
 #define SCHED_MIN_DELTA_H ((uint16_t)MUSECS_TO_SCHED_BIGTICKS(SCHED_MIN_DELTA_MUSECS))
-
-/**
-	Struct: sched_time
-	Represents either a duration or a scheduler timestamp. Time is measured
-	in scheduler ticks, and the length of a scheduler tick is the reciprocal
-	of the scheduling clock frequency, which depends on the CPU clock
-	frequency and the scheduler's timer prescaler setting.
-	See <SCHED_CLOCK_PRESCALE_LOG> and <SCHED_TICK_MUSECS>.
-	
-	Each *sched_time* contains two scheduler tick counts, the "smalltick" count
-	in the 8-bit field *l* and the "bigtick" count in the 16-bit field *h*.
-	Together, the two fields represent a duration of
-	> SCHED_TICK_MUSECS*(256*h + l)
-	microseconds. The maximum representable duration (<SCHED_TIME_MAX>) is
-	> SCHED_TICK_MUSECS*16777215
-	microseconds. Since <SCHED_TICK_MUSECS> must be at least 1, durations up to
-	16 seconds are always representable.
-	
-	A scheduler timestamp encodes the duration of time elapsed since the latest
-	rollover of the scheduling clock's tick counter, at the time when the
-	timestamp was recorded. This means that a timestamp with a larger total tick
-	count (obtained via <SCHED_TIME_TO_TICKS>) than another may still represent
-	an earlier point in time. The scheduler stores the timestamp of the current
-	scheduler iteration in the global variable <sched_ticks>.
-	
-	However, provided that the total duration of scheduler iterations performed
-	between iteration *X* and subsequent iteration *Y* does not exceed the maximum
-	representable duration (<SCHED_TIME_MAX>), the difference (as calculated
-	by <sched_time_sub>) between a timestamp obtained (from <sched_ticks>)
-	during iteration *Y* and one obtained during iteration *X* will always be
-	equal to the duration of time (as measured by the scheduling clock) between
-	the start of iteration *X* and the start of iteration *Y*.
-*/
-typedef struct sched_time {
-	/**
-		Field: l
-		The smalltick count field. The duration of one smalltick (which is also
-		the resolution of the scheduling clock) is *SCHED_TICK_MUSECS* microseconds.
-	*/
-	uint8_t l;
-	
-	/**
-		Field: h
-		The bigtick count field. One bigtick is equivalent to 256 smallticks.
-	*/
-	uint16_t h;
-	
-} sched_time;
 
 /**
 	Macro: SCHED_TIME_LH
@@ -352,6 +304,54 @@ typedef struct sched_time {
 #define SCHED_TIME_MAX_MS SCHED_TIME_TO_MS(SCHED_TIME_MAX)
 
 #define SCHED_MIN_DELTA SCHED_TIME_LH(SCHED_MIN_DELTA_L, SCHED_MIN_DELTA_H)
+
+/**
+	Struct: sched_time
+	Represents either a duration or a scheduler timestamp. Time is measured
+	in scheduler ticks, and the length of a scheduler tick is the reciprocal
+	of the scheduling clock frequency, which depends on the CPU clock
+	frequency and the scheduler's timer prescaler setting.
+	See <SCHED_CLOCK_PRESCALE_LOG> and <SCHED_TICK_MUSECS>.
+	
+	Each *sched_time* contains two scheduler tick counts, the "smalltick" count
+	in the 8-bit field *l* and the "bigtick" count in the 16-bit field *h*.
+	Together, the two fields represent a duration of
+	> SCHED_TICK_MUSECS*(256*h + l)
+	microseconds. The maximum representable duration (<SCHED_TIME_MAX>) is
+	> SCHED_TICK_MUSECS*16777215
+	microseconds. Since <SCHED_TICK_MUSECS> must be at least 1, durations up to
+	16 seconds are always representable.
+	
+	The scheduler stores the timestamp of the current scheduler iteration in the
+	global variable <sched_ticks>. A scheduler timestamp encodes the duration of
+	time elapsed since the latest rollover of the scheduling clock's tick counter,
+	at the time when the timestamp was recorded. This means that a timestamp with
+	a larger total tick count (obtained via <SCHED_TIME_TO_TICKS>) than another
+	may still represent an earlier point in time.
+	
+	However, provided that the total duration of scheduler iterations performed
+	between iteration *X* and subsequent iteration *Y* does not exceed the maximum
+	representable duration (<SCHED_TIME_MAX>), the difference (as calculated
+	by <sched_time_sub>) between a timestamp obtained (from <sched_ticks>)
+	during iteration *Y* and one obtained during iteration *X* will always be
+	equal to the duration of time (as measured by the scheduling clock) between
+	the start of iteration *X* and the start of iteration *Y*.
+*/
+typedef struct sched_time {
+	/**
+		Field: l
+		The smalltick count field. The duration of one smalltick (which is also
+		the resolution of the scheduling clock) is <SCHED_TICK_MUSECS> microseconds.
+	*/
+	uint8_t l;
+	
+	/**
+		Field: h
+		The bigtick count field. One bigtick is equivalent to 256 smallticks.
+	*/
+	uint16_t h;
+	
+} sched_time;
 
 
 /// Section: Task Control and Status Bytes
@@ -790,13 +790,13 @@ uint8_t sched_time_lte(sched_time a, sched_time b);
 	Function: sched_time_sub
 	Subtracts <sched_time> *b* from <sched_time> *a*. The subtraction is
 	performed in a way that is equivalent to subtraction of 24-bit unsigned
-	integers (with wraparound in case *a* is less than *b*).
+	smalltick counts (with wraparound in case *a* is less than *b*).
 	
 	NOTE: This operation produces a meaningful result only when one duration is
 	subtracted from another that is no shorter and when one timestamp is
 	subtracted from another that was obtained no earlier in time, and not more
-	than <SCHED_TIME_MAX> later. In those cases, the result represents a
-	nonnegative duration.
+	than <SCHED_TIME_MAX> seconds later. In those cases, the result represents
+	a nonnegative duration.
 */
 sched_time sched_time_sub(sched_time a, sched_time b);
 
