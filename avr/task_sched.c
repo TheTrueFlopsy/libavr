@@ -1,5 +1,8 @@
 
 #include <stddef.h>
+
+#ifndef LIBAVR_TEST_BUILD
+
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <util/atomic.h>
@@ -8,7 +11,12 @@
 #include <util/delay_basic.h>
 #endif
 
+#endif
+
 #include "task_sched.h"
+
+
+#ifndef LIBAVR_TEST_BUILD
 
 #ifdef LIBAVR_ATTINY
 
@@ -143,6 +151,8 @@ ISR(SCHED_TIMER_VECT) {  // The tick counter has overflowed.
 }
 #endif
 
+#endif
+
 uint8_t sched_time_is_zero(sched_time t) {  // Tests whether T == 0.
 	return t.h == 0 && t.l == 0;
 }
@@ -163,6 +173,12 @@ uint8_t sched_time_lte(sched_time a, sched_time b) {  // Tests whether A <= B.
 	return !sched_time_gt(a, b);
 }
 
+sched_time sched_time_add(sched_time a, sched_time b) {  // Adds B to A.
+	a.h += ((b.l > (UINT8_MAX - a.l)) ? b.h + 1 : b.h);  // Carry to 'a.h' if necessary.
+	a.l += b.l;
+	return a;
+}
+
 // NOTE: This function performs an operation equivalent to subtraction (with
 //       wraparound) of 24-bit unsigned smalltick counts and will always produce
 //       a result (in smallticks) that is equal to the minimum number of times
@@ -179,6 +195,8 @@ sched_time sched_time_sub(sched_time a, sched_time b) {  // Subtracts B from A.
 	a.l -= b.l;
 	return a;
 }
+
+#ifndef LIBAVR_TEST_BUILD
 
 void sched_init(void) {
 	sched_isr_tcww = 0;
@@ -470,3 +488,5 @@ void sched_run(void) {
 #endif
 	}
 }
+
+#endif

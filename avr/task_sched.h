@@ -732,6 +732,8 @@ extern uint8_t sched_list_size;
 */
 extern volatile uint16_t sched_tick_count_h;
 
+#endif
+
 
 /// Section: API Functions - Helpers
 
@@ -787,21 +789,45 @@ uint8_t sched_time_gte(sched_time a, sched_time b);
 uint8_t sched_time_lte(sched_time a, sched_time b);
 
 /**
+	Function: sched_time_add
+	Adds <sched_time> *b* to <sched_time> *a*. The addition is performed
+	in a way that is equivalent to addition of 24-bit unsigned smalltick
+	counts (with wraparound in case the sum is greater than <SCHED_TIME_MAX>).
+	
+	This operation produces a meaningful result when one duration is added to
+	another such that their sum is no longer than <SCHED_TIME_MAX>. In that
+	case, the result represents a nonnegative duration.
+	
+	This operation also produces a meaningful result when a duration is
+	added to a timestamp. In that case, the result is the timestamp
+	of the point in time that many seconds later than the one the original
+	timestamp corresponds to.
+*/
+sched_time sched_time_add(sched_time a, sched_time b);
+
+/**
 	Function: sched_time_sub
 	Subtracts <sched_time> *b* from <sched_time> *a*. The subtraction is
 	performed in a way that is equivalent to subtraction of 24-bit unsigned
 	smalltick counts (with wraparound in case *a* is less than *b*).
 	
-	NOTE: This operation produces a meaningful result only when one duration is
+	This operation produces a meaningful result when one duration is
 	subtracted from another that is no shorter and when one timestamp is
 	subtracted from another that was obtained no earlier in time, and not more
 	than <SCHED_TIME_MAX> seconds later. In those cases, the result represents
 	a nonnegative duration.
+	
+	This operation also produces a meaningful result when a duration is
+	subtracted from a timestamp. In that case, the result is the timestamp
+	of the point in time that many seconds earlier than the one the original
+	timestamp corresponds to.
 */
 sched_time sched_time_sub(sched_time a, sched_time b);
 
 
 /// Section: API Functions - Scheduler Operations
+
+#ifndef LIBAVR_TEST_BUILD
 
 /**
 	Macro: SCHED_FIND

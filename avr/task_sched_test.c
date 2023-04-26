@@ -65,9 +65,18 @@ int main(int argc, char **argv) {
 	PRINTLN_SYM(t.l, d);
 	PRINTLN_SYM(t.h, d);
 	t = SCHED_TIME_MUSECS(1030);
+	PRINTLN_SYM(SCHED_TIME_TO_MUSECS(t), d);
 	PRINTLN_SYM(t.l, d);
 	PRINTLN_SYM(t.h, d);
 	t = SCHED_TIME_MS(800);
+	PRINTLN_SYM(t.l, d);
+	PRINTLN_SYM(t.h, d);
+	t = sched_time_add(t, SCHED_TIME_MS(500));
+	PRINTLN_SYM(SCHED_TIME_TO_MS(t), d);
+	PRINTLN_SYM(t.l, d);
+	PRINTLN_SYM(t.h, d);
+	t = sched_time_sub(t, SCHED_TIME_MS(250));
+	PRINTLN_SYM(SCHED_TIME_TO_MS(t), d);
 	PRINTLN_SYM(t.l, d);
 	PRINTLN_SYM(t.h, d);
 	

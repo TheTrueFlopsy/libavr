@@ -50,6 +50,8 @@ parameters of the library and the system where the firmware will be running (e.g
 CPU clock frequency) are compile-time constants, project-specific builds will often be
 the best choice.
 
+**TODO:** Write about the test programs.
+
 
 ## Using the Library
 Writing, building and uploading firmware is not hard once you know how to do it.

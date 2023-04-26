@@ -80,7 +80,7 @@ else
 common := watchdog task_sched tbouncer task_tlv std_tlv memmon spihelper i2chelper mcp4x mcp23018
 endif
 
-test_common    := tbouncer
+test_common    := task_sched tbouncer
 test_targets   := task_sched_test tbouncer_test
 cytest_targets := tbouncer_test
 
