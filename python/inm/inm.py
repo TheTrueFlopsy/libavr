@@ -1037,6 +1037,7 @@ class MessageFactory:
 	##
 	## Returns:
 	##   A bytes object containing a converted representation of *val*.
+	##   (Or *None*, if *val* couldn't be converted.)
 	def make_val(self, val, int_size=None, tlv_type=None):
 		if int_size is None:
 			int_size = self.get_make_val_int_size(tlv_type, self.int_size)
@@ -1077,8 +1078,7 @@ class MessageFactory:
 	## byte range (i.e. 0-255).
 	##
 	## Parameters:
-	##   mval - The objects to convert to a multipart message value. SHOULD be
-	##     a tuple or list of representable objects.
+	##   mval - The objects to convert to a multipart message value. MUST be a sequence.
 	##   int_size - The sizes in bytes of message value fields produced from an
 	##     integer. May be a scalar (if all integer fields have the same size),
 	##     tuple or list. If this is *None*, default sizes will be used.
@@ -1087,6 +1087,7 @@ class MessageFactory:
 	##
 	## Returns:
 	##   A bytes object containing a converted representation of *mval*.
+	##   (Or *None*, if some object in *mval* couldn't be converted.)
 	def make_mval(self, mval, int_size=None, tlv_type=None):
 		if int_size is None:
 			int_size = self.get_make_val_int_size(tlv_type, self.int_size)
@@ -1281,10 +1282,13 @@ class MessageFactory:
 	##     If this is *None*, a default size will be used.
 	##
 	## Returns:
-	##   A <StandardMessage> with type *typ* and a value constructed by
-	##   applying <make_val> to *val*.
+	##   A <StandardMessage> with type *typ* and a value constructed by applying
+	##   <make_val> to *val*. (Or *None*, if a value couldn't be constructed.)
 	def make_msg(self, typ, val, int_size=None):
 		b_val = self.make_val(val, int_size, typ)
+		if b_val is None:
+			return None
+		
 		msg = StandardMessage(typ, b_val)
 		return msg
 	
@@ -1293,17 +1297,19 @@ class MessageFactory:
 	##
 	## Parameters:
 	##   typ - An INM message type specifier.
-	##   mval - The objects to convert to a multipart message value. SHOULD be
-	##     a tuple or list of representable objects.
+	##   mval - The objects to convert to a multipart message value. MUST be a sequence.
 	##   int_size - The sizes in bytes of message value fields produced from an
 	##     integer. May be a scalar (if all integer fields have the same size),
 	##     tuple or list. If this is *None*, default sizes will be used.
 	##
 	## Returns:
-	##   A <StandardMessage> with type *typ* and a value constructed by
-	##   applying <make_mval> to *mval*.
+	##   A <StandardMessage> with type *typ* and a value constructed by applying
+	##   <make_mval> to *mval*. (Or *None*, if a value couldn't be constructed.)
 	def make_msg_mval(self, typ, mval, int_size=None):
 		b_mval = self.make_mval(mval, int_size, typ)
+		if b_mval is None:
+			return None
+		
 		msg = StandardMessage(typ, b_mval)
 		return msg
 	
@@ -1317,10 +1323,13 @@ class MessageFactory:
 	##     If this is *None*, a default size will be used.
 	##
 	## Returns:
-	##   A <LargeMessage> with type *typ* and a value constructed by
-	##   applying <make_val> to *val*.
+	##   A <LargeMessage> with type *typ* and a value constructed by applying
+	##   <make_val> to *val*. (Or *None*, if a value couldn't be constructed.)
 	def make_large_msg(self, typ, val, int_size=None):
 		b_val = self.make_val(val, int_size, typ)
+		if b_val is None:
+			return None
+		
 		msg = LargeMessage(typ, b_val)
 		return msg
 	
@@ -1329,17 +1338,19 @@ class MessageFactory:
 	##
 	## Parameters:
 	##   typ - An INM message type specifier.
-	##   mval - The objects to convert to a multipart message value. SHOULD be
-	##     a tuple or list of representable objects.
+	##   mval - The objects to convert to a multipart message value. MUST be a sequence.
 	##   int_size - The sizes in bytes of message value fields produced from an
 	##     integer. May be a scalar (if all integer fields have the same size),
 	##     tuple or list. If this is *None*, default sizes will be used.
 	##
 	## Returns:
-	##   A <LargeMessage> with type *typ* and a value constructed by
-	##   applying <make_mval> to *mval*.
+	##   A <LargeMessage> with type *typ* and a value constructed by applying
+	##   <make_mval> to *mval*. (Or *None*, if a value couldn't be constructed.)
 	def make_large_msg_mval(self, typ, mval, int_size=None):
 		b_mval = self.make_mval(mval, int_size, typ)
+		if b_mval is None:
+			return None
+		
 		msg = LargeMessage(typ, b_mval)
 		return msg
 	

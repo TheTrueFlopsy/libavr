@@ -348,7 +348,9 @@ def main():
 	_log.info(f'Version {version_str}')
 	
 	inm_adr = _parse_inm_adr(args.inm_adr)
-	cc_to = tuple(_parse_inm_adr(cc_arg) for cc_arg in args.cc_to)
+	cc_to = ()
+	if args.cc_to is not None:
+		cc_to = tuple(_parse_inm_adr(cc_arg) for cc_arg in args.cc_to)
 	hook_module_name = args.hook_module
 	hook_interval = inm.get_timedelta(args.hook_interval)
 	

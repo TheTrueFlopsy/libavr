@@ -168,7 +168,6 @@ class InmHelper:
 	##   tcp_port - TCP port of the internal <InetMessageChannel> that is created if
 	##     the *channel* parameter is *None*. If this parameter is *None*, the port
 	##     number used for the UDP port is also used for the TCP port.
-	##
 	##     NOTE: In the current implementation of <InetMessageChannel>, no TCP socket
 	##     is actually used, so this parameter makes no difference.
 	##   timeout - Receive timeout of the internal <InetMessageChannel> that is created if
@@ -227,6 +226,15 @@ class InmHelper:
 		self.close()
 		return False
 	
+	def _make_header(self, dstadr, msg_id=None, srcadr=None):
+		if msg_id is None:
+				msg_id = self.channel.peek_next_msg_id()
+		
+		if srcadr is None:
+			srcadr = self.channel.srcadr
+		
+		return inm.MessageHeader(msg_id, dstadr, srcadr)
+	
 	## Method: open
 	## Opens the encapsulated <channel>. Calls <MessageChannel.open>.
 	##
@@ -240,6 +248,173 @@ class InmHelper:
 	## Closes the encapsulated <channel>. Calls <MessageChannel.close>.
 	def close(self):
 		self.channel.close()
+	
+	## Method: header_to_bytes
+	## Constructs an INM message header and returns it as a bytes object. Useful for
+	## finding out the exact on-wire representation of a header.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address in the header to construct.
+	##   msg_id - INM message ID. If this is *None*, the next message ID to be generated
+	##     by the <channel> will be used.
+	##   srcadr - Source INM node address in the header to construct. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##
+	## Returns:
+	##   A bytes object containing the standard binary on-wire representation of the
+	##   specified INM message header.
+	def header_to_bytes(self, dstadr, msg_id=None, srcadr=None):
+		header = self._make_header(dstadr, msg_id, srcadr)
+		return header.to_bytes()
+	
+	## Method: msg_to_bytes
+	## Constructs an INM message and returns it as a bytes object. Useful for finding
+	## out the exact on-wire representation of a message.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to construct.
+	##   typ - INM message type.
+	##   val - INM message value.
+	##   int_size - Field size in bytes of an integer message value. If this is *None*,
+	##     the default *int_size* of the <msg_factory> will be used.
+	##   msg_id - INM message ID. If this is *None*, the next message ID to be generated
+	##     by the <channel> will be used.
+	##   srcadr - Source INM node address of the message to construct. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##   with_header - Boolean flag specifying whether an INM header should be prepended
+	##     to the constructed message.
+	##
+	## Returns:
+	##   A bytes object containing the standard binary on-wire representation of the
+	##   specified INM message. (Or *None*, if the message couldn't be constructed.)
+	def msg_to_bytes(self, dstadr, typ, val, int_size=None, msg_id=None, srcadr=None, with_header=True):
+		if self._SM_MIN_TYPE <= typ <= self._SM_MAX_TYPE:
+			msg = self.msg_factory.make_msg(typ, val, int_size)
+		elif self._LM_MIN_TYPE <= typ <= self._LM_MAX_TYPE:
+			msg = self.msg_factory.make_large_msg(typ, val, int_size)
+		else:
+			return None
+		
+		if msg is None:
+			return None
+		
+		header = self._make_header(dstadr, msg_id, srcadr) if with_header else None
+		
+		return self.msg_factory.msg_to_bytes(msg, header)
+	
+	## Method: msg_to_bytes_mval
+	## Constructs an INM message with a multipart message value and returns it as a bytes
+	## object. Useful for finding out the exact on-wire representation of a message.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to construct.
+	##   typ - INM message type.
+	##   mval - Multipart INM message value. MUST be a sequence.
+	##   int_size - Field size in bytes of an integer message value. This may be
+	##     a list or tuple containing a separate integer size for each element
+	##     of the *val* argument. If this is *None*, the default *int_size*
+	##     of the <msg_factory> will be used.
+	##   msg_id - INM message ID. If this is *None*, the next message ID to be generated
+	##     by the <channel> will be used.
+	##   srcadr - Source INM node address of the message to construct. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##   with_header - Boolean flag specifying whether an INM header should be prepended
+	##     to the constructed message.
+	##
+	## Returns:
+	##   A bytes object containing the standard binary on-wire representation of the
+	##   specified INM message. (Or *None*, if the message couldn't be constructed.)
+	def msg_to_bytes_mval(self, dstadr, typ, mval, int_size=None, msg_id=None, srcadr=None, with_header=True):
+		if self._SM_MIN_TYPE <= typ <= self._SM_MAX_TYPE:
+			msg = self.msg_factory.make_msg_mval(typ, mval, int_size)
+		elif self._LM_MIN_TYPE <= typ <= self._LM_MAX_TYPE:
+			msg = self.msg_factory.make_large_msg_mval(typ, mval, int_size)
+		else:
+			return None
+		
+		if msg is None:
+			return None
+		
+		header = self._make_header(dstadr, msg_id, srcadr) if with_header else None
+		
+		return self.msg_factory.msg_to_bytes(msg, header)
+	
+	## Method: header_to_hex
+	## Constructs an INM message header and returns it as a list of hex strings.
+	## Useful for finding out the exact on-wire representation of a header.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address in the header to construct.
+	##   msg_id - INM message ID. If this is *None*, the next message ID to be generated
+	##     by the <channel> will be used.
+	##   srcadr - Source INM node address in the header to construct. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##
+	## Returns:
+	##   A list of two-character hexadecimal strings, corresponding to bytes in
+	##   the standard binary on-wire representation of the specified INM message header.
+	def header_to_hex(self, dstadr, msg_id=None, srcadr=None):
+		header_bytes = self.header_to_bytes(dstadr, msg_id, srcadr)
+		return [f'{b:02x}' for b in header_bytes]
+	
+	## Method: msg_to_hex
+	## Constructs an INM message and returns it as a list of hex strings.
+	## Useful for finding out the exact on-wire representation of a message.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to construct.
+	##   typ - INM message type.
+	##   val - INM message value.
+	##   int_size - Field size in bytes of an integer message value. If this is *None*,
+	##     the default *int_size* of the <msg_factory> will be used.
+	##   msg_id - INM message ID. If this is *None*, the next message ID to be generated
+	##     by the <channel> will be used.
+	##   srcadr - Source INM node address of the message to construct. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##   with_header - Boolean flag specifying whether an INM header should be prepended
+	##     to the constructed message.
+	##
+	## Returns:
+	##   A list of two-character hexadecimal strings, corresponding to bytes in
+	##   the standard binary on-wire representation of the specified INM message.
+	##   (Or *None*, if the message couldn't be constructed.)
+	def msg_to_hex(self, dstadr, typ, val, int_size=None, msg_id=None, srcadr=None, with_header=True):
+		msg_bytes = self.msg_to_bytes(dstadr, typ, val, int_size, msg_id, srcadr, with_header)
+		if msg_bytes is None:
+			return None
+		
+		return [f'{b:02x}' for b in msg_bytes]
+	
+	## Method: msg_to_hex_mval
+	## Constructs an INM message with a multipart message value and returns it as
+	## list of hex strings. Useful for finding out the exact on-wire representation
+	## of a message.
+	##
+	## Parameters:
+	##   dstadr - Destination INM node address of the message to construct.
+	##   typ - INM message type.
+	##   mval - Multipart INM message value. MUST be a sequence.
+	##   int_size - Field size in bytes of an integer message value. This may be
+	##     a list or tuple containing a separate integer size for each element
+	##     of the *val* argument. If this is *None*, the default *int_size*
+	##     of the <msg_factory> will be used.
+	##   msg_id - INM message ID. If this is *None*, the next message ID to be generated
+	##     by the <channel> will be used.
+	##   srcadr - Source INM node address of the message to construct. If this is *None*,
+	##     the configured source address of the <channel> will be used.
+	##   with_header - Boolean flag specifying whether an INM header should be prepended
+	##     to the constructed message.
+	##
+	## Returns:
+	##   A list of two-character hexadecimal strings, corresponding to bytes in
+	##   the standard binary on-wire representation of the specified INM message.
+	##   (Or *None*, if the message couldn't be constructed.)
+	def msg_to_hex_mval(self, dstadr, typ, mval, int_size=None, msg_id=None, srcadr=None, with_header=True):
+		msg_bytes = self.msg_to_bytes_mval(dstadr, typ, mval, int_size, msg_id, srcadr, with_header)
+		if msg_bytes is None:
+			return None
+		
+		return [f'{b:02x}' for b in msg_bytes]
 	
 	## Method: send
 	## Constructs and sends an INM message.
@@ -267,6 +442,9 @@ class InmHelper:
 		else:
 			return self.RC.INVALID_ARGUMENT
 		
+		if msg is None:
+			return self.RC.INVALID_ARGUMENT
+		
 		if link_adr is None:
 			link_adr = self.link_adr
 		
@@ -278,7 +456,7 @@ class InmHelper:
 	## Parameters:
 	##   dstadr - Destination INM node address of the message to send.
 	##   typ - INM message type.
-	##   mval - Multipart INM message value. Should be a list or tuple of values.
+	##   mval - Multipart INM message value. MUST be a sequence.
 	##   int_size - Field size in bytes of an integer message value. This may be
 	##     a list or tuple containing a separate integer size for each element
 	##     of the *val* argument. If this is *None*, the default *int_size*
@@ -298,6 +476,9 @@ class InmHelper:
 		elif self._LM_MIN_TYPE <= typ <= self._LM_MAX_TYPE:
 			msg = self.msg_factory.make_large_msg_mval(typ, mval, int_size)
 		else:
+			return self.RC.INVALID_ARGUMENT
+		
+		if msg is None:
 			return self.RC.INVALID_ARGUMENT
 		
 		if link_adr is None:
@@ -351,7 +532,7 @@ class InmHelper:
 	## Parameters:
 	##   dstadr - Destination INM node address of the message to send.
 	##   typ - INM message type.
-	##   mval - Multipart INM message value. Should be a list or tuple of values.
+	##   mval - Multipart INM message value. MUST be a sequence.
 	##   int_size - Field size in bytes of an integer message value. This may be
 	##     a list or tuple containing a separate integer size for each element
 	##     of the *val* argument. If this is *None*, the default *int_size*
