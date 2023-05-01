@@ -223,8 +223,6 @@ class StandardResults(enum.IntEnum):
 	APPLICATION     = 0x40
 	NONE            = 0xff
 
-# TODO: Review the standard register set and consider improvements
-#       (e.g. replace the index register with indexed read/write).
 ## Enum: StandardRegisters
 ## Standard INM register identifiers. Identifiers are transmitted as 8-bit
 ## unsigned integers and MUST be specified as Python integers in the range 0-255

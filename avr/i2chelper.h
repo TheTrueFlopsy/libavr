@@ -170,15 +170,6 @@ i2c_state i2chelper_request(
 	i2c_slave_addr addr, uint8_t n_out, volatile const uint8_t *bfr_out,
 	uint8_t n_in, volatile uint8_t *bfr_in);
 
-// ISSUE: Is there a delay between the ATmega detecting an interrupt
-// condition and interruption of the currently executing code? Does
-// this mean that a jump to an ISR may happen after the corresponding
-// interrupt enable bit has been cleared, if the interrupt condition
-// is detected a few clock cycles before the execution of
-// the instruction that clears the enable bit? At which stage of the
-// interrupt triggering process is the enable bit checked? I haven't
-// been able to find any definitive statement about this in the ATmega
-// datasheet.
 /**
 	Function: i2chelper_shutdown
 	Shuts down the I2C module.

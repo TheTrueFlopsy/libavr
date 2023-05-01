@@ -12,6 +12,11 @@
 	set of logical registers for TLV/INM nodes, as well as helper macros that
 	simplify implementation of the logical register interface. Finally, there are
 	some convenience functions for transmission of INM response messages.
+	
+	CAUTION: The current logical register specification has bothersome and
+	unnecessary limitations (e.g. all registers being one byte large) and is
+	therefore being considered for compatibility-breaking replacement in a future
+	release of libavr.
 */
 
 
@@ -123,8 +128,6 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_inm_result {
 
 /// Section: Logical Registers
 
-// TODO: Review the standard register set and consider improvements
-//       (e.g. replace the index register with indexed read/write).
 enum {
 	TTLV_REG_NULL = 0x00,
 	TTLV_REG_APP_STATUS = 0x01, // Zero means normal status.

@@ -31,9 +31,9 @@ encountered, are welcome.
 The library depends on [AVR Libc](https://www.nongnu.org/avr-libc/). Personally,
 I compile firmware with `avr-gcc`, convert it to an
  [Intel hex](https://en.wikipedia.org/wiki/Intel_HEX)
-file with `avr-objcopy` and upload it to the MCU with `avrdude` (
- [documented here](https://avrdudes.github.io/avrdude/current/avrdude_toc.html)
-). These are all available in Debian packages (`avr-libc`, `gcc-avr`, `binutils-avr`
+file with `avr-objcopy` and upload it to the MCU with `avrdude`, which is documented
+ [here](https://avrdudes.github.io/avrdude/current/avrdude_toc.html).
+These are all available in Debian packages (`avr-libc`, `gcc-avr`, `binutils-avr`
 and `avrdude`, respectively).
 
 Building the library on a Linux system should be a matter of installing the required
@@ -50,7 +50,21 @@ parameters of the library and the system where the firmware will be running (e.g
 CPU clock frequency) are compile-time constants, project-specific builds will often be
 the best choice.
 
-**TODO:** Write about the test programs.
+The library makes use of GCC's support for
+ [link-time optimization](https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#index-flto)
+(LTO) to enable optimization of the built firmware as a whole (including library code)
+and to exclude unused library functions from the uploadable firmware. The use of LTO
+requires the presence of additional data (GIMPLE bytecode) in the linked object files.
+See the example firmware makefiles for details on how to set up LTO builds in a project
+(it amounts to adding a couple of compiler options).
+
+There are a few test programs included in the repository. The purpose of these is to
+enable testing of library code directly on the build system, instead of in an MCU.
+The test programs can be built with `make tests` and then executed with `make run-tests`.
+In the current version, the test programs only exercise the debouncer module (`tbouncer.h`)
+and some helper macros and functions for the task scheduler (`task_sched.h`). Some tests
+require [Cython](https://cython.org/) and [setuptools](https://setuptools.pypa.io/)
+(available in Debian packages `cython3` and `python3-setuptools`).
 
 
 ## Using the Library

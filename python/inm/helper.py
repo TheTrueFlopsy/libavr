@@ -9,57 +9,6 @@ from . import inm
 ## application, access to thread-shared objects from this module MUST be
 ## synchronized in application code.
 
-# ISSUE: Correctly entering INM commands at the Python prompt is still
-#        tedious and error-prone. For example, to turn on a LED via the
-#        "inm_node_demo.c" Uno program, one has to enter the not very
-#        transparent or terse
-#          h.send_mval(1, 0x43, (0x0100, 0, 1), (2, 1, 1))
-#        In other words "Send a SET_VAR message (type 0x43) to node 1,
-#        with a payload consisting of the 16-bit variable number 0x0100,
-#        followed by the 8-bit index 0 and the 8-bit variable value 1."
-#        Symbolic constants would help, but not very much.
-
-# IDEA: Develop a command language for the INM protocol, with constructs
-#       that allow type definitions (message types, payload structs, etc.)
-#       directly via the language interpreter.
-#         adr uno 1                          # INM address 1.
-#         msg setvar 0x43                    # Message type 0x43.
-#         data var_h [id:2, index:1]         # Data type, 2 fields, 2-byte, 1-byte.
-#         data var8 [head:var_h, val:1]      # Data type, 2 fields: var_h, 1-byte.
-#         tmpl var8_t:var8 [[_, _], _]        # Equivalent to implicit template.
-#         tmpl led0:var8 [0x0100, 0, _]       # Template, type var8, field 2 unspecified.
-#         tmpl led0:var8 [[0x0100, 0], _]     # Equivalent. Matches defined structure.
-#         tmpl led0:var8 [0x0100, [0, _]]     # Error! Violates defined structure.
-#         led0off := led0 [_, _, 0]      # Value, template led0, field 0 and 1 unspecified.
-#         led0on:var8 := led0 [_, _, 1]  # Type specifier optional, must match template.
-#         led0on := led0 1  # Equivalent. Additional args substituted for open template slots
-#                                 from left to right.
-#         show setvar
-#           msg setvar 0x43
-#         show var_h
-#           data var_h [id:2, index:1]
-#         show led0on     # Show maximally specified, omit template reference.
-#           led0on:var8 := [head:var_h [id:2 0x0100, index:1 0x00], val:1 0x01]
-#         show -t led0on  # Show only directly specified fields, include template reference.
-#           led0on:var8 := led0 [head:var_h _, val:1 0x01]
-#         show -v led0on  # Show maximally specified, include template reference.
-#           led0on:var8 := led0 [head:var_h [id:2 0x0100, index:1 0x00], val:1 0x01]
-#         show led0
-#           tmpl led0:var8 [head:var_h [id:2 0x0100, index:1 0x00], val:1 _]
-#         send uno setvar led0on  # Send message with type setvar and payload led0on.
-#         send uno setvar led0 1  # Equivalent. One-off template substitution.
-#         send uno setvar led0  # Error! Value not fully specified.
-#         send uno setvar var8 0x200 0 0x11  # Data type works as template.
-
-# ISSUE: Will the algorithm that checks substructure decompositions for compatibility
-#        be slow or complicated? Are there fundamentally ambiguous cases?
-# IDEA: Structure A is compatible with parent structure B iff the flattening of A is
-#       equal to that of B and A only specifies substructures that are also specified in B.
-#       (The second condition applies even if the substructure that is missing in B
-#       conforms to hierarchy (i.e. either is contained in, contains or doesn't intersect
-#       every substructure in B).)
-# NOTE: The flattening of a structure is obtained by decomposing it fully into a sequence
-#       of simple (i.e. non-composite) fields of known size.
 
 ## Class: InmHelper
 ## Convenience class for INM communication. Encapsulates a <MessageChannel> and provides

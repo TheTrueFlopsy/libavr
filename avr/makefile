@@ -109,9 +109,9 @@ endif
 # "Functions prologues/epilogues are expanded as calls to appropriate subroutines.
 #  Code size is smaller."
 # https://gcc.gnu.org/onlinedocs/gcc/AVR-Options.html
-# NOTE: -flto enables Link-Time Optimization, which among other things lets the compiler
-#       exclude unused library functions from the linked binary. Note that this leads to
-#       specialized LTO data being added to object files.
+# NOTE: -flto enables link-time optimization (LTO), which among other things lets
+#       the compiler exclude unused library functions from the linked binary. Note
+#       that this leads to LTO-specific data being added to object files.
 CFLAGS := -std=c11 $(macro_defs) -g $(warnings) -mcall-prologues -mmcu=$(mcu) -Os -flto
 override CFLAGS += -ffat-lto-objects
 #ASFLAGS := $(macro_defs) -mmcu=$(mcu)

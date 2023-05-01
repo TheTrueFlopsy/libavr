@@ -21,8 +21,6 @@ _BROADCAST_ADR = inm.MessageHeader.BROADCAST_ADR
 
 _DEFAULT_HOOK_INTERVAL = 1.0  # 1 second between main loop hook invocations
 
-# TODO: Implement a TLV/INM console.
-
 _prog_title = 'INM Router Script'
 # 0xAABBCCDD
 # A: major version, B: minor version, C: revision, D: build.
