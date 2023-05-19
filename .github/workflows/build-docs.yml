@@ -1,0 +1,19 @@
+
+name: build-docs
+run-name: 'Building API documentation with NaturalDocs'
+on:
+  push:
+    branches: [ main ]
+jobs:
+  naturaldocs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: install-nd
+        run: 'sudo apt-get -y install naturaldocs'
+      - name: make-c-doc
+        working-directory: ./avr
+        run: 'make doc'
+      - name: make-py-doc
+        working-directory: ./python
+        run: 'make doc'

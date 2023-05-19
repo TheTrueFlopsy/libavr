@@ -178,9 +178,9 @@ the delay to the desired period each time it is invoked.
 The fact that the execution delay is always zeroed before task handler invocation
 is problematic for tasks that need to respond to asynchronous events and simultaneously
 keep track of an elapsing delay/timeout. The recommended way to deal with such cases is
-to store the value of the time counter `sched_ticks` when the delay is set, then check
-whether the difference between the current value of `sched_ticks` and the stored value
-is no less than the intended delay (the library functions `sched_time_sub` and
+to store the value of the global time counter `sched_ticks` when the delay is set, then
+check whether the difference between the current value of `sched_ticks` and the stored
+value is no less than the intended delay (the library functions `sched_time_sub` and
 `sched_time_gte` can be used to do this) each time the task handler is invoked.
 
 **NOTE:** This module is compatible with ATtiny devices.
@@ -235,9 +235,9 @@ scheduler isn't running.
 
 ### avr/tbouncer.h – Input Debouncing
 This module provides software debouncing of GPIO inputs. The debouncing algorithm
-can filter out both switch bounce (i.e. a legitimate transition in the input logic
-state being accompanied by additional rapid, spurious transitions) and spikes
-(i.e. isolated, brief, spurious changes in logic state) in the input signals.
+can filter out both switch bounce (i.e. a legitimate logic state transition being
+accompanied by additional rapid, spurious transitions) and spikes (i.e. isolated,
+brief, spurious logic state changes) in the input signals.
 
 The interface of the debouncing module is entirely event-based. At module
 initialization, the firmware selects GPIO pins to perform debouncing on and tasks
