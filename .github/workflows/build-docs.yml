@@ -26,6 +26,6 @@ jobs:
           cp -rT avr/docs/natural pages/avr
           cp -rT python/docs/natural pages/python
       - name: upload-artifact
-        uses: actions/upload-pages-artifact
+        uses: actions/upload-pages-artifact@v1
         with:
           path: 'pages/'
