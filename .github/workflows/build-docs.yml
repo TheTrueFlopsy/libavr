@@ -8,12 +8,24 @@ jobs:
   naturaldocs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: checkout
+        uses: actions/checkout@v3
       - name: install-nd
-        run: 'sudo apt-get -y install naturaldocs'
+        run: sudo apt-get -y install naturaldocs
       - name: make-c-doc
         working-directory: ./avr
-        run: 'make doc'
+        run: make doc
       - name: make-py-doc
         working-directory: ./python
-        run: 'make doc'
+        run: make doc
+      - name: mkdir-pages
+        run: mkdir pages
+      - name: cp-pages
+        run: |
+          cp pages_files/*.html pages_files/*.css pages
+          cp -rT avr/docs/natural pages/avr
+          cp -rT python/docs/natural pages/python
+      - name: upload-artifact
+        uses: actions/upload-pages-artifact
+        with:
+          path: 'pages/'
