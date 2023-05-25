@@ -20,7 +20,7 @@
 	CAUTION (ATtiny): The ATtiny has no port C or D, so if *LIBAVR_ATTINY* is
 	defined, those ports are automatically disabled.
 	
-	CAUTION (ATmegaU) : Port C is very small on the ATmegaU (only two pins),
+	CAUTION (ATmegaU): Port C is very small on the ATmegaU (only two pins),
 	so if *LIBAVR_ATMEGA_U* is defined, the port called "C" in this module is
 	actually hardware port F, while the port called "A" is hardware port C.
 	(Confusing, I know, but *they started it* with their weird port layout.)

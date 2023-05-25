@@ -1,16 +1,16 @@
 #ifndef AVR_I2CHELPER_H
 #define AVR_I2CHELPER_H
 
-/**
-	File: i2chelper.h
-	Asynchronous, interrupt-driven I2C (aka TWI) helper module.
-	Master mode only, for the time being.
-*/
-
 #include <stdint.h>
 
 #include "task_sched.h"
 
+/**
+	File: i2chelper.h
+	Helper module for I2C (aka TWI) communication. Provides an asynchronous,
+	interrupt-driven request-response API. This API is master mode only,
+	for the time being.
+*/
 
 #ifdef LIBAVR_ATMEGA_U
 
@@ -130,9 +130,9 @@ extern volatile i2c_state i2c_request_state;
 	
 	Parameters:
 		twbr - A clock divisor value that is used to control the I2C bit rate.
-		task_cats - A set of bit flags specifying task categories whose
-			members should be notified in response to certain events in the
-			I2C module. Used to initialize <i2c_task_cats>.
+		task_cats - A set of bit flags specifying task categories whose members
+			should be notified when this module has finished an I2C transaction.
+			Used to initialize <i2c_task_cats>.
 */
 void i2chelper_mstr_init(uint8_t twbr, sched_catflags task_cats);
 
@@ -146,16 +146,20 @@ void i2chelper_mstr_init(uint8_t twbr, sched_catflags task_cats);
 	detected by polling <i2c_request_state> (e.g. via the <I2C_IS_ACTIVE>
 	macro) and by specifying task categories to be notified via <i2c_task_cats>.
 	
+	NOTE: The *bfr_out* and *bfr_in* arguments MAY point to the same buffer.
+	This function ensures that all the bytes to transmit from *bfr_out* are
+	transmitted before any received bytes are stored in *bfr_in*.
+	
 	Parameters:
 		addr - The 7-bit I2C slave address of the target device. The address MUST
 			be stored in the 7 least significant bits of the argument and
 			MUST NOT include an R/W control bit.
-		n_out - Number of bytes to transmit. If this argument is zero, the
+		n_out - Number of data bytes to transmit. If this argument is zero, the
 			transmit phase will be omitted and the I2C module will transmit
 			an SLA+R address byte immediately after transmitting a START condition.
 		bfr_out - Pointer to the data bytes to transmit. If *n_out* is zero,
 			this MAY be a null pointer.
-		n_in - Number of bytes to receive. If this argument is zero, the
+		n_in - Number of data bytes to receive. If this argument is zero, the
 			receive phase will be omitted and the I2C module will transmit
 			a STOP condition immediately after receiving (positive or negative)
 			acknowledgement of the last transmitted data byte.

@@ -609,7 +609,8 @@ uint8_t ttlv_unput_bytes(uint8_t n);
 	bytes in the transmit buffer. If a message is being transmitted in streaming
 	mode, the appended bytes will immediately be committed for transmission.
 	If this function cannot append all the specified bytes, it will remove ALL
-	uncommitted data bytes from the transmit buffer.
+	uncommitted data bytes from the transmit buffer (including any that were
+	already there before the function call).
 	
 	NOTE: This is intended to work as a fire-and-forget output function that will
 	either successfully deliver data bytes for transmission or leave the transmit
@@ -620,7 +621,8 @@ uint8_t ttlv_unput_bytes(uint8_t n);
 		data_p - Pointer to data bytes to append to the outgoing data.
 	
 	Returns:
-		A true value iff all the specified bytes were appended to the outgoing data.
+		A true value if and only if all the specified bytes were appended
+		to the outgoing data.
 */
 uint8_t ttlv_try_put_bytes(uint8_t n, const uint8_t *data_p);
 

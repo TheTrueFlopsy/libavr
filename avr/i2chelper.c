@@ -50,34 +50,35 @@ ISR(TWI_vect) {
 	i2c_state next_state = I2C_ACTIVE;
 	
 	switch (twisc) {
-	case TWISC_START_T:
+	case TWISC_START_T:  // Started I2C transaction.
+		// Send address+W if we have bytes to transmit, otherwise address+R.
 		TWDR = (n_to_transmit > 0) ? slaw : slar;
 		TWCR = TWI_INT_EN_IE;
 		break;
 	
-	case TWISC_RSTART_T:
-		TWDR = slar;
+	case TWISC_RSTART_T:  // Restarted to begin receive phase.
+		TWDR = slar;  // Send address+R.
 		TWCR = TWI_INT_EN_IE;
 		break;
 	
-	case TWISC_SLAW_TA:
+	case TWISC_SLAW_TA:  // Address+W was acknowledged.
 		TWDR = *(transmit_ptr++);
 		TWCR = TWI_INT_EN_IE;
 		break;
 	
-	case TWISC_DATA_TA:
+	case TWISC_DATA_TA:  // Transmitted data byte was acknowledged.
 		n_bytes = n_to_transmit - 1;
 		
 	transmit_update:
-		if (n_bytes == 0) { // Transmission done.
+		if (n_bytes == 0) {  // Transmission done.
 			if (n_to_receive == 0) {
-				TWCR = TWI_INT_STO_EN; // Transaction done.
+				TWCR = TWI_INT_STO_EN;  // Transaction done.
 				next_state = I2C_READY;
 			}
 			else
-				TWCR = TWI_INT_EN_IE | BV(TWSTA); // Restart to begin receive phase.
+				TWCR = TWI_INT_EN_IE | BV(TWSTA);  // Restart to begin receive phase.
 		}
-		else { // Continue transmission.
+		else {  // Continue transmission.
 			TWDR = *(transmit_ptr++);
 			TWCR = TWI_INT_EN_IE;
 			n_to_transmit = n_bytes;
@@ -85,26 +86,26 @@ ISR(TWI_vect) {
 		
 		break;
 	
-	case TWISC_DATA_TNA:
+	case TWISC_DATA_TNA:  // Transmitted data byte was NOT acknowledged.
 		n_bytes = n_to_transmit - 1;
-		if (n_bytes == 0) // Transmission done.
-			goto transmit_update; // Behave as for TWISC_DATA_TA.
+		if (n_bytes == 0)  // Transmission done.
+			goto transmit_update;  // Behave as for TWISC_DATA_TA.
 		TWCR = BV(TWINT);
 		next_state = I2C_E_NOT_ACK;
 		break;
 	
-	case TWISC_SLAR_TA:
+	case TWISC_SLAR_TA:  // Address+R was acknowledged.
 		// Begin receiving. Send NOT ACK if a single byte, otherwise ACK.
 		TWCR = (n_to_receive == 1) ? TWI_INT_EN_IE : (TWI_INT_EN_IE | BV(TWEA));
 		break;
 	
-	case TWISC_DATA_RA:
-	case TWISC_DATA_RNA:
+	case TWISC_DATA_RA:   // Received data byte, acknowledged it...
+	case TWISC_DATA_RNA:  // ...or not.
 		*(receive_ptr++) = TWDR;
 		n_bytes = n_to_receive - 1;
 		
-		if (n_bytes == 0) { // Reception done.
-			TWCR = TWI_INT_STO_EN; // Transaction done.
+		if (n_bytes == 0) {  // Reception done.
+			TWCR = TWI_INT_STO_EN;  // Transaction done.
 			next_state = I2C_READY;
 		}
 		else {
@@ -115,27 +116,27 @@ ISR(TWI_vect) {
 		
 		break;
 	
-	case TWISC_SLAW_TNA:
-	case TWISC_SLAR_TNA:
+	case TWISC_SLAW_TNA:  // Address+W or...
+	case TWISC_SLAR_TNA:  // ...address+R was NOT acknowledged.
 		TWCR = BV(TWINT);
 		next_state = I2C_E_NOT_ACK;
 		break;
 	
-	case TWISC_ARB_LOST:
+	case TWISC_ARB_LOST:  // Lost Master arbitration.
 		TWCR = BV(TWINT);
 		next_state = I2C_E_ARB_LOST;
 		break;
 	
-	default:
+	default:  // What is happening?!?
 		TWCR = BV(TWINT);
-		next_state = I2C_E_FSM;
+		next_state = I2C_E_FSM;  // It is a mystery.
 		//last_twisc = twisc; // DEBUG: 
 		break;
 	}
 	
-	if (next_state != I2C_ACTIVE) {
-		i2c_request_state = next_state;
-		sched_isr_tcww |= i2c_task_cats;
+	if (next_state != I2C_ACTIVE) {  // I2C transaction ended, one way or another.
+		i2c_request_state = next_state;  // Report transaction exit status.
+		sched_isr_tcww |= i2c_task_cats;  // Notify tasks.
 	}
 }
 
@@ -151,24 +152,24 @@ i2c_state i2chelper_request(
 	i2c_slave_addr addr, uint8_t n_out, volatile const uint8_t *bfr_out,
 	uint8_t n_in, volatile uint8_t *bfr_in)
 {
-	i2c_state state;
-	
 	if (n_out == 0 && n_in == 0)
 		return I2C_E_LENGTH;
 	
-	state = i2c_request_state;
+	i2c_state state = i2c_request_state;
 	
-	if (state == I2C_ACTIVE || state == I2C_DISABLED)
-		return I2C_E_STATE;
-	else if (state >= I2C_E_UNSPECIFIED)
+	if (state >= I2C_E_UNSPECIFIED)
 		return state;
+	else if (state != I2C_READY)
+		return I2C_E_STATE;
 	
-	i2c_request_state = I2C_ACTIVE;
+	i2c_request_state = I2C_ACTIVE;  // Initiate I2C transaction.
 	
+	// Prepare address+direction field for transmission.
 	addr <<= 1;
 	slaw = addr;
 	slar = addr | 1;
 	
+	// Prepare transmit and receive buffers.
 	n_to_transmit = n_out;
 	transmit_ptr = bfr_out;
 	
@@ -186,9 +187,9 @@ void i2chelper_shutdown(void) {
 	TWCR = BV(TWINT);
 	i2c_request_state = I2C_DISABLED;
 	
-	n_to_transmit = 0;
+	/*n_to_transmit = 0;
 	transmit_ptr = NULL;
 	
 	n_to_receive = 0;
-	receive_ptr = NULL;
+	receive_ptr = NULL;*/
 }

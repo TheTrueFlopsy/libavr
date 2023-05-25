@@ -635,8 +635,8 @@ typedef struct sched_task {
 		is generally something to be avoided (since putting such a task to
 		sleep is equivalent to marking it as garbage). Also note that any
 		task marked as garbage will effectively be in category 15, which
-		can be confusing if that category is also used for non-garbage tasks.
-		(See <TASK_ST_GARBAGE>.)
+		can be confusing if that category is also used for non-garbage
+		tasks. (See <TASK_ST_GARBAGE>.)
 	*/
 	uint8_t st;
 	
