@@ -36,29 +36,33 @@
 
 /**
 	Function: mcp4x_set_wiper
-	Updates the potentiometer wiper setting of the selected MCP4x device.
+	Updates potentiometer wiper settings in the selected MCP4x device.
 	
 	Parameters:
-		pot - Identifier of the target potentiometer in the destination device.
+		pot_bits - Identifier of the target potentiometer(s) in the destination device.
+			Note that this is a bit mask, where the bit at position *n* is set in order
+			to target potentiometer *n* (as identified by an *MCP4X_P[n]* constant).
 		pos - The potentiometer wiper setting.
 	
 	Returns:
 		A true value if and only if the operation was successfully initiated
 		(in asynchronous mode) or completed (in synchronous mode).
 */
-uint8_t mcp4x_set_wiper(uint8_t pot, uint8_t pos);
+uint8_t mcp4x_set_wiper(uint8_t pot_bits, uint8_t pos);
 
 /**
 	Function: mcp4x_shutdown
-	Disables a potentiometer in the selected MCP4x device.
+	Disables potentiometers in the selected MCP4x device.
 	
 	Parameters:
-		pot - Identifier of the target potentiometer in the destination device.
+		pot_bits - Identifier of the target potentiometer(s) in the destination device.
+			Note that this is a bit mask, where the bit at position *n* is set in order
+			to target potentiometer *n* (as identified by an *MCP4X_P[n]* constant).
 	
 	Returns:
 		A true value if and only if the operation was successfully initiated
 		(in asynchronous mode) or completed (in synchronous mode).
 */
-uint8_t mcp4x_shutdown(uint8_t pot);
+uint8_t mcp4x_shutdown(uint8_t pot_bits);
 
 #endif

@@ -22,6 +22,25 @@
 	actually hardware port F.
 */
 
+// IDEA: Add helper macros for slave select pin control. Something like this:
+/*
+	#define SPI_SS_WRAP(SS_PORT, SS_PIN, EXP) \
+	SS_PORT &= ~BV(SS_PIN); \
+	short_delay(); \
+	EXP; \
+	short_delay(); \
+	SS_PORT |= BV(SS_PIN);
+*/
+/*
+	#define SPI_SS_RES_WRAP(SS_PORT, SS_PIN, RES, EXP) \
+	SS_PORT &= ~BV(SS_PIN); \
+	short_delay(); \
+	RES = EXP; \
+	short_delay(); \
+	SS_PORT |= BV(SS_PIN);
+*/
+
+
 /**
 	Macro: SPI_PINR
 	Reference to the I/O input register (PINx) for the pins used by the SPI peripheral.
@@ -216,6 +235,10 @@ void spihelper_mstr_init(uint8_t ss_b, uint8_t ss_c, uint8_t ss_d, uint8_t ctrl)
 	NOTE: When this function returns, the SPI Enable (SPE) bit in the SPI Control
 	Register (SPCR) will always be set to one, regardless of its value in the *ctrl*
 	parameter.
+	
+	NOTE: This function does not deal with the SPI2X configuration bit in the
+	SPI Status Register (SPSR). If necessary, that bit SHOULD be set (or cleared)
+	in application code before calling this function.
 	
 	Parameters:
 		ctrl - Value to assign to the SPI Control Register (SPCR). If the MSTR bit

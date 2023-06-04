@@ -237,7 +237,7 @@ the line, it must not be predeced by whitespace or anything else.'''
 		default=0, type=int, dest='mask_offset')
 	
 	# TODO: Add selectable value aggregation (e.g. min, max, average).
-	arg_p.add_argument('-N',
+	arg_p.add_argument('-N', '--one-in-n',
 		help='print one output line for every N messages received', metavar='N',
 		default=1, type=int, dest='one_in_n')
 	arg_p.add_argument('-F', '--scale',

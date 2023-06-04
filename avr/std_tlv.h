@@ -19,6 +19,8 @@
 	release of libavr.
 */
 
+// IDEA: Provide a (template for) a standardized task handler for TLV/INM messaging?
+
 
 /// Section: Message Types
 

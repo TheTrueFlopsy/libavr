@@ -62,7 +62,7 @@ ldirs_paths := $(libavr_dir)/$(rel_bdir)
 endif
 
 # --- Filename Variables ---
-targets := sched_blinker watchdog_test inm_node_demo
+targets := sched_blinker watchdog_test mcp4x_test inm_node_demo
 programs := $(addprefix prog-, $(targets))
 
 headers := *.h $(libavr_dir)/*.h
