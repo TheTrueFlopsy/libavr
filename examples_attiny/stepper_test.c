@@ -140,6 +140,8 @@ static uint16_t int_exp_poly(uint16_t x) {
 	return res;
 }
 
+// NOTE: Computes a third-order polynomial approximation of 2^FRACTION_SHIFT * e^(x/256),
+//       reasonably accurate for x < 1024 (int_exp(1023) == 855, 16*e^(1023/256) ~= 870).
 static uint16_t int_exp(uint16_t x) {
 	uint32_t y = int_exp_poly(x);
 	uint8_t i;

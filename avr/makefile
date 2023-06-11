@@ -77,7 +77,7 @@ docdirs := $(doc_dir) $(doc_conf_dir)
 ifdef libavr_attiny
 common := watchdog task_sched tbouncer
 else
-common := watchdog task_sched tbouncer task_tlv std_tlv memmon spihelper i2chelper mcp4x mcp23018
+common := watchdog task_sched tbouncer task_tlv std_tlv memmon spihelper i2chelper mcp4x nrf24x mcp23018
 endif
 
 test_common    := task_sched tbouncer

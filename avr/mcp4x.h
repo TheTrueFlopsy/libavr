@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-#include "spihelper.h"
-
 /**
 	File: mcp4x.h
 	Control functions for the MCP4x series of digitally controlled potentiometers.

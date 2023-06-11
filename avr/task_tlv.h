@@ -37,7 +37,9 @@
 	
 	Default value: 32
 */
+#ifndef TTLV_XMIT_BFR_SIZE
 #define TTLV_XMIT_BFR_SIZE 32
+#endif
 
 /**
 	Macro: TTLV_RECV_BFR_SIZE
@@ -45,7 +47,9 @@
 	
 	Default value: 32
 */
+#ifndef TTLV_RECV_BFR_SIZE
 #define TTLV_RECV_BFR_SIZE 32
+#endif
 
 
 /// Section: Protocol Constants

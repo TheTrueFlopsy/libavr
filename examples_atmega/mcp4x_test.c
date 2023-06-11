@@ -6,6 +6,7 @@
 #include "auto_watchdog.h"
 #include "task_sched.h"
 #include "std_tlv.h"
+#include "spihelper.h"
 #include "mcp4x.h"
 
 
@@ -39,9 +40,9 @@ enum {
 };
 
 enum {
-	LED_PIN0      = PORTD4,
-	LED_PIN1      = PORTD3,
-	LED_PIN2      = PORTD2
+	LED_PIN0 = PORTD4,
+	LED_PIN1 = PORTD3,
+	LED_PIN2 = PORTD2
 };
 
 static const uint8_t led_pins[N_LEDS] = {
@@ -64,9 +65,6 @@ static uint8_t desired_p1_wiper = 0x80;
 static uint8_t new_p0_wiper = 0x80;
 static uint8_t new_p1_wiper = 0x80;
 #endif
-
-//static uint8_t msg_data_out[MCP4X_TEST_MAX_MSG_LEN];
-//static uint8_t msg_data_in[MCP4X_TEST_MAX_MSG_LEN];
 
 static union {
 	uint8_t b[MCP4X_TEST_MAX_MSG_LEN];
@@ -111,11 +109,17 @@ static uint8_t set_wiper(uint8_t pot_bits, uint8_t pos) {
 	uint8_t res;
 	
 	SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+	
 	// ISSUE: Do we need some sort of delay here?
 	// NOTE: MCP4x datasheet says 40 ns. An ATmega clock cycle at 16 MHz is 62.5 ns.
+	
 	res = mcp4x_set_wiper(pot_bits, pos);
+	
 	// ISSUE: Or here?
-	SPI_PORT |= BV(SPI_SS); // Drive slave select pin high.
+	
+#ifdef SPI_NO_ASYNC_API
+	SPI_PORT |= BV(SPI_SS);  // mcp4x_set_wiper is synchronous. Drive slave select pin high.
+#endif
 	
 	return res;
 }
@@ -185,12 +189,16 @@ static void mcp4x_handler(sched_task *task) {
 #ifndef SPI_NO_ASYNC_API
 	if (SPI_IS_ACTIVE)
 		return;  // SPI interface is busy, unable to proceed.
-	else if (new_p0_wiper != p0_wiper)  // P0 wiper update done.
+	else if (new_p0_wiper != p0_wiper) {  // P0 wiper update done.
+		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
 		p0_wiper = new_p0_wiper;
-	else if (new_p1_wiper != p1_wiper)  // P1 wiper update done.
+	}
+	else if (new_p1_wiper != p1_wiper) {  // P1 wiper update done.
+		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
 		p1_wiper = new_p1_wiper;
+	}
 #endif
-
+	
 	if (desired_p0_wiper != p0_wiper) {
 		res = set_wiper(BV(MCP4X_P0), desired_p0_wiper);
 		
@@ -204,6 +212,8 @@ static void mcp4x_handler(sched_task *task) {
 		else {  // ERROR
 			desired_p0_wiper = p0_wiper;  // Cancel update attempt.
 		}
+		
+		return;  // Either wait for async operation or avoid dallying too long in the handler.
 	}
 	
 	if (desired_p1_wiper != p1_wiper) {
@@ -219,6 +229,8 @@ static void mcp4x_handler(sched_task *task) {
 		else {  // ERROR
 			desired_p1_wiper = p1_wiper;  // Cancel update attempt.
 		}
+		
+		return;  // Either wait for async operation or avoid dallying too long in the handler.
 	}
 }
 
@@ -346,7 +358,8 @@ int main(void) {
 	ttlv_init(
 		TASK_ST_MAKE(0, TTLV_TASK_CAT, 0),
 		BAUD_TO_UBRR(BAUD_RATE, USE_U2X), TTLV_PARITY_NONE, USE_U2X,
-		0, 0, SCHED_CATFLAG(MESSENGER_TASK_CAT));
+		TTLV_MODE_INM, 0, SCHED_CATFLAG(MESSENGER_TASK_CAT));
+	ttlv_xmit_inm_header.h.srcadr = INM_ADDR;  // Set INM source address.
 	
 	// Run SPI module in Master mode, at clock frequency F_CPU/64 ~= 250kHz (at F_CPU=16 MHz).
 	// Make the Slave mode slave select pin (SPI_SS in port B) a Master mode slave select output.

@@ -62,7 +62,7 @@ ldirs_paths := $(libavr_dir)/$(rel_bdir)
 endif
 
 # --- Filename Variables ---
-targets := sched_blinker watchdog_test mcp4x_test inm_node_demo
+targets := sched_blinker watchdog_test mcp4x_test nrf24x_test inm_node_demo
 programs := $(addprefix prog-, $(targets))
 
 headers := *.h $(libavr_dir)/*.h
@@ -73,7 +73,7 @@ target_hex := $(addprefix $(bdir)/, $(addsuffix .hex, $(targets)))
 
 # --- Command Option Variables ---
 warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
-macro_defs := -DF_CPU=$(f_cpu)L -DSCHED_CLOCK_PRESCALE_LOG=$(f_cpu_prescale)
+macro_defs := -DF_CPU=$(f_cpu)L -DSCHED_CLOCK_PRESCALE_LOG=$(f_cpu_prescale) -DSPI_NO_ASYNC_API
 
 idirs := -I$(libavr_dir)
 ldirs := $(addprefix -L, $(ldirs_paths))
