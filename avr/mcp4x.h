@@ -18,6 +18,10 @@
 	whether the asynchronous API is available, define the macro *MCP4X_SYNCHRONOUS*.
 */
 
+#if defined(SPI_NO_ASYNC_API) && !defined(MCP4X_SYNCHRONOUS)
+#define MCP4X_SYNCHRONOUS
+#endif
+
 /**
 	Macro: MCP4X_P0
 	Numeric identifier of the P0 potentiometer in an MCP4x device.

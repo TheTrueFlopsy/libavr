@@ -3,7 +3,11 @@
 
 #include <stdint.h>
 
-#if !(defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API))
+#if defined(SPI_NO_ASYNC_API) && !defined(NRF24X_SYNCHRONOUS)
+#define NRF24X_SYNCHRONOUS
+#endif
+
+#ifndef NRF24X_SYNCHRONOUS
 #include "spihelper.h"
 #endif
 
@@ -76,7 +80,7 @@ enum {  // Register addresses.
 
 extern volatile uint8_t nrf24x_status;
 
-#if !(defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API))
+#ifndef NRF24X_SYNCHRONOUS
 
 extern volatile uint8_t nrf24x_command;
 
@@ -92,7 +96,7 @@ extern uint8_t nrf24x_pending_n_in;
 
 uint8_t nrf24x_out_0(uint8_t cmd);
 
-#if (!defined(NRF24X_NO_CMD_BFR) || defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API))
+#if !defined(NRF24X_NO_CMD_BFR) || defined(NRF24X_SYNCHRONOUS)
 
 uint8_t nrf24x_out_1(uint8_t cmd, uint8_t data);
 
@@ -104,7 +108,7 @@ uint8_t nrf24x_in_n(uint8_t cmd, uint8_t n_in, uint8_t *bfr_in);
 
 #endif
 
-#if (!defined(NRF24X_NO_CMD_BFR) && !(defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API)))
+#if !defined(NRF24X_NO_CMD_BFR) && !defined(NRF24X_SYNCHRONOUS)
 uint8_t nrf24x_in_finish(void);
 #endif
 

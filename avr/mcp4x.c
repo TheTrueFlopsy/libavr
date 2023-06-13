@@ -15,14 +15,14 @@
 // NOTE: The MCP4X wants its data MSB first, but that is the default
 //       on the ATmega, too.
 
-#if !(defined(MCP4X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API))
+#ifndef MCP4X_SYNCHRONOUS
 static volatile uint8_t cmd_buf[2];
 #endif
 
 uint8_t mcp4x_set_wiper(uint8_t pot_bits, uint8_t pos) {
 	uint8_t cmd = ((BV(MCP4X_P0) | BV(MCP4X_P1)) & pot_bits) | BV(MCP4X_C0);
 
-#if defined(MCP4X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API)
+#ifdef MCP4X_SYNCHRONOUS
 	spihelper_exchange_bytes(cmd);
 	spihelper_exchange_bytes(pos);
 	return 1;
@@ -38,7 +38,7 @@ uint8_t mcp4x_set_wiper(uint8_t pot_bits, uint8_t pos) {
 uint8_t mcp4x_shutdown(uint8_t pot_bits) {
 	uint8_t cmd = ((BV(MCP4X_P0) | BV(MCP4X_P1)) & pot_bits) | BV(MCP4X_C1);
 	
-#if defined(MCP4X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API)
+#ifdef MCP4X_SYNCHRONOUS
 	spihelper_exchange_bytes(cmd);
 	spihelper_exchange_bytes(0);
 	return 1;

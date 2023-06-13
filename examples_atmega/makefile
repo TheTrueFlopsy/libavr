@@ -73,7 +73,8 @@ target_hex := $(addprefix $(bdir)/, $(addsuffix .hex, $(targets)))
 
 # --- Command Option Variables ---
 warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
-macro_defs := -DF_CPU=$(f_cpu)L -DSCHED_CLOCK_PRESCALE_LOG=$(f_cpu_prescale) -DSPI_NO_ASYNC_API
+macro_defs := -DF_CPU=$(f_cpu)L -DSCHED_CLOCK_PRESCALE_LOG=$(f_cpu_prescale)
+macro_defs += -DSPI_NO_ASYNC_API
 
 idirs := -I$(libavr_dir)
 ldirs := $(addprefix -L, $(ldirs_paths))

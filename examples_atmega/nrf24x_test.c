@@ -29,6 +29,7 @@
 #define NRF24X_TEST_MAX_MSG_LEN 8
 
 #define NOT_A_COMMAND 0b11110000
+#define NOT_A_REGISTER 0
 
 enum {
 	NRF24X_TASK_CAT    =  0,
@@ -37,8 +38,14 @@ enum {
 };
 
 enum {
-	TTLV_APP_REG_STATUS    = TTLV_REG_APPLICATION + 0,
-	TTLV_APP_REG_CMD_OUT_0 = TTLV_REG_APPLICATION + 1
+	TTLV_APP_REG_STATUS     = TTLV_REG_APPLICATION + 0,
+	TTLV_APP_REG_CMD_OUT_0  = TTLV_REG_APPLICATION + 1,
+	TTLV_APP_REG_NRF24X     = TTLV_REG_APPLICATION + 0x20,
+	TTLV_APP_REG_NRF24X_END = TTLV_APP_REG_NRF24X  + 0x20
+};
+
+enum {
+	TTLV_APP_RES_BUSY = TTLV_RES_APPLICATION + 0
 };
 
 enum {
@@ -59,8 +66,22 @@ static uint8_t led_states[N_LEDS] = { 0, 0, 0 };
 
 static uint8_t pending_cmd = NOT_A_COMMAND;
 
-#ifndef SPI_NO_ASYNC_API
+static uint8_t pending_reg_r = NOT_A_REGISTER;
+static uint16_t pending_reg_r_request_id;
+static uint8_t pending_reg_r_srcadr;
+
+static uint8_t pending_reg_w = NOT_A_REGISTER;
+static uint8_t pending_reg_w_value;
+
+#ifndef NRF24X_SYNCHRONOUS
 static uint8_t active_cmd = NOT_A_COMMAND;
+
+static uint8_t active_reg_r = NOT_A_REGISTER;
+static uint16_t active_reg_r_request_id;
+static uint8_t active_reg_r_srcadr;
+static uint8_t active_reg_r_value;
+
+static uint8_t active_reg_w = NOT_A_REGISTER;
 #endif
 
 static union {
@@ -103,6 +124,18 @@ static void set_led_flags(uint8_t led_flags) {
 }
 
 static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) {
+	if (index >= TTLV_APP_REG_NRF24X && index < TTLV_APP_REG_NRF24X_END) {
+		if (pending_reg_r != NOT_A_REGISTER)
+			return TTLV_APP_RES_BUSY;
+		
+		pending_reg_r = index;
+		pending_reg_r_request_id = ttlv_recv_inm_header.h.msg_id;
+		pending_reg_r_srcadr = ttlv_recv_inm_header.h.srcadr;
+		
+		sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
+		return TTLV_RES_NONE;  // Suppress immediate INM response.
+	}
+	
 	switch (index) {
 	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
 		*value_p = get_led_flags();
@@ -130,6 +163,17 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 }
 
 static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
+	if (index >= TTLV_APP_REG_NRF24X && index < TTLV_APP_REG_NRF24X_END) {
+		if (pending_reg_w != NOT_A_REGISTER)
+			return TTLV_APP_RES_BUSY;
+		
+		pending_reg_w = index;
+		pending_reg_w_value = value;
+		
+		sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
+		return TTLV_RES_OK;  // Send immediate INM response, finish write operation later.
+	}
+	
 	switch (index) {
 	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
 		set_led_flags(value);
@@ -158,14 +202,32 @@ TTLV_STD_REGPAIR_READ(ttlv_reg_read, ttlv_regpair_read)
 static void nrf24x_handler(sched_task *task) {
 	uint8_t res;
 	
-	task->st |= TASK_ST_SLP(1); // Set sleep flag.
-	
-#ifndef SPI_NO_ASYNC_API
-	if (SPI_IS_ACTIVE)
-		return;  // SPI interface is busy, unable to proceed.
-	else if (active_cmd != NOT_A_COMMAND) {  // Command transmitted.
+#ifndef NRF24X_SYNCHRONOUS
+	if (SPI_IS_ACTIVE) {  // SPI interface is busy, unable to proceed.
+		task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+		return;
+	}
+	else if (active_cmd != NOT_A_COMMAND) {  // nRF24x command transmitted.
 		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
-		pending_cmd = active_cmd = NOT_A_COMMAND;  // Done.
+		active_cmd = NOT_A_COMMAND;  // Done.
+	}
+	else if (active_reg_r != NOT_A_REGISTER) {  // nRF24x register read finished.
+		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		nrf24x_in_finish();  // Fetch register value from nRF24x module's command buffer.
+		
+		// Send INM response.
+		msg_data_out.r.index = active_reg_r;
+		msg_data_out.r.value = active_reg_r_value;
+		msg_data_out.r.request_id = active_reg_r_request_id;
+		
+		ttlv_xmit(active_reg_r_srcadr,
+			TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+		
+		active_reg_r = NOT_A_REGISTER;  // Done.
+	}
+	else if (active_reg_w != NOT_A_REGISTER) {  // nRF24x register write finished.
+		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		active_reg_w = NOT_A_REGISTER;  // Done.
 	}
 #endif
 	
@@ -174,17 +236,76 @@ static void nrf24x_handler(sched_task *task) {
 		res = nrf24x_out_0(pending_cmd);
 		
 		if (res) {  // Success!
-#ifdef SPI_NO_ASYNC_API
-			SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
-			pending_cmd = NOT_A_COMMAND;  // Done.
+#ifdef NRF24X_SYNCHRONOUS
+			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
 #else
 			active_cmd = pending_cmd;  // Wait for asynchronous SPI operation.
+			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 #endif
 		}
 		else {  // ERROR
-			pending_cmd = NOT_A_COMMAND;  // Cancel update attempt.
+			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
 		}
+		
+		pending_cmd = NOT_A_COMMAND;  // Command finished, initiated or canceled.
+		return;  // Either wait for async operation or avoid dallying too long in the handler.
 	}
+	
+	if (pending_reg_r != NOT_A_REGISTER) {
+#ifdef NRF24X_SYNCHRONOUS
+		uint8_t active_reg_r_value;
+#endif
+		
+		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		res = nrf24x_in_1(NRF24X_R_REG_CMD(pending_reg_r), &active_reg_r_value);
+		
+		if (res) {  // Success!
+#ifdef NRF24X_SYNCHRONOUS
+			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+			
+			// Send INM response.
+			msg_data_out.r.index = pending_reg_r;
+			msg_data_out.r.value = active_reg_r_value;
+			msg_data_out.r.request_id = pending_reg_r_request_id;
+			
+			ttlv_xmit(pending_reg_r_srcadr,
+				TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+#else
+			active_reg_r = pending_reg_r;  // Wait for asynchronous SPI operation.
+			active_reg_r_request_id = pending_reg_r_request_id;
+			active_reg_r_srcadr = pending_reg_r_srcadr;
+			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+#endif
+		}
+		else {  // ERROR
+			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+		}
+		
+		pending_reg_r = NOT_A_REGISTER;  // Register read finished, initiated or canceled.
+		return;  // Either wait for async operation or avoid dallying too long in the handler.
+	}
+	
+	if (pending_reg_w != NOT_A_REGISTER) {
+		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		res = nrf24x_out_1(NRF24X_W_REG_CMD(pending_reg_w), pending_reg_w_value);
+		
+		if (res) {  // Success!
+#ifdef NRF24X_SYNCHRONOUS
+			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+#else
+			active_reg_w = pending_reg_w;  // Wait for asynchronous SPI operation.
+			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+#endif
+		}
+		else {  // ERROR
+			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+		}
+		
+		pending_reg_w = NOT_A_REGISTER;  // Register write finished, initiated or canceled.
+		return;  // Either wait for async operation or avoid dallying too long in the handler.
+	}
+	
+	task->st |= TASK_ST_SLP(1);  // No work to do. Set sleep flag.
 }
 
 static void message_handler(sched_task *task) {
@@ -216,29 +337,37 @@ static void message_handler(sched_task *task) {
 	else if (TTLV_CHECK_REG_TOGGLE) {
 		ttlv_recv(msg_data_in.b);
 		
-		msg_data_out.r.index = msg_data_in.r.index;
-		msg_data_out.r.value = msg_data_in.r.value;
-		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
-		
-		res = ttlv_reg_toggle(msg_data_out.r.index, &msg_data_out.r.value);
-		
-		if (res == TTLV_RES_OK) {
-			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
-			res = TTLV_RES_NONE;
+		if (msg_data_in.r.index >= TTLV_APP_REG_NRF24X && msg_data_in.r.index < TTLV_APP_REG_NRF24X_END)
+			res = TTLV_RES_REGISTER;  // Unsupported operation.
+		else {
+			msg_data_out.r.index = msg_data_in.r.index;
+			msg_data_out.r.value = msg_data_in.r.value;
+			msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+			
+			res = ttlv_reg_toggle(msg_data_out.r.index, &msg_data_out.r.value);
+			
+			if (res == TTLV_RES_OK) {
+				ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+				res = TTLV_RES_NONE;
+			}
 		}
 	}
 	else if (TTLV_CHECK_REG_RW_EXCH) {
 		ttlv_recv(msg_data_in.b);
 		
-		msg_data_out.r.index = msg_data_in.r.index;
-		msg_data_out.r.value = msg_data_in.r.value;
-		msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
-		
-		res = ttlv_reg_rw_exch(msg_data_out.r.index, &msg_data_out.r.value);
-		
-		if (res == TTLV_RES_OK) {
-			ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
-			res = TTLV_RES_NONE;
+		if (msg_data_in.r.index >= TTLV_APP_REG_NRF24X && msg_data_in.r.index < TTLV_APP_REG_NRF24X_END)
+			res = TTLV_RES_REGISTER;  // Unsupported operation.
+		else {
+			msg_data_out.r.index = msg_data_in.r.index;
+			msg_data_out.r.value = msg_data_in.r.value;
+			msg_data_out.r.request_id = ttlv_recv_inm_header.h.msg_id;
+			
+			res = ttlv_reg_rw_exch(msg_data_out.r.index, &msg_data_out.r.value);
+			
+			if (res == TTLV_RES_OK) {
+				ttlv_xmit_response(TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+				res = TTLV_RES_NONE;
+			}
 		}
 	}
 	else if (TTLV_CHECK_REG_WR_EXCH) {
@@ -316,7 +445,7 @@ int main(void) {
 	
 	// Run SPI module in Master mode, at clock frequency F_CPU/64 ~= 250kHz (at F_CPU=16 MHz).
 	// Make the Slave mode slave select pin (SPI_SS in port B) a Master mode slave select output.
-#ifdef SPI_NO_ASYNC_API
+#ifdef NRF24X_SYNCHRONOUS
 	spihelper_mstr_init(BV(SPI_SS), 0, 0, BV(MSTR) | BV(SPR1));
 #else
 	spihelper_async_mstr_init(

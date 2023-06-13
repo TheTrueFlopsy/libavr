@@ -61,7 +61,7 @@ static uint8_t p1_wiper = 0x80;
 static uint8_t desired_p0_wiper = 0x80;
 static uint8_t desired_p1_wiper = 0x80;
 
-#ifndef SPI_NO_ASYNC_API
+#ifndef MCP4X_SYNCHRONOUS
 static uint8_t new_p0_wiper = 0x80;
 static uint8_t new_p1_wiper = 0x80;
 #endif
@@ -117,8 +117,11 @@ static uint8_t set_wiper(uint8_t pot_bits, uint8_t pos) {
 	
 	// ISSUE: Or here?
 	
-#ifdef SPI_NO_ASYNC_API
+#ifdef MCP4X_SYNCHRONOUS
 	SPI_PORT |= BV(SPI_SS);  // mcp4x_set_wiper is synchronous. Drive slave select pin high.
+#else
+	if (!res)
+		SPI_PORT |= BV(SPI_SS);  // Failed to start SPI operation. Drive slave select pin high.
 #endif
 	
 	return res;
@@ -184,11 +187,11 @@ TTLV_STD_REGPAIR_READ(ttlv_reg_read, ttlv_regpair_read)
 static void mcp4x_handler(sched_task *task) {
 	uint8_t res;
 	
-	task->st |= TASK_ST_SLP(1); // Set sleep flag.
-	
-#ifndef SPI_NO_ASYNC_API
-	if (SPI_IS_ACTIVE)
-		return;  // SPI interface is busy, unable to proceed.
+#ifndef MCP4X_SYNCHRONOUS
+	if (SPI_IS_ACTIVE) {  // SPI interface is busy, unable to proceed.
+		task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+		return;
+	}
 	else if (new_p0_wiper != p0_wiper) {  // P0 wiper update done.
 		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
 		p0_wiper = new_p0_wiper;
@@ -203,10 +206,11 @@ static void mcp4x_handler(sched_task *task) {
 		res = set_wiper(BV(MCP4X_P0), desired_p0_wiper);
 		
 		if (res) {  // Success!
-#ifdef SPI_NO_ASYNC_API
+#ifdef MCP4X_SYNCHRONOUS
 			p0_wiper = desired_p0_wiper;  // Done.
 #else
 			new_p0_wiper = desired_p0_wiper;  // Wait for asynchronous SPI operation.
+			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 #endif
 		}
 		else {  // ERROR
@@ -220,10 +224,11 @@ static void mcp4x_handler(sched_task *task) {
 		res = set_wiper(BV(MCP4X_P1), desired_p1_wiper);
 		
 		if (res) {  // Success!
-#ifdef SPI_NO_ASYNC_API
+#ifdef MCP4X_SYNCHRONOUS
 			p1_wiper = desired_p1_wiper;  // Done.
 #else
 			new_p1_wiper = desired_p1_wiper;  // Wait for asynchronous SPI operation.
+			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 #endif
 		}
 		else {  // ERROR
@@ -232,6 +237,8 @@ static void mcp4x_handler(sched_task *task) {
 		
 		return;  // Either wait for async operation or avoid dallying too long in the handler.
 	}
+	
+	task->st |= TASK_ST_SLP(1);  // No work to do. Set sleep flag.
 }
 
 static void message_handler(sched_task *task) {
@@ -363,7 +370,7 @@ int main(void) {
 	
 	// Run SPI module in Master mode, at clock frequency F_CPU/64 ~= 250kHz (at F_CPU=16 MHz).
 	// Make the Slave mode slave select pin (SPI_SS in port B) a Master mode slave select output.
-#ifdef SPI_NO_ASYNC_API
+#ifdef MCP4X_SYNCHRONOUS
 	spihelper_mstr_init(BV(SPI_SS), 0, 0, BV(MSTR) | BV(SPR1));
 #else
 	spihelper_async_mstr_init(

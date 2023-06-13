@@ -8,7 +8,7 @@
 
 volatile uint8_t nrf24x_status;
 
-#if !(defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API))
+#ifndef NRF24X_SYNCHRONOUS
 
 volatile uint8_t nrf24x_command;
 
@@ -27,7 +27,7 @@ static uint8_t *pending_bfr_in;
 #endif
 
 uint8_t nrf24x_out_0(uint8_t cmd) {
-#if defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API)
+#ifdef NRF24X_SYNCHRONOUS
 	nrf24x_status = spihelper_exchange_bytes(cmd);
 	return 1;
 #else
@@ -37,10 +37,10 @@ uint8_t nrf24x_out_0(uint8_t cmd) {
 #endif
 }
 
-#if (!defined(NRF24X_NO_CMD_BFR) || defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API))
+#if !defined(NRF24X_NO_CMD_BFR) || defined(NRF24X_SYNCHRONOUS)
 
 uint8_t nrf24x_out_1(uint8_t cmd, uint8_t data) {
-#if defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API)
+#ifdef NRF24X_SYNCHRONOUS
 	nrf24x_status = spihelper_exchange_bytes(cmd);
 	spihelper_exchange_bytes(data);
 	return 1;
@@ -53,7 +53,7 @@ uint8_t nrf24x_out_1(uint8_t cmd, uint8_t data) {
 }
 
 uint8_t nrf24x_out_n(uint8_t cmd, uint8_t n_out, uint8_t *bfr_out) {
-#if defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API)
+#ifdef NRF24X_SYNCHRONOUS
 	nrf24x_status = spihelper_exchange_bytes(cmd);
 	
 	for (uint8_t i = 0; i < n_out; i++)
@@ -75,7 +75,7 @@ uint8_t nrf24x_out_n(uint8_t cmd, uint8_t n_out, uint8_t *bfr_out) {
 }
 
 uint8_t nrf24x_in_1(uint8_t cmd, uint8_t *data_p) {
-#if defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API)
+#ifdef NRF24X_SYNCHRONOUS
 	nrf24x_status = spihelper_exchange_bytes(cmd);
 	*data_p = spihelper_exchange_bytes(0);
 	return 1;
@@ -89,7 +89,7 @@ uint8_t nrf24x_in_1(uint8_t cmd, uint8_t *data_p) {
 }
 
 uint8_t nrf24x_in_n(uint8_t cmd, uint8_t n_in, uint8_t *bfr_in) {
-#if defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API)
+#ifdef NRF24X_SYNCHRONOUS
 	nrf24x_status = spihelper_exchange_bytes(cmd);
 	
 	for (uint8_t i = 0; i < n_in; i++)
@@ -107,7 +107,7 @@ uint8_t nrf24x_in_n(uint8_t cmd, uint8_t n_in, uint8_t *bfr_in) {
 
 #endif
 
-#if (!defined(NRF24X_NO_CMD_BFR) && !(defined(NRF24X_SYNCHRONOUS) || defined(SPI_NO_ASYNC_API)))
+#if !defined(NRF24X_NO_CMD_BFR) && !defined(NRF24X_SYNCHRONOUS)
 uint8_t nrf24x_in_finish(void) {
 	uint8_t n_in = nrf24x_pending_n_in;
 	if (n_in == NRF24X_NONE_PENDING)
