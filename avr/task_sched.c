@@ -146,6 +146,8 @@ static sched_time sched_delay;  // Scheduler rate limiting delay.
 #endif
 
 #ifndef SCHED_NO_ISR
+// IDEA: Replace this with an assembly implementation that doesn't do any
+// unnecessary pushing and popping?
 ISR(SCHED_TIMER_VECT) {  // The tick counter has overflowed.
 	sched_tick_count_h++;  // Add 1 to the high bytes of the tick count.
 }

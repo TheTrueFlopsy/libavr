@@ -211,6 +211,10 @@ static void nrf24x_handler(sched_task *task) {
 		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
 		active_cmd = NOT_A_COMMAND;  // Done.
 	}
+	else if (active_reg_w != NOT_A_REGISTER) {  // nRF24x register write finished.
+		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		active_reg_w = NOT_A_REGISTER;  // Done.
+	}
 	else if (active_reg_r != NOT_A_REGISTER) {  // nRF24x register read finished.
 		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
 		nrf24x_in_finish();  // Fetch register value from nRF24x module's command buffer.
@@ -224,10 +228,6 @@ static void nrf24x_handler(sched_task *task) {
 			TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
 		
 		active_reg_r = NOT_A_REGISTER;  // Done.
-	}
-	else if (active_reg_w != NOT_A_REGISTER) {  // nRF24x register write finished.
-		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
-		active_reg_w = NOT_A_REGISTER;  // Done.
 	}
 #endif
 	
@@ -248,6 +248,29 @@ static void nrf24x_handler(sched_task *task) {
 		}
 		
 		pending_cmd = NOT_A_COMMAND;  // Command finished, initiated or canceled.
+		return;  // Either wait for async operation or avoid dallying too long in the handler.
+	}
+	
+	// NOTE: Process pending register writes before reads to make REG_WR_EXCH work properly.
+	if (pending_reg_w != NOT_A_REGISTER) {
+		// IDEA: Add delays (1 musec?) between driving SS low/high and exchanging bytes.
+		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		// IDEA: Try sending a register write as hard-coded bytes.
+		res = nrf24x_out_1(NRF24X_W_REG_CMD(pending_reg_w), pending_reg_w_value);
+		
+		if (res) {  // Success!
+#ifdef NRF24X_SYNCHRONOUS
+			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+#else
+			active_reg_w = pending_reg_w;  // Wait for asynchronous SPI operation.
+			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+#endif
+		}
+		else {  // ERROR
+			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+		}
+		
+		pending_reg_w = NOT_A_REGISTER;  // Register write finished, initiated or canceled.
 		return;  // Either wait for async operation or avoid dallying too long in the handler.
 	}
 	
@@ -282,26 +305,6 @@ static void nrf24x_handler(sched_task *task) {
 		}
 		
 		pending_reg_r = NOT_A_REGISTER;  // Register read finished, initiated or canceled.
-		return;  // Either wait for async operation or avoid dallying too long in the handler.
-	}
-	
-	if (pending_reg_w != NOT_A_REGISTER) {
-		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
-		res = nrf24x_out_1(NRF24X_W_REG_CMD(pending_reg_w), pending_reg_w_value);
-		
-		if (res) {  // Success!
-#ifdef NRF24X_SYNCHRONOUS
-			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
-#else
-			active_reg_w = pending_reg_w;  // Wait for asynchronous SPI operation.
-			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
-#endif
-		}
-		else {  // ERROR
-			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
-		}
-		
-		pending_reg_w = NOT_A_REGISTER;  // Register write finished, initiated or canceled.
 		return;  // Either wait for async operation or avoid dallying too long in the handler.
 	}
 	
