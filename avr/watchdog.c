@@ -1,9 +1,8 @@
 
 #include <avr/interrupt.h>
 
+#include "bitops.h"
 #include "watchdog.h"
-
-#define BV(N) (1 << (N))
 
 void watchdog_reset_mcu(void) {
 	cli();  // Disable interrupts.

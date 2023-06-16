@@ -1,9 +1,12 @@
 
+#include <stddef.h>
+#include <stdint.h>
 #include <avr/io.h>
 
 // NOTE: When "auto_watchdog.h" is included, the watchdog timer is automatically
 //       disabled following an MCU reset.
 #include "auto_watchdog.h"
+#include "bitops.h"
 #include "task_sched.h"
 #include "std_tlv.h"
 #include "spihelper.h"
@@ -18,6 +21,10 @@
 #define LED_DDR DDRD
 #define LED_PORT PORTD
 #define LED_PINR PIND
+
+#define NRF_DDR DDRD
+#define NRF_PORT PORTD
+#define NRF_PINR PIND
 
 #define BAUD_RATE 38400
 //#define BAUD_RATE 9600
@@ -38,14 +45,22 @@ enum {
 };
 
 enum {
+	TTLV_APP_MSG_T_OUT    = TTLV_MSG_T_APPLICATION + 0,
+	TTLV_APP_MSG_T_IN     = TTLV_MSG_T_APPLICATION + 1,
+	TTLV_APP_MSG_T_IN_RES = TTLV_MSG_T_APPLICATION + 2
+};
+
+enum {
 	TTLV_APP_REG_STATUS     = TTLV_REG_APPLICATION + 0,
 	TTLV_APP_REG_CMD_OUT_0  = TTLV_REG_APPLICATION + 1,
+	TTLV_APP_REG_IOPINS     = TTLV_REG_APPLICATION + 2,  // CE and IRQ lines of the nRF24x chip
 	TTLV_APP_REG_NRF24X     = TTLV_REG_APPLICATION + 0x20,
 	TTLV_APP_REG_NRF24X_END = TTLV_APP_REG_NRF24X  + 0x20
 };
 
 enum {
-	TTLV_APP_RES_BUSY = TTLV_RES_APPLICATION + 0
+	TTLV_APP_RES_BUSY     = TTLV_RES_APPLICATION + 0,
+	TTLV_APP_RES_BFR_SIZE = TTLV_RES_APPLICATION + 1
 };
 
 enum {
@@ -60,6 +75,14 @@ static const uint8_t led_pins[N_LEDS] = {
 	BV(LED_PIN2)
 };
 
+enum {
+	NRF_PIN_CE  = PORTD5,
+	NRF_PIN_IRQ = PIND6
+};
+
+#define NRF_PINS_SIZE 2
+#define NRF_PINS_OFFSET 5
+
 
 // ---<<< Program State >>>---
 static uint8_t led_states[N_LEDS] = { 0, 0, 0 };
@@ -73,6 +96,18 @@ static uint8_t pending_reg_r_srcadr;
 static uint8_t pending_reg_w = NOT_A_REGISTER;
 static uint8_t pending_reg_w_value;
 
+// ISSUE: Think about how to prevent wasteful buffer allocation and copying
+//        just to avoid accessing volatile data as non-volatile (which apparently
+//        causes undefined behavior, at least in principle). Would it work to
+//        declare all library buffers non-volatile and then access them via
+//        pointers to volatile when necessary?
+static uint8_t pending_nrf_out_len = 0;
+static uint8_t pending_nrf_out_bfr[NRF24X_BFR_SIZE];
+
+static uint8_t pending_nrf_in_cmd = NOT_A_COMMAND;
+static uint8_t pending_nrf_in_len;
+static uint8_t pending_nrf_in_srcadr;
+
 #ifndef NRF24X_SYNCHRONOUS
 static uint8_t active_cmd = NOT_A_COMMAND;
 
@@ -82,6 +117,13 @@ static uint8_t active_reg_r_srcadr;
 static uint8_t active_reg_r_value;
 
 static uint8_t active_reg_w = NOT_A_REGISTER;
+
+static uint8_t active_nrf_out_len = 0;
+
+static uint8_t active_nrf_in_cmd = NOT_A_COMMAND;
+static uint8_t active_nrf_in_len;
+static uint8_t active_nrf_in_srcadr;
+static uint8_t active_nrf_in_bfr[NRF24X_BFR_SIZE];
 #endif
 
 static union {
@@ -124,6 +166,7 @@ static void set_led_flags(uint8_t led_flags) {
 }
 
 static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) {
+	// NOTE: This is sufficient for the R_REGISTER command, except the 5-byte address registers.
 	if (index >= TTLV_APP_REG_NRF24X && index < TTLV_APP_REG_NRF24X_END) {
 		if (pending_reg_r != NOT_A_REGISTER)
 			return TTLV_APP_RES_BUSY;
@@ -155,6 +198,9 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 	case TTLV_APP_REG_CMD_OUT_0:  // Pending nRF24x command.
 		*value_p = pending_cmd;
 		break;
+	case TTLV_APP_REG_IOPINS:  // Get logic states of CE and IRQ pins.
+		*value_p = GET_BITFIELD_AT(NRF_PINS_SIZE, NRF_PINS_OFFSET, NRF_PINR);
+		break;
 	default:
 		return TTLV_RES_REGISTER;
 	}
@@ -163,6 +209,7 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 }
 
 static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
+	// NOTE: This is sufficient for the W_REGISTER command, except the 5-byte address registers.
 	if (index >= TTLV_APP_REG_NRF24X && index < TTLV_APP_REG_NRF24X_END) {
 		if (pending_reg_w != NOT_A_REGISTER)
 			return TTLV_APP_RES_BUSY;
@@ -179,8 +226,12 @@ static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
 		set_led_flags(value);
 		break;
 	case TTLV_APP_REG_CMD_OUT_0:  // Trigger nRF24x command without data bytes.
+		// NOTE: This is sufficient for the FLUSH_TX, FLUSH_RX, REUSE_TX_PL and NOP commands.
 		pending_cmd = value;
 		sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
+		break;
+	case TTLV_APP_REG_IOPINS:  // Set logic state of CE pin.
+		NRF_PORT = SET_BITFIELD_AT(1, NRF_PIN_CE, NRF_PORT, value);
 		break;
 	default:
 		return TTLV_RES_REGISTER;
@@ -217,7 +268,7 @@ static void nrf24x_handler(sched_task *task) {
 	}
 	else if (active_reg_r != NOT_A_REGISTER) {  // nRF24x register read finished.
 		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
-		nrf24x_in_finish();  // Fetch register value from nRF24x module's command buffer.
+		nrf24x_in_finish(&active_reg_r_value);  // Fetch read register value.
 		
 		// Send INM response.
 		msg_data_out.r.index = active_reg_r;
@@ -228,6 +279,21 @@ static void nrf24x_handler(sched_task *task) {
 			TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
 		
 		active_reg_r = NOT_A_REGISTER;  // Done.
+	}
+	else if (active_nrf_out_len) {
+		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		active_nrf_out_len = 0;  // Done.
+	}
+	else if (active_nrf_in_cmd != NOT_A_COMMAND) {
+		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		nrf24x_in_finish(active_nrf_in_bfr);  // Fetch input command data.
+		// ISSUE: Verify that we got the right number of bytes?
+		
+		// Send INM response.
+		ttlv_xmit(active_nrf_in_srcadr,
+			TTLV_APP_MSG_T_IN_RES, active_nrf_in_len, active_nrf_in_bfr);
+		
+		active_nrf_in_cmd = NOT_A_COMMAND;  // Done.
 	}
 #endif
 	
@@ -308,9 +374,60 @@ static void nrf24x_handler(sched_task *task) {
 		return;  // Either wait for async operation or avoid dallying too long in the handler.
 	}
 	
+	if (pending_nrf_out_len) {
+		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		res = nrf24x_out_n(pending_nrf_out_bfr[0], pending_nrf_out_len-1, pending_nrf_out_bfr+1);
+		
+		if (res) {  // Success!
+#ifdef NRF24X_SYNCHRONOUS
+			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+#else
+			active_nrf_out_len = pending_nrf_out_len;  // Wait for asynchronous SPI operation.
+			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+#endif
+		}
+		else {  // ERROR
+			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+		}
+		
+		pending_nrf_out_len = 0;  // Output command finished, initiated or canceled.
+		return;  // Either wait for async operation or avoid dallying too long in the handler.
+	}
+	
+	if (pending_nrf_in_cmd != NOT_A_COMMAND) {
+#ifdef NRF24X_SYNCHRONOUS
+		uint8_t active_nrf_in_bfr[NRF24X_BFR_SIZE];
+#endif
+		
+		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		res = nrf24x_in_n(pending_nrf_in_cmd, pending_nrf_in_len, active_nrf_in_bfr);
+		
+		if (res) {  // Success!
+#ifdef NRF24X_SYNCHRONOUS
+			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+			
+			// Send INM response.
+			ttlv_xmit(pending_nrf_in_srcadr,
+				TTLV_APP_MSG_T_IN_RES, pending_nrf_in_len, active_nrf_in_bfr);
+#else
+			active_nrf_in_cmd = pending_nrf_in_cmd;  // Wait for asynchronous SPI operation.
+			active_nrf_in_len = pending_nrf_in_len;
+			active_nrf_in_srcadr = pending_nrf_in_srcadr;
+			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+#endif
+		}
+		else {  // ERROR
+			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+		}
+		
+		pending_nrf_in_cmd = NOT_A_COMMAND;  // Input command finished, initiated or canceled.
+		return;  // Either wait for async operation or avoid dallying too long in the handler.
+	}
+	
 	task->st |= TASK_ST_SLP(1);  // No work to do. Set sleep flag.
 }
 
+// TODO: Add generic nRF24x output and and input commands.
 static void message_handler(sched_task *task) {
 	ttlv_result res = TTLV_RES_NONE;
 	
@@ -400,6 +517,35 @@ static void message_handler(sched_task *task) {
 			res = TTLV_RES_NONE;
 		}
 	}
+	else if (TTLV_CHECK_TL_MAX(TTLV_APP_MSG_T_OUT, NRF24X_TEST_MAX_MSG_LEN)) {
+		if (pending_nrf_out_len) {
+			ttlv_finish_recv();
+			res = TTLV_APP_RES_BUSY;
+		}
+		else {
+			ttlv_recv(pending_nrf_out_bfr);
+			pending_nrf_out_len = ttlv_recv_header.h.length;
+			res = TTLV_RES_OK;
+		}
+	}
+	else if (TTLV_CHECK_TL(TTLV_APP_MSG_T_IN, 2)) {
+		if (pending_nrf_in_cmd != NOT_A_COMMAND) {
+			ttlv_finish_recv();
+			res = TTLV_APP_RES_BUSY;
+		}
+		else {
+			ttlv_recv(msg_data_in.b);
+			
+			pending_nrf_in_len = msg_data_in.b[1];
+			
+			if (pending_nrf_in_len >= NRF24X_BFR_SIZE)
+				res = TTLV_APP_RES_BFR_SIZE;
+			else {
+				pending_nrf_in_cmd = msg_data_in.b[0];
+				pending_nrf_in_srcadr = ttlv_recv_inm_header.h.srcadr;
+			}
+		}
+	}
 	else {  // Unrecognized message.
 		// NOTE: Probably not a good idea to always send error messages in
 		//       response to unrecognized messages. Doing so can easily
@@ -437,6 +583,9 @@ int main(void) __attribute__ ((OS_main));
 int main(void) {
 	// Set LED pins as outputs.
 	LED_DDR |= BV(LED_PIN0) | BV(LED_PIN1) | BV(LED_PIN2);
+	
+	// Set nRF24x CE control pin as output.
+	NRF_DDR |= BV(NRF_PIN_CE);
 	
 	sched_init();
 	

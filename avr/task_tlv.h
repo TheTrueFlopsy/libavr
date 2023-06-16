@@ -296,8 +296,8 @@ typedef union ttlv_header {
 
 /**
 	Variable: ttlv_mode_flags
-	Contains a set of mode flags that represent the current operation mode
-	of the TTLV module.
+	Contains a set of mode flags (<ttlv_mode>) that represent the current operation
+	mode of the TTLV module.
 	
 	CAUTION: Do not update this variable in external code, unless you know what
 	you're doing.
@@ -306,8 +306,8 @@ extern ttlv_mode ttlv_mode_flags;
 
 /**
 	Variable: ttlv_xmit_task_cats
-	Contains a set of task category bit flags. Tasks in the indicated categories will
-	be notified in response to certain events in the TTLV transmitter.
+	Contains a set of task category bit flags (<sched_catflags>). Tasks in the indicated
+	categories will be notified in response to certain events in the TTLV transmitter.
 	
 	The following transmitter events will trigger task notification:
 		+ Additional transmit buffer space becomes available while a message is being
@@ -317,8 +317,8 @@ extern sched_catflags ttlv_xmit_task_cats;
 
 /**
 	Variable: ttlv_recv_task_cats
-	Contains a set of task category bit flags. Tasks in the indicated categories will
-	be notified in response to certain events in the TTLV receiver.
+	Contains a set of task category bit flags (<sched_catflags>). Tasks in the indicated
+	categories will be notified in response to certain events in the TTLV receiver.
 	
 	The following receiver events will trigger task notification:
 		+ A complete INM header is received in INM mode.
@@ -332,7 +332,7 @@ extern sched_catflags ttlv_recv_task_cats;
 
 /**
 	Variable: ttlv_xmit_state
-	Contains a state code representing the current state of the TTLV transmitter.
+	A <ttlv_state> representing the current state of the TTLV transmitter.
 	
 	CAUTION: Do not update this variable in external code, unless you know what
 	you're doing.
@@ -341,7 +341,7 @@ extern ttlv_state ttlv_xmit_state;
 
 /**
 	Variable: ttlv_xmit_inm_header
-	Contains the INM header to transmit.
+	Contains the <ttlv_inm_header> to transmit.
 	
 	When the TTLV module is used in INM mode, the *srcadr* field of this struct
 	MUST be set to an appropriate value by external code before any function that
@@ -356,13 +356,13 @@ extern ttlv_inm_header ttlv_xmit_inm_header;
 
 /**
 	Variable: ttlv_xmit_header
-	Contains the TLV header to transmit.
+	Contains the <ttlv_header> to transmit.
 */
 extern ttlv_header ttlv_xmit_header;
 
 /**
 	Variable: ttlv_recv_state
-	Contains a state code representing the current state of the TTLV receiver.
+	A <ttlv_state> representing the current state of the TTLV receiver.
 	
 	CAUTION: Do not update this variable in external code, unless you know what
 	you're doing.
@@ -371,7 +371,7 @@ extern ttlv_state ttlv_recv_state;
 
 /**
 	Variable: ttlv_recv_inm_header
-	Contains the most recently received INM header.
+	Contains the most recently received <ttlv_inm_header>.
 	
 	CAUTION: Do not update this struct in external code, unless you know what
 	you're doing.
@@ -380,7 +380,7 @@ extern ttlv_inm_header ttlv_recv_inm_header;
 
 /**
 	Variable: ttlv_recv_header
-	Contains the most recently received TLV header.
+	Contains the most recently received <ttlv_header>.
 	
 	CAUTION: Do not update this struct in external code, unless you know what
 	you're doing.
@@ -444,21 +444,39 @@ extern ttlv_header ttlv_recv_header;
 
 /**
 	Macro: TTLV_CHECK_TL
-	Evaluates to a true value and only if the specified TLV message type
-	identifier and length match the ones currently stored in <ttlv_recv_header>.
+	Evaluates to a true value and only if the specified TLV message type identifier
+	and minimum length match the ones currently stored in <ttlv_recv_header>.
 	The type identifier is tested for equality, while the message length is
 	tested for being less than or equal to the one in <ttlv_recv_header>.
 	Function-like macro.
 	
 	Parameters:
 		T - A TLV message type identifier.
-		L - A TLV message length.
+		L - A minimum TLV message length.
 	
 	Returns:
 		True if and only if the arguments match the current <ttlv_recv_header>.
 */
 #define TTLV_CHECK_TL(T, L) \
 	(ttlv_recv_header.h.type == (T) && ttlv_recv_header.h.length >= (L))
+
+/**
+	Macro: TTLV_CHECK_TL_MAX
+	Evaluates to a true value and only if the specified TLV message type identifier
+	and maximum length match the ones currently stored in <ttlv_recv_header>.
+	The type identifier is tested for equality, while the message length is
+	tested for being greater than or equal to the one in <ttlv_recv_header>.
+	Function-like macro.
+	
+	Parameters:
+		T - A TLV message type identifier.
+		L - A maximum TLV message length.
+	
+	Returns:
+		True if and only if the arguments match the current <ttlv_recv_header>.
+*/
+#define TTLV_CHECK_TL_MAX(T, L) \
+	(ttlv_recv_header.h.type == (T) && ttlv_recv_header.h.length <= (L))
 
 /**
 	Macro: TTLV_PTR

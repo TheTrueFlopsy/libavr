@@ -3,6 +3,27 @@
 
 #include <stdint.h>
 
+#include "bitops.h"
+
+/**
+	File: nrf24x.h
+	Constant definitions and helper functions for the SPI command interface of
+	the nRF24x series of 2.4 GHz digital transceivers. Relies on the <spihelper.h>
+	module.
+	
+	NOTE: These functions do NOT manipulate any SPI Slave Select pins. Application
+	developers must ensure that the commands these functions transmit via the
+	SPI peripheral reach the intended destination device.
+	
+	NOTE: This module does not deal with the CE and IRQ pins of the nRF24x IC.
+	Those pins must be managed by application code.
+	
+	NOTE: By default, these functions will use the asynchronous API of the SPI
+	helper module (i.e. <spihelper_request>), unless that API has been disabled.
+	To use the synchronous API (i.e. <spihelper_exchange_bytes>) regardless of
+	whether the asynchronous API is available, define the macro *NRF24X_SYNCHRONOUS*.
+*/
+
 #if defined(SPI_NO_ASYNC_API) && !defined(NRF24X_SYNCHRONOUS)
 #define NRF24X_SYNCHRONOUS
 #endif
@@ -23,14 +44,6 @@
 
 #define NRF24X_NONE_PENDING 0xff
 
-#define NRF24X_BITMASK(N) ((1 << (N)) - 1)
-
-#define NRF24X_GET_BITFIELD(S, X) (NRF24X_BITMASK(S) & (X))
-
-#define NRF24X_GET_BITFIELD_AT(S, O, X) NRF24X_GET_BITFIELD(S, (X) >> (O))
-
-#define NRF24X_MAKE_BITFIELD_AT(S, O, X) (NRF24X_GET_BITFIELD(S, X) << (O))
-
 // TODO: Verify that the NRF24X_W_TX_PAYLOAD_NOACK code is correct.
 enum {  // Command bytes
 	NRF24X_R_REGISTER         = 0b00000000,  // 0x00 (plus 5-bit register address)
@@ -50,13 +63,13 @@ enum {  // Command bytes
 
 #define NRF24X_REG_ADDR_SIZE 5
 
-#define NRF24X_REG_ADDR(A) NRF24X_GET_BITFIELD(NRF24X_REG_ADDR_SIZE, A)
+#define NRF24X_REG_ADDR(A) GET_BITFIELD(NRF24X_REG_ADDR_SIZE, A)
 #define NRF24X_R_REG_CMD(A) ((uint8_t)(NRF24X_R_REGISTER | NRF24X_REG_ADDR(A)))
 #define NRF24X_W_REG_CMD(A) ((uint8_t)(NRF24X_W_REGISTER | NRF24X_REG_ADDR(A)))
 
 #define NRF24X_PIPE_NUM_SIZE 3
 
-#define NRF24X_PIPE_NUM(P) NRF24X_GET_BITFIELD(NRF24X_PIPE_NUM_SIZE, P)
+#define NRF24X_PIPE_NUM(P) GET_BITFIELD(NRF24X_PIPE_NUM_SIZE, P)
 #define NRF24X_W_ACK_PAYLOAD_CMD(P) ((uint8_t)(NRF24X_W_ACK_PAYLOAD | NRF24X_PIPE_NUM(P)))
 
 enum {  // Register addresses
@@ -118,16 +131,16 @@ enum {  // SETUP_AW register values
 #define NRF24X_ARC_SIZE 4
 
 #define NRF24X_SETUP_RETR_VAL(ARD, ARC) \
-	(NRF24X_MAKE_BITFIELD_AT(NRF24X_ARD_SIZE, NRF24X_ARD_OFFSET, ARD) | \
-	 NRF24X_GET_BITFIELD(NRF24X_ARC_SIZE, ARC))
+	(MAKE_BITFIELD_AT(NRF24X_ARD_SIZE, NRF24X_ARD_OFFSET, ARD) | \
+	 GET_BITFIELD(NRF24X_ARC_SIZE, ARC))
 
-#define NRF24X_GET_ARD(SR) NRF24X_GET_BITFIELD_AT(NRF24X_ARD_SIZE, NRF24X_ARD_OFFSET, SR)
+#define NRF24X_GET_ARD(SR) GET_BITFIELD_AT(NRF24X_ARD_SIZE, NRF24X_ARD_OFFSET, SR)
 
-#define NRF24X_GET_ARC(SR) NRF24X_GET_BITFIELD(NRF24X_ARC_SIZE, SR)
+#define NRF24X_GET_ARC(SR) GET_BITFIELD(NRF24X_ARC_SIZE, SR)
 
 #define NRF24X_RF_CH_SIZE 7
 
-#define NRF24X_RF_CH_VAL(CH) NRF24X_GET_BITFIELD(NRF24X_RF_CH_SIZE, CH)
+#define NRF24X_RF_CH_VAL(CH) GET_BITFIELD(NRF24X_RF_CH_SIZE, CH)
 
 enum {  // RF_SETUP register bits
 	NRF24X_PLL_LOCK  = 4,
@@ -150,17 +163,17 @@ enum {  // STATUS register bits
 #define NRF24X_RX_P_NO_OFFSET 1
 
 #define NRF24X_GET_RX_P_NO(ST) \
-	NRF24X_GET_BITFIELD_AT(NRF24X_PIPE_NUM_SIZE, NRF24X_RX_P_NO_OFFSET, ST)
+	GET_BITFIELD_AT(NRF24X_PIPE_NUM_SIZE, NRF24X_RX_P_NO_OFFSET, ST)
 
 #define NRF24X_PLOS_CNT_SIZE 4
 #define NRF24X_PLOS_CNT_OFFSET 4
 
 #define NRF24X_GET_PLOS_CNT(OTX) \
-	NRF24X_GET_BITFIELD_AT(NRF24X_PLOS_CNT_SIZE, NRF24X_PLOS_CNT_OFFSET, OTX)
+	GET_BITFIELD_AT(NRF24X_PLOS_CNT_SIZE, NRF24X_PLOS_CNT_OFFSET, OTX)
 
 #define NRF24X_ARC_CNT_SIZE 4
 
-#define NRF24X_GET_ARC_CNT(OTX) NRF24X_GET_BITFIELD(NRF24X_ARC_CNT_SIZE, OTX)
+#define NRF24X_GET_ARC_CNT(OTX) GET_BITFIELD(NRF24X_ARC_CNT_SIZE, OTX)
 
 enum {  // CD register bits
 	NRF24X_CD0 = 0
@@ -168,7 +181,7 @@ enum {  // CD register bits
 
 #define NRF24X_RX_PW_SIZE 6
 
-#define NRF24X_RX_PW_VAL(PW) NRF24X_GET_BITFIELD(NRF24X_RX_PW_SIZE, PW)
+#define NRF24X_RX_PW_VAL(PW) GET_BITFIELD(NRF24X_RX_PW_SIZE, PW)
 
 enum {  // FIFO_STATUS register bits
 	NRF24X_TX_REUSE = 6,
@@ -215,7 +228,7 @@ uint8_t nrf24x_in_n(uint8_t cmd, uint8_t n_in, uint8_t *bfr_in);
 #endif
 
 #if !defined(NRF24X_NO_CMD_BFR) && !defined(NRF24X_SYNCHRONOUS)
-uint8_t nrf24x_in_finish(void);
+uint8_t nrf24x_in_finish(uint8_t *bfr_in);
 #endif
 
 #endif

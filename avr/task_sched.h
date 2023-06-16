@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "bitops.h"
+
 /**
 	File: task_sched.h
 	A task scheduler for AVR microcontrollers.
@@ -36,21 +38,6 @@
 //       handler is being invoked (e.g. notified, delay elapsed, running,
 //       invoked via sched_invoke())?
 //       What would the best way to implement this be?
-
-/**
-	Macro: BV
-	Utility macro that maps a bit number to an integer value with (only)
-	the corresponding bit set to 1. Function-like macro.
-	
-	Parameters:
-		N - A bit number. Should be in the range 0-7 for 8-bit values
-			and 0-15 for 16-bit values. Bit 0 is the least significant
-			and bit 7/15 the most significant.
-	
-	Returns:
-		An integer value with (only) the specified bit set to one (1).
-*/
-#define BV(N) (1 << (N))
 
 
 /// Section: Configuration Macros
@@ -356,24 +343,17 @@ typedef struct sched_time {
 
 /// Section: Task Control and Status Bytes
 
-#define TASK_ST_N(B) (1 << (B))
-#define TASK_ST_MAX(B) (TASK_ST_N(B) - 1)
-#define TASK_ST_MASK(O, B) (TASK_ST_MAX(B) << (O))
-#define TASK_ST_INIT(O, M, V) ((M) & ((V) << (O)))
-#define TASK_ST_GET(O, M, ST) (((M) & (ST)) >> (O))
-#define TASK_ST_SET(O, M, ST, V) ((~(M) & (ST)) | TASK_ST_INIT(O, M, V))
-
 #define TASK_ST_NUM_OFFS 0
 #define TASK_ST_NUM_BITS 3
-#define TASK_ST_N_NUMS TASK_ST_N(TASK_ST_NUM_BITS)
-#define TASK_ST_MAX_NUM TASK_ST_MAX(TASK_ST_NUM_BITS)
+#define TASK_ST_N_NUMS BITSTATES(TASK_ST_NUM_BITS)
+#define TASK_ST_MAX_NUM BITMAX(TASK_ST_NUM_BITS)
 
 /**
 	Macro: TASK_ST_NUM_MASK
 	Bit mask for the task instance number in a TCSB (see <sched_task>).
 	Constant macro. Useful for task list queries (see <sched_query>).
 */
-#define TASK_ST_NUM_MASK TASK_ST_MASK(TASK_ST_NUM_OFFS, TASK_ST_NUM_BITS)
+#define TASK_ST_NUM_MASK BITMASK_AT(TASK_ST_NUM_BITS, TASK_ST_NUM_OFFS)
 
 /**
 	Macro: TASK_ST_NUM
@@ -386,7 +366,7 @@ typedef struct sched_time {
 	Returns:
 		A TCSB value with (only) the instance number *NUM* set.
 */
-#define TASK_ST_NUM(NUM) TASK_ST_INIT(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, NUM)
+#define TASK_ST_NUM(NUM) MAKE_BITFIELD_AT(TASK_ST_NUM_BITS, TASK_ST_NUM_OFFS, NUM)
 
 /**
 	Macro: TASK_ST_GET_NUM
@@ -398,7 +378,7 @@ typedef struct sched_time {
 	Returns:
 		The instance number from *ST*, right-shifted into the three least significant bits.
 */
-#define TASK_ST_GET_NUM(ST) TASK_ST_GET(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, ST)
+#define TASK_ST_GET_NUM(ST) GET_BITFIELD_AT(TASK_ST_NUM_BITS, TASK_ST_NUM_OFFS, ST)
 
 /**
 	Macro: TASK_ST_SET_NUM
@@ -412,19 +392,19 @@ typedef struct sched_time {
 		A TCSB value with the category number and sleep bit equal to the ones in *ST* and
 		the instance number set to *NUM*.
 */
-#define TASK_ST_SET_NUM(ST, NUM) TASK_ST_SET(TASK_ST_NUM_OFFS, TASK_ST_NUM_MASK, ST, NUM)
+#define TASK_ST_SET_NUM(ST, NUM) SET_BITFIELD_AT(TASK_ST_NUM_BITS, TASK_ST_NUM_OFFS, ST, NUM)
 
 #define TASK_ST_CAT_OFFS (TASK_ST_NUM_OFFS + TASK_ST_NUM_BITS)
 #define TASK_ST_CAT_BITS 4
-#define TASK_ST_N_CATS TASK_ST_N(TASK_ST_CAT_BITS)
-#define TASK_ST_MAX_CAT TASK_ST_MAX(TASK_ST_CAT_BITS)
+#define TASK_ST_N_CATS BITSTATES(TASK_ST_CAT_BITS)
+#define TASK_ST_MAX_CAT BITMAX(TASK_ST_CAT_BITS)
 
 /**
 	Macro: TASK_ST_CAT_MASK
 	Bit mask for the task category number in a TCSB (see <sched_task>).
 	Constant macro. Useful for task list queries (see <sched_query>).
 */
-#define TASK_ST_CAT_MASK TASK_ST_MASK(TASK_ST_CAT_OFFS, TASK_ST_CAT_BITS)
+#define TASK_ST_CAT_MASK BITMASK_AT(TASK_ST_CAT_BITS, TASK_ST_CAT_OFFS)
 
 /**
 	Macro: TASK_ST_CAT
@@ -437,7 +417,7 @@ typedef struct sched_time {
 	Returns:
 		A TCSB value with (only) the category number *CAT* set.
 */
-#define TASK_ST_CAT(CAT) TASK_ST_INIT(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, CAT)
+#define TASK_ST_CAT(CAT) MAKE_BITFIELD_AT(TASK_ST_CAT_BITS, TASK_ST_CAT_OFFS, CAT)
 
 /**
 	Macro: TASK_ST_GET_CAT
@@ -449,7 +429,7 @@ typedef struct sched_time {
 	Returns:
 		The category number from *ST*, right-shifted into the four least significant bits.
 */
-#define TASK_ST_GET_CAT(ST) TASK_ST_GET(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, ST)
+#define TASK_ST_GET_CAT(ST) GET_BITFIELD_AT(TASK_ST_CAT_BITS, TASK_ST_CAT_OFFS, ST)
 
 /**
 	Macro: TASK_ST_SET_CAT
@@ -463,7 +443,7 @@ typedef struct sched_time {
 		A TCSB value with the instance number and sleep bit equal to the ones in *ST* and
 		the category number set to *CAT*.
 */
-#define TASK_ST_SET_CAT(ST, CAT) TASK_ST_SET(TASK_ST_CAT_OFFS, TASK_ST_CAT_MASK, ST, CAT)
+#define TASK_ST_SET_CAT(ST, CAT) SET_BITFIELD_AT(TASK_ST_CAT_BITS, TASK_ST_CAT_OFFS, ST, CAT)
 
 /**
 	Macro: TASK_ST_NUM_CAT_MASK
@@ -481,8 +461,8 @@ typedef struct sched_time {
 
 #define TASK_ST_SLP_OFFS (TASK_ST_CAT_OFFS + TASK_ST_CAT_BITS)
 #define TASK_ST_SLP_BITS 1
-#define TASK_ST_SLP_MASK TASK_ST_MASK(TASK_ST_SLP_OFFS, TASK_ST_SLP_BITS)
-#define TASK_ST_SLP(SLP) TASK_ST_INIT(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, SLP)
+#define TASK_ST_SLP_MASK BITMASK_AT(TASK_ST_SLP_BITS, TASK_ST_SLP_OFFS)
+#define TASK_ST_SLP(SLP) MAKE_BITFIELD_AT(TASK_ST_SLP_BITS, TASK_ST_SLP_OFFS, SLP)
 
 /**
 	Macro: TASK_ST_GET_SLP
@@ -497,9 +477,9 @@ typedef struct sched_time {
 	Returns:
 		The sleep bit from *ST*, right-shifted into the least significant bit.
 */
-#define TASK_ST_GET_SLP(ST) TASK_ST_GET(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, ST)
+#define TASK_ST_GET_SLP(ST) GET_BITFIELD_AT(TASK_ST_SLP_BITS, TASK_ST_SLP_OFFS, ST)
 
-#define TASK_ST_SET_SLP(ST, SLP) TASK_ST_SET(TASK_ST_SLP_OFFS, TASK_ST_SLP_MASK, ST, SLP)
+#define TASK_ST_SET_SLP(ST, SLP) SET_BITFIELD_AT(TASK_ST_SLP_BITS, TASK_ST_SLP_OFFS, ST, SLP)
 
 /**
 	Macro: TASK_SLEEP_BIT
@@ -576,7 +556,7 @@ typedef uint16_t sched_catflags;
 	Returns:
 		A <sched_catflags> value with (only) bit number *N* set to one (1).
 */
-#define SCHED_CATFLAG(N) ((sched_catflags)1 << (N))
+#define SCHED_CATFLAG(N) ((sched_catflags)BV(N))
 
 /**
 	Macro: TASK_ST_GET_CATFLAG

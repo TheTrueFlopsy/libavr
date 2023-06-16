@@ -39,10 +39,12 @@ Timestamp: Generated on yyyy-mm-dd
 
 
 File: auto_watchdog.h  (auto_watchdog.h)
+File: bitops.h  (bitops.h)
 File: i2chelper.h  (i2chelper.h)
 File: mcp23018.h  (mcp23018.h)
 File: mcp4x.h  (mcp4x.h)
 File: memmon.h  (no auto-title, memmon.h)
+File: nrf24x.h  (nrf24x.h)
 File: spihelper.h  (spihelper.h)
 File: std_tlv.h  (no auto-title, std_tlv.h)
 File: task_sched.h  (no auto-title, task_sched.h)

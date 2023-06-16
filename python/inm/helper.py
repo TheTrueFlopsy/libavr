@@ -25,7 +25,7 @@ from . import inm
 ## > dstadr = 1
 ## > debug0_val = 0x02
 ## >
-## > h = helper.InmHelper()  # Create InmHelper with default message channel.
+## > h = helper.InmHelper(timeout=1)  # Create InmHelper with default channel and 1 s timeout.
 ## >
 ## > res = h.open()  # Open the message channel.
 ## > if res != h.RC.SUCCESS:  # Use convenient shorthand reference to enum type.
@@ -104,9 +104,10 @@ class InmHelper:
 	##   msg_factory - The <MessageFactory> that the *InmHelper* should use to create INM
 	##     <Message> objects. If this parameter is *None*, the *msg_factory* attribute
 	##     of the encapsulated <MessageChannel> will be used.
-	##   srcadr - INM source address of the encapsulated <MessageChannel>. Used only if
-	##     the *channel* parameter is *None*. If this parameter is *None*, the value of
-	##     the class attribute <DEFAULT_SRCADR> will be used.
+	##   srcadr - INM source address of the encapsulated <MessageChannel>. If this parameter
+	##     is *None*, the value of the class attribute <DEFAULT_SRCADR> will be used for an
+	##     internally created <InetMessageChannel> (but <MessageChannel.srcadr> will NOT be
+	##     changed in a provided pre-existing *channel*).
 	##   ip_adr - IP address of the internal <InetMessageChannel> that is created if
 	##     the *channel* parameter is *None*. Specify the address as a hostname or
 	##     dotted-decimal string. If this parameter is *None*, the value of the class
@@ -119,19 +120,25 @@ class InmHelper:
 	##     number used for the UDP port is also used for the TCP port.
 	##     NOTE: In the current implementation of <InetMessageChannel>, no TCP socket
 	##     is actually used, so this parameter makes no difference.
-	##   timeout - Receive timeout of the internal <InetMessageChannel> that is created if
-	##     the *channel* parameter is *None*. MUST be an instance of the standard library
-	##     class *datetime.timedelta*. If this parameter is *None*, receive operations will
-	##     never time out.
+	##   timeout - Receive timeout of the encapsulated <MessageChannel>. MUST be an int,
+	##     a float or an instance of the standard library class *datetime.timedelta*.
+	##     An int or float argument is interpreted as a timeout in seconds. If this
+	##     parameter is *None* and an internally created <InetMessageChannel> is used,
+	##     receive operations will never time out. If this parameter and *channel* are both
+	##     not *None*, then <MessageChannel.set_timeout> will be used to set the timeout
+	##     for the provided *channel*.
 	##   link_adr - INM link address (think of it as the router address of an IP network)
 	##     of the internal <InetMessageChannel> that is created if the *channel* parameter
-	##     is *None*. Should be a tuple of the format *(link_ip_adr, link_udp_port)*.
+	##     is *None*. SHOULD be *None* or a tuple of the format *(link_ip_adr, link_udp_port)*.
 	##     If this parameter is *None*, the used *link_ip_adr* will be the same as the IP
 	##     address of the encapsulated channel, while *link_udp_port* will have the value
 	##     of the class attribute <DEFAULT_LINK_UDP_PORT>.
 	def __init__(self, channel=None, msg_factory=None,
 	             srcadr=None, ip_adr=None, udp_port=None, tcp_port=None,
 	             timeout=None, link_adr=None):
+		
+		if isinstance(timeout, int) or isinstance(timeout, float):
+				timeout = inm.get_timedelta(timeout)
 		
 		if channel is None:
 			if srcadr is None:
@@ -150,6 +157,12 @@ class InmHelper:
 				link_adr = (ip_adr, 3000)
 			
 			channel = inm.InetMessageChannel(srcadr, ip_adr, udp_port, tcp_port, timeout, msg_factory)
+		else:
+			if srcadr is not None:
+				channel.srcadr = srcadr
+			
+			if timeout is not None:
+				channel.set_timeout(timeout)
 		
 		if msg_factory is None:
 			msg_factory = channel.msg_factory
@@ -165,6 +178,42 @@ class InmHelper:
 		## Property: link_adr
 		## The INM link address this *InmHelper* uses to send messages.
 		self.link_adr = link_adr
+		
+		## Property: recv_print
+		## If this is *True*, <format_msg_info> will be used to print information about each
+		## received message on standard output (or the file specified via <recv_print_file>).
+		## Useful for logging and when running the interpreter in interactive mode.
+		## Default: *False*
+		self.recv_print = False
+		
+		## Property: recv_print_file
+		## Target file-like object (compatible with *print()*) to use for the output generated
+		## when <recv_print> is *True*. If this is *None*, output will be sent to the standard
+		## output stream. Default: *None*
+		self.recv_print_file = None
+		
+		## Property: recv_return_none
+		## If this is *True*, then <recv>, <sendrecv> and <sendrecv_mval> will always return *None*.
+		## Useful to avoid cluttering the terminal when running the interpreter in interactive mode
+		## with <recv_print> enabled. If necessary, received messages can still be accessed via the
+		## <latest_msg> property. Default: *False*
+		self.recv_return_none = False
+		
+		## Property: latest_res
+		## The <ResultCode> produced by the latest call to <recv>, <sendrecv> or <sendrecv_mval>.
+		self.latest_res = None
+		
+		## Property: latest_header
+		## The <MessageHeader> produced by the latest call to <recv>, <sendrecv> or <sendrecv_mval>.
+		self.latest_header = None
+		
+		## Property: latest_msg
+		## The <Message> produced by the latest call to <recv>, <sendrecv> or <sendrecv_mval>.
+		self.latest_msg = None
+		
+		## Property: latest_link_adr
+		## The INM link address produced by the latest call to <recv>, <sendrecv> or <sendrecv_mval>.
+		self.latest_link_adr = None
 	
 	def __enter__(self):
 		if not self.channel.is_open():
@@ -183,6 +232,25 @@ class InmHelper:
 			srcadr = self.channel.srcadr
 		
 		return inm.MessageHeader(msg_id, dstadr, srcadr)
+	
+	def _finish_recv(self, recv_tuple):
+		res, header, msg, link_adr = recv_tuple
+		
+		self.latest_res = res
+		self.latest_header = header
+		self.latest_msg = msg
+		self.latest_link_adr = link_adr
+		
+		if self.recv_print:
+			if msg is None:
+				print(res.name, file=self.recv_print_file)
+			else:
+				print(inm.format_msg_info(msg, res.name, header, link_adr), file=self.recv_print_file)
+		
+		if self.recv_return_none:
+			return None
+		
+		return recv_tuple
 	
 	## Method: open
 	## Opens the encapsulated <channel>. Calls <MessageChannel.open>.
@@ -444,7 +512,7 @@ class InmHelper:
 	##   msg - The received <Message>, or *None* in case of failure.
 	##   link_adr - The link address of the received message, or *None* in case of failure.
 	def recv(self):
-		return self.channel.recv()
+		return self._finish_recv(self.channel.recv())
 	
 	## Method: sendrecv
 	## First constructs and sends an INM message, then attempts to receive one.
@@ -470,7 +538,7 @@ class InmHelper:
 	def sendrecv(self, dstadr, typ, val, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		res = self.send(dstadr, typ, val, int_size, msg_id, srcadr, link_adr)
 		if res != self.RC.SUCCESS:
-			return res, None, None, None
+			return self._finish_recv((res, None, None, None))
 		
 		return self.recv()
 	
@@ -501,6 +569,6 @@ class InmHelper:
 	def sendrecv_mval(self, dstadr, typ, mval, int_size=None, msg_id=None, srcadr=None, link_adr=None):
 		res = self.send_mval(dstadr, typ, mval, int_size, msg_id, srcadr, link_adr)
 		if res != self.RC.SUCCESS:
-			return res, None, None, None
+			return self._finish_recv((res, None, None, None))
 		
 		return self.recv()

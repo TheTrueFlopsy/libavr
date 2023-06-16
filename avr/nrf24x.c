@@ -2,10 +2,6 @@
 #include "spihelper.h"
 #include "nrf24x.h"
 
-#ifndef BV
-#define BV(N) (1 << (N))
-#endif
-
 volatile uint8_t nrf24x_status;
 
 #ifndef NRF24X_SYNCHRONOUS
@@ -21,7 +17,7 @@ volatile uint8_t nrf24x_command;
 static volatile uint8_t cmd_bfr[NRF24X_BFR_SIZE];
 
 uint8_t nrf24x_pending_n_in = NRF24X_NONE_PENDING;
-static uint8_t *pending_bfr_in;
+//static uint8_t *pending_bfr_in;
 
 #endif
 #endif
@@ -82,7 +78,7 @@ uint8_t nrf24x_in_1(uint8_t cmd, uint8_t *data_p) {
 #else
 	nrf24x_command = cmd;
 	nrf24x_pending_n_in = 1;
-	pending_bfr_in = data_p;
+	//pending_bfr_in = data_p;
 	spi_state res = NRF24X_CMD_IN(2, 0, cmd_bfr);
 	return res == SPI_ACTIVE;
 #endif
@@ -99,7 +95,7 @@ uint8_t nrf24x_in_n(uint8_t cmd, uint8_t n_in, uint8_t *bfr_in) {
 #else
 	nrf24x_command = cmd;
 	nrf24x_pending_n_in = n_in;
-	pending_bfr_in = bfr_in;
+	//pending_bfr_in = bfr_in;
 	spi_state res = NRF24X_CMD_IN(n_in + 1, 0, cmd_bfr);
 	return res == SPI_ACTIVE;
 #endif
@@ -108,14 +104,16 @@ uint8_t nrf24x_in_n(uint8_t cmd, uint8_t n_in, uint8_t *bfr_in) {
 #endif
 
 #if !defined(NRF24X_NO_CMD_BFR) && !defined(NRF24X_SYNCHRONOUS)
-uint8_t nrf24x_in_finish(void) {
+uint8_t nrf24x_in_finish(uint8_t *bfr_in) {
+	// ISSUE: Add a check to ensure that no asynchronous SPI operation is ongoing?
+	
 	uint8_t n_in = nrf24x_pending_n_in;
 	if (n_in == NRF24X_NONE_PENDING)
 		return NRF24X_NONE_PENDING;
 	
 	// ISSUE: Would it be OK to simply use memcpy() here?
 	volatile uint8_t *cmd_bfr_p = cmd_bfr;
-	uint8_t *bfr_in = pending_bfr_in;
+	//uint8_t *bfr_in = pending_bfr_in;
 	
 	nrf24x_status = *cmd_bfr_p++;
 	

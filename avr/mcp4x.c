@@ -1,12 +1,9 @@
 
 #include <stddef.h>
 
-#include "mcp4x.h"
+#include "bitops.h"
 #include "spihelper.h"
-
-#ifndef BV
-#define BV(N) (1 << (N))
-#endif
+#include "mcp4x.h"
 
 // Command ID bit numbers.
 #define MCP4X_C0 4
