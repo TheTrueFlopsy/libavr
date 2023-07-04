@@ -5,6 +5,7 @@
 #include <avr/interrupt.h>
 #endif
 
+#include "bitops.h"
 #include "spihelper.h"
 
 #define SPI_PORTB PORTB
@@ -23,12 +24,7 @@
 #define SPI_DDRD DDRD
 
 
-#ifdef SPI_NO_ASYNC_API
-
-// NOTE: Since "task_sched.h" hasn't been included.
-#define BV(N) (1 << (N))
-
-#else
+#ifndef SPI_NO_ASYNC_API
 
 #ifndef SPI_DUMMY_BYTE
 #define SPI_DUMMY_BYTE 0

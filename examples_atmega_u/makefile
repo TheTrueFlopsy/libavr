@@ -47,7 +47,7 @@ ldirs_paths := $(libavr_dir)/$(rel_bdir)_atmega_u
 endif
 
 # --- Filename Variables ---
-targets  := sched_blinker lcd_driver
+targets  := sched_blinker mcp4x_test nrf24x_test lcd_driver
 programs := $(addprefix prog-, $(targets))
 
 headers := $(libavr_dir)/*.h
@@ -59,6 +59,7 @@ target_hex := $(addprefix $(bdir)/, $(addsuffix .hex, $(targets)))
 # --- Command Option Variables ---
 warnings := -Wall -Wmissing-prototypes -Wstrict-prototypes
 macro_defs := -DF_CPU=$(f_cpu)L -DLIBAVR_ATMEGA_U -DSCHED_CLOCK_PRESCALE_LOG=$(f_cpu_prescale)
+macro_defs += -DSPI_NO_ASYNC_API
 
 idirs := -I$(libavr_dir)
 ldirs := $(addprefix -L, $(ldirs_paths))
