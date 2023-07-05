@@ -19,6 +19,12 @@
 #define LED_PORT PORTD
 #define LED_PINR PIND
 
+// NOTE: On the Arduino Leonardo board, the hardware SS pin of the ATmegaU (PB0)
+//       is wired to the RXLED indicator, so a different pin (e.g. PB4/IO8) must
+//       be used to drive the SPI slave select output line.
+#define MCP4X_TEST_SS_PIN SPI_SS
+//#define MCP4X_TEST_SS_PIN PORTB4
+
 #define BAUD_RATE 38400
 //#define BAUD_RATE 9600
 #define USE_U2X 0
@@ -108,7 +114,7 @@ static void set_led_flags(uint8_t led_flags) {
 static uint8_t set_wiper(uint8_t pot_bits, uint8_t pos) {
 	uint8_t res;
 	
-	SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+	SPI_PORT &= ~BV(MCP4X_TEST_SS_PIN); // Drive slave select pin low.
 	
 	// ISSUE: Do we need some sort of delay here?
 	// NOTE: MCP4x datasheet says 40 ns. An ATmega clock cycle at 16 MHz is 62.5 ns.
@@ -118,10 +124,10 @@ static uint8_t set_wiper(uint8_t pot_bits, uint8_t pos) {
 	// ISSUE: Or here?
 	
 #ifdef MCP4X_SYNCHRONOUS
-	SPI_PORT |= BV(SPI_SS);  // mcp4x_set_wiper is synchronous. Drive slave select pin high.
+	SPI_PORT |= BV(MCP4X_TEST_SS_PIN);  // mcp4x_set_wiper is synchronous. Drive slave select pin high.
 #else
 	if (!res)
-		SPI_PORT |= BV(SPI_SS);  // Failed to start SPI operation. Drive slave select pin high.
+		SPI_PORT |= BV(MCP4X_TEST_SS_PIN);  // Failed to start SPI operation. Drive slave select pin high.
 #endif
 	
 	return res;
@@ -193,11 +199,11 @@ static void mcp4x_handler(sched_task *task) {
 		return;
 	}
 	else if (new_p0_wiper != p0_wiper) {  // P0 wiper update done.
-		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		SPI_PORT |= BV(MCP4X_TEST_SS_PIN);  // Drive slave select pin high.
 		p0_wiper = new_p0_wiper;
 	}
 	else if (new_p1_wiper != p1_wiper) {  // P1 wiper update done.
-		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		SPI_PORT |= BV(MCP4X_TEST_SS_PIN);  // Drive slave select pin high.
 		p1_wiper = new_p1_wiper;
 	}
 #endif
@@ -369,12 +375,13 @@ int main(void) {
 	ttlv_xmit_inm_header.h.srcadr = INM_ADDR;  // Set INM source address.
 	
 	// Run SPI module in Master mode, at clock frequency F_CPU/64 ~= 250kHz (at F_CPU=16 MHz).
-	// Make the Slave mode slave select pin (SPI_SS in port B) a Master mode slave select output.
+	// Make the Slave mode slave select pin (MCP4X_TEST_SS_PIN in port B) a Master mode slave
+	// select output.
 #ifdef MCP4X_SYNCHRONOUS
-	spihelper_mstr_init(BV(SPI_SS), 0, 0, BV(MSTR) | BV(SPR1));
+	spihelper_mstr_init(BV(MCP4X_TEST_SS_PIN), 0, 0, BV(MSTR) | BV(SPR1));
 #else
 	spihelper_async_mstr_init(
-		BV(SPI_SS), 0, 0, BV(MSTR) | BV(SPR1),
+		BV(MCP4X_TEST_SS_PIN), 0, 0, BV(MSTR) | BV(SPR1),
 		SCHED_CATFLAG(MCP4X_TASK_CAT));
 #endif
 	

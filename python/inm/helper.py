@@ -572,3 +572,34 @@ class InmHelper:
 			return self._finish_recv((res, None, None, None))
 		
 		return self.recv()
+
+
+## Section: Utility Functions
+
+## Function: interactive
+## Creates an <InmHelper> and configures it for use in an interactive Python session.
+## Sets the receive timeout to one second, unless a *timeout* argument is given.
+## Sets <InmHelper.recv_print> and <InmHelper.recv_return_none> to *True*.
+## Calls <InmHelper.open> (unless <InmHelper.channel> is already open), returns
+## the result code from that call if the call fails.
+##
+## See <InmHelper.__init__> for a description of the parameters.
+##
+## Returns:
+##   An <InmHelper> configured for interactive use, or a <ResultCode> in case the
+##   InmHelper couldn't be opened.
+def interactive(channel=None, msg_factory=None,
+                srcadr=None, ip_adr=None, udp_port=None, tcp_port=None,
+                timeout=1, link_adr=None):
+	
+	h = InmHelper(channel, msg_factory, srcadr, ip_adr, udp_port, tcp_port, timeout, link_adr)
+	
+	h.recv_print = True
+	h.recv_return_none = True
+	
+	if not h.channel.is_open():
+		res = h.open()
+		if res != h.RC.SUCCESS:
+			return res
+	
+	return h

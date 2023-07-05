@@ -30,6 +30,12 @@
 #define NRF_PORT_IRQ PORTD
 #define NRF_PINR_IRQ PIND
 
+// NOTE: On the Arduino Leonardo board, the hardware SS pin of the ATmegaU (PB0)
+//       is wired to the RXLED indicator, so a different pin (e.g. PB4/IO8) must
+//       be used to drive the SPI slave select output line.
+#define NRF24X_TEST_SS_PIN SPI_SS
+//#define NRF24X_TEST_SS_PIN PORTB4
+
 #define BAUD_RATE 38400
 //#define BAUD_RATE 9600
 #define USE_U2X 0
@@ -261,15 +267,15 @@ static void nrf24x_handler(sched_task *task) {
 		return;
 	}
 	else if (active_cmd != NOT_A_COMMAND) {  // nRF24x command transmitted.
-		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
 		active_cmd = NOT_A_COMMAND;  // Done.
 	}
 	else if (active_reg_w != NOT_A_REGISTER) {  // nRF24x register write finished.
-		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
 		active_reg_w = NOT_A_REGISTER;  // Done.
 	}
 	else if (active_reg_r != NOT_A_REGISTER) {  // nRF24x register read finished.
-		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
 		nrf24x_in_finish(&active_reg_r_value);  // Fetch read register value.
 		
 		// Send INM response.
@@ -283,11 +289,11 @@ static void nrf24x_handler(sched_task *task) {
 		active_reg_r = NOT_A_REGISTER;  // Done.
 	}
 	else if (active_nrf_out_len) {
-		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
 		active_nrf_out_len = 0;  // Done.
 	}
 	else if (active_nrf_in_cmd != NOT_A_COMMAND) {
-		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
+		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
 		nrf24x_in_finish(active_nrf_in_bfr);  // Fetch input command data.
 		// ISSUE: Verify that we got the right number of bytes?
 		
@@ -300,19 +306,19 @@ static void nrf24x_handler(sched_task *task) {
 #endif
 	
 	if (pending_cmd != NOT_A_COMMAND) {
-		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
 		res = nrf24x_out_0(pending_cmd);
 		
 		if (res) {  // Success!
 #ifdef NRF24X_SYNCHRONOUS
-			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Done. Drive slave select pin high.
 #else
 			active_cmd = pending_cmd;  // Wait for asynchronous SPI operation.
 			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 #endif
 		}
 		else {  // ERROR
-			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Command canceled. Drive slave select pin high.
 		}
 		
 		pending_cmd = NOT_A_COMMAND;  // Command finished, initiated or canceled.
@@ -322,20 +328,20 @@ static void nrf24x_handler(sched_task *task) {
 	// NOTE: Process pending register writes before reads to make REG_WR_EXCH work properly.
 	if (pending_reg_w != NOT_A_REGISTER) {
 		// IDEA: Add delays (1 musec?) between driving SS low/high and exchanging bytes.
-		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
 		// IDEA: Try sending a register write as hard-coded bytes.
 		res = nrf24x_out_1(NRF24X_W_REG_CMD(pending_reg_w), pending_reg_w_value);
 		
 		if (res) {  // Success!
 #ifdef NRF24X_SYNCHRONOUS
-			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Done. Drive slave select pin high.
 #else
 			active_reg_w = pending_reg_w;  // Wait for asynchronous SPI operation.
 			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 #endif
 		}
 		else {  // ERROR
-			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Command canceled. Drive slave select pin high.
 		}
 		
 		pending_reg_w = NOT_A_REGISTER;  // Register write finished, initiated or canceled.
@@ -347,12 +353,12 @@ static void nrf24x_handler(sched_task *task) {
 		uint8_t active_reg_r_value;
 #endif
 		
-		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
 		res = nrf24x_in_1(NRF24X_R_REG_CMD(pending_reg_r), &active_reg_r_value);
 		
 		if (res) {  // Success!
 #ifdef NRF24X_SYNCHRONOUS
-			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Done. Drive slave select pin high.
 			
 			// Send INM response.
 			msg_data_out.r.index = pending_reg_r;
@@ -369,7 +375,7 @@ static void nrf24x_handler(sched_task *task) {
 #endif
 		}
 		else {  // ERROR
-			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Command canceled. Drive slave select pin high.
 		}
 		
 		pending_reg_r = NOT_A_REGISTER;  // Register read finished, initiated or canceled.
@@ -377,19 +383,19 @@ static void nrf24x_handler(sched_task *task) {
 	}
 	
 	if (pending_nrf_out_len) {
-		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
 		res = nrf24x_out_n(pending_nrf_out_bfr[0], pending_nrf_out_len-1, pending_nrf_out_bfr+1);
 		
 		if (res) {  // Success!
 #ifdef NRF24X_SYNCHRONOUS
-			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Done. Drive slave select pin high.
 #else
 			active_nrf_out_len = pending_nrf_out_len;  // Wait for asynchronous SPI operation.
 			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 #endif
 		}
 		else {  // ERROR
-			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Command canceled. Drive slave select pin high.
 		}
 		
 		pending_nrf_out_len = 0;  // Output command finished, initiated or canceled.
@@ -401,12 +407,12 @@ static void nrf24x_handler(sched_task *task) {
 		uint8_t active_nrf_in_bfr[NRF24X_BFR_SIZE];
 #endif
 		
-		SPI_PORT &= ~BV(SPI_SS); // Drive slave select pin low.
+		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
 		res = nrf24x_in_n(pending_nrf_in_cmd, pending_nrf_in_len, active_nrf_in_bfr);
 		
 		if (res) {  // Success!
 #ifdef NRF24X_SYNCHRONOUS
-			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Done. Drive slave select pin high.
 			
 			// Send INM response.
 			ttlv_xmit(pending_nrf_in_srcadr,
@@ -419,7 +425,7 @@ static void nrf24x_handler(sched_task *task) {
 #endif
 		}
 		else {  // ERROR
-			SPI_PORT |= BV(SPI_SS);  // Command canceled. Drive slave select pin high.
+			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Command canceled. Drive slave select pin high.
 		}
 		
 		pending_nrf_in_cmd = NOT_A_COMMAND;  // Input command finished, initiated or canceled.
@@ -598,12 +604,13 @@ int main(void) {
 	ttlv_xmit_inm_header.h.srcadr = INM_ADDR;  // Set INM source address.
 	
 	// Run SPI module in Master mode, at clock frequency F_CPU/64 ~= 250kHz (at F_CPU=16 MHz).
-	// Make the Slave mode slave select pin (SPI_SS in port B) a Master mode slave select output.
+	// Make the Slave mode slave select pin (NRF24X_TEST_SS_PIN in port B) a Master mode slave
+	// select output.
 #ifdef NRF24X_SYNCHRONOUS
-	spihelper_mstr_init(BV(SPI_SS), 0, 0, BV(MSTR) | BV(SPR1));
+	spihelper_mstr_init(BV(NRF24X_TEST_SS_PIN), 0, 0, BV(MSTR) | BV(SPR1));
 #else
 	spihelper_async_mstr_init(
-		BV(SPI_SS), 0, 0, BV(MSTR) | BV(SPR1),
+		BV(NRF24X_TEST_SS_PIN), 0, 0, BV(MSTR) | BV(SPR1),
 		SCHED_CATFLAG(NRF24X_TASK_CAT));
 #endif
 	
