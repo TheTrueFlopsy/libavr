@@ -82,7 +82,8 @@ enum {  // Register addresses
 	NRF24X_RF_SETUP    = 0x06,
 	NRF24X_STATUS      = 0x07,
 	NRF24X_OBSERVE_TX  = 0x08,
-	NRF24X_CD          = 0x09,
+	NRF24X_CD          = 0x09,  // Old name used for register in nRF24L01
+	NRF24X_RPD         = 0x09,  // New name for CD register in nRF24L01+ (note the '+')
 	NRF24X_RX_ADDR_P0  = 0x0a,  // 5 bytes
 	NRF24X_RX_ADDR_P1  = 0x0b,  // 5 bytes
 	NRF24X_RX_ADDR_P2  = 0x0c,
@@ -175,8 +176,9 @@ enum {  // STATUS register bits
 
 #define NRF24X_GET_ARC_CNT(OTX) GET_BITFIELD(NRF24X_ARC_CNT_SIZE, OTX)
 
-enum {  // CD register bits
-	NRF24X_CD0 = 0
+enum {  // CD/RPD register bits
+	NRF24X_CD0  = 0
+	NRF24X_RPD0 = 0
 };
 
 #define NRF24X_RX_PW_SIZE 6

@@ -215,8 +215,26 @@ class InmHelper:
 		## The INM link address produced by the latest call to <recv>, <sendrecv> or <sendrecv_mval>.
 		self.latest_link_adr = None
 	
+	## Method: __str__
+	## String conversion.
+	##
+	## Returns:
+	##   A string representation of the *InmHelper*, in the format
+	##   "class_name(channel, link_adr)".
+	def __str__(self):
+		return f'{type(self).__name__}({self.channel}, {self.link_adr})'
+	
+	## Method: __repr__
+	## String representation.
+	##
+	## Returns:
+	##   A string representation of the *InmHelper*, in the format
+	##   "<class_name(channel, link_adr)>".
+	def __repr__(self):
+		return f'<{str(self)}>'
+	
 	def __enter__(self):
-		if not self.channel.is_open():
+		if not self.is_open():
 			self.open()
 		return self
 	
@@ -251,6 +269,15 @@ class InmHelper:
 			return None
 		
 		return recv_tuple
+	
+	## Method: is_open
+	## Checks whether the *InmHelper* is open.
+	##
+	## Returns:
+	##   True if and only if the encapsulated <channel> of this *InmHelper*
+	##   is currently open.
+	def is_open(self):
+		return self.channel.is_open()
 	
 	## Method: open
 	## Opens the encapsulated <channel>. Calls <MessageChannel.open>.
@@ -580,14 +607,14 @@ class InmHelper:
 ## Creates an <InmHelper> and configures it for use in an interactive Python session.
 ## Sets the receive timeout to one second, unless a *timeout* argument is given.
 ## Sets <InmHelper.recv_print> and <InmHelper.recv_return_none> to *True*.
-## Calls <InmHelper.open> (unless <InmHelper.channel> is already open), returns
+## Calls <InmHelper.open> (unless the <InmHelper.channel> is already open), returns
 ## the result code from that call if the call fails.
 ##
 ## See <InmHelper.__init__> for a description of the parameters.
 ##
 ## Returns:
-##   An <InmHelper> configured for interactive use, or a <ResultCode> in case the
-##   InmHelper couldn't be opened.
+##   An open <InmHelper> configured for interactive use, or a <ResultCode> in case
+##   the InmHelper couldn't be opened.
 def interactive(channel=None, msg_factory=None,
                 srcadr=None, ip_adr=None, udp_port=None, tcp_port=None,
                 timeout=1, link_adr=None):
