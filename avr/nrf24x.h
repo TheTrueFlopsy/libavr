@@ -177,7 +177,7 @@ enum {  // STATUS register bits
 #define NRF24X_GET_ARC_CNT(OTX) GET_BITFIELD(NRF24X_ARC_CNT_SIZE, OTX)
 
 enum {  // CD/RPD register bits
-	NRF24X_CD0  = 0
+	NRF24X_CD0  = 0,
 	NRF24X_RPD0 = 0
 };
 

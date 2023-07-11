@@ -34,7 +34,7 @@ def abort_on_fail(res, reason=None):
 			reason = f'INM operation failed with result code {res.name}.'
 		abort(reason)
 
-def get_reg(h, reg):
+def get_reg(h, dstadr, reg):
 	res, header, msg, link_adr = h.sendrecv(dstadr, h.Typ.REG_READ, reg)
 	abort_on_fail(res)
 	
@@ -48,12 +48,12 @@ def get_reg(h, reg):
 	
 	return reg_val
 
-def get_reg_assert(h, reg, expected_val):
-	reg_val = get_reg(h, reg)
+def get_reg_assert(h, dstadr, reg, expected_val):
+	reg_val = get_reg(h, dstadr, reg)
 	if reg_val != expected_val:  # unexpected value
 		abort(f'Got value {reg_val:#04x} from register {reg:#04x}, expected {expected_val:#04x}.')
 
-def get_regpair(h, reg):
+def get_regpair(h, dstadr, reg):
 	res, header, msg, link_adr = h.sendrecv(dstadr, h.Typ.REGPAIR_READ, reg)
 	abort_on_fail(res)
 	
@@ -67,7 +67,7 @@ def get_regpair(h, reg):
 	
 	return regpair_val
 
-def set_reg(h, reg, reg_val):
+def set_reg(h, dstadr, reg, reg_val):
 	if verbose:
 		print(f'Setting value {reg_val:#04x} in register {reg:#04x}.')
 	
