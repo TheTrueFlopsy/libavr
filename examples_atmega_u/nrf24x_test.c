@@ -33,14 +33,14 @@
 // NOTE: On the Arduino Leonardo board, the hardware SS pin of the ATmegaU (PB0)
 //       is wired to the RXLED indicator, so a different pin (e.g. PB4/IO8) must
 //       be used to drive the SPI slave select output line.
-#define NRF24X_TEST_SS_PIN SPI_SS
-//#define NRF24X_TEST_SS_PIN PORTB4
+//#define NRF24X_TEST_SS_PIN SPI_SS
+#define NRF24X_TEST_SS_PIN PORTB4
 
 #define BAUD_RATE 38400
 //#define BAUD_RATE 9600
 #define USE_U2X 0
 
-#define INM_ADDR 0x01
+#define INM_ADDR 0x02
 #define N_LEDS 3
 
 #define NRF24X_TEST_MAX_MSG_LEN 8
@@ -533,6 +533,7 @@ static void message_handler(sched_task *task) {
 		else {
 			ttlv_recv(pending_nrf_out_bfr);
 			pending_nrf_out_len = ttlv_recv_header.h.length;
+			sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
 			res = TTLV_RES_OK;
 		}
 	}
@@ -551,6 +552,7 @@ static void message_handler(sched_task *task) {
 			else {
 				pending_nrf_in_cmd = msg_data_in.b[0];
 				pending_nrf_in_srcadr = ttlv_recv_inm_header.h.srcadr;
+				sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
 			}
 		}
 	}

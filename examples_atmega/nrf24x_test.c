@@ -525,6 +525,7 @@ static void message_handler(sched_task *task) {
 		else {
 			ttlv_recv(pending_nrf_out_bfr);
 			pending_nrf_out_len = ttlv_recv_header.h.length;
+			sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
 			res = TTLV_RES_OK;
 		}
 	}
@@ -543,6 +544,7 @@ static void message_handler(sched_task *task) {
 			else {
 				pending_nrf_in_cmd = msg_data_in.b[0];
 				pending_nrf_in_srcadr = ttlv_recv_inm_header.h.srcadr;
+				sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
 			}
 		}
 	}

@@ -9,7 +9,7 @@ from nrf24x import *
 
 srcadr_ = 95
 udp_port_ = 2995
-dstadr = 1
+dstadr = 2
 w_cmd = bytes((NRF24X_W_TX_PAYLOAD,))
 payload = b'HELO'
 w_data = w_cmd + payload
@@ -71,7 +71,7 @@ with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_) as h:
 	# NOTE: I'm seeing odd behavior, where the first read of FIFO_STATUS after
 	# W_TX_PAYLOAD still reports TX_EMPTY=1, but the second reports TX_EMPTY=0
 	# as expected. Am I doing something wrong? If so, where?
-	get_reg_assert(h, dstadr, nrf24x_reg(0x17), 0x11)
+	#get_reg_assert(h, dstadr, nrf24x_reg(0x17), 0x11)
 	get_reg_assert(h, dstadr, nrf24x_reg(0x17), 0x01)
 	
 	# Drive the CE pin high for more than 10 μs to trigger transmission.
@@ -87,6 +87,10 @@ with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_) as h:
 	
 	# Read register FIFO_STATUS/0x17 from nRF24x chip.
 	get_reg_assert(h, dstadr, nrf24x_reg(0x17), 0x11)
+	
+	# Clear TX_DS bit in STATUS register.
+	set_reg(h, dstadr, nrf24x_reg(0x07), NRF24X_TX_DS)
+	get_reg_assert(h, dstadr, nrf24x_reg(0x07), 0x0e)
 	
 	# Clear PWR_UP bit in CONFIG register.
 	set_reg(h, dstadr, nrf24x_reg(0x00), 0x08)

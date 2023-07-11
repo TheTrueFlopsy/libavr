@@ -9,9 +9,10 @@ from nrf24x import *
 
 srcadr_ = 96
 udp_port_ = 2996
-dstadr = 2
+dstadr = 1
 r_cmd = bytes((NRF24X_R_RX_PAYLOAD,))
 payload = b'HELO'
+r_data = r_cmd + bytes((len(payload),))
 
 nrf24x.verbose = True  # Log each nRF24x register operation on standard output.
 
@@ -65,7 +66,10 @@ with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_) as h:
 	
 	# Drive the CE pin high to enter RX Mode.
 	set_reg(h, dstadr, NRF24X_IOPINS, 0x01)
-	get_reg_assert(h, dstadr, NRF24X_IOPINS, 0x01)
+	get_reg_assert(h, dstadr, NRF24X_IOPINS, 0x03)
+	
+	print('Waiting for packet...')
+	nrf24x.verbose = False
 	
 	while True:
 		time.sleep(0.01)  # Sleep for 10 milliseconds.
@@ -76,6 +80,8 @@ with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_) as h:
 		if NRF24X_RX_DR & nrf24x_st:
 			break  # Packet received!
 	
+	nrf24x.verbose = True
+	
 	# Packet received. Drive the CE pin low to exit RX Mode.
 	set_reg(h, dstadr, NRF24X_IOPINS, 0x00)
 	get_reg_assert(h, dstadr, NRF24X_IOPINS, 0x00)
@@ -85,10 +91,11 @@ with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_) as h:
 	
 	# Clear RX_DR bit in STATUS register.
 	set_reg(h, dstadr, nrf24x_reg(0x07), NRF24X_RX_DR)
-	get_reg_assert(h, dstadr, nrf24x_reg(0x07), 0x0e)
+	get_reg_assert(h, dstadr, nrf24x_reg(0x07), 0x00)
+	get_reg_assert(h, dstadr, NRF24X_IOPINS, 0x02)
 	
 	# Fetch received data with the R_RX_PAYLOAD command.
-	res, header, msg, link_adr = h.sendrecv(dstadr, NRF24X_IN, r_cmd)
+	res, header, msg, link_adr = h.sendrecv(dstadr, NRF24X_IN, r_data)
 	abort_on_fail(res)
 	
 	if msg.typ != NRF24X_IN_RES:
@@ -97,11 +104,14 @@ with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_) as h:
 	if len(msg) != len(payload):
 		abort(f'Expected {len(payload)} bytes, got {len(msg)}.')
 	
-	r_data = msg.format(conv=h.VC.Bytes)  # Get NRF24X_IN_RES payload.
+	r_data = msg.format_val(conv=h.VC.Bytes)  # Get NRF24X_IN_RES payload.
 	if r_data != payload:  # unsuccessful data fetch from INM destination
 		abort(f'Expected payload {payload}, got {r_data}.')
 	
 	print(f'Payload {r_data} received!')
+	
+	# Read register STATUS/0x07 from nRF24x chip.
+	get_reg_assert(h, dstadr, nrf24x_reg(0x07), 0x0e)
 	
 	# Read register FIFO_STATUS/0x17 from nRF24x chip.
 	get_reg_assert(h, dstadr, nrf24x_reg(0x17), 0x11)
