@@ -17,7 +17,7 @@
 --serial-ch 1       /dev/ttyUSB0 0
 # IP channel. Use the default UDP port for INM.
 --ip-ch     2       192.168.1.17 0
-# Loopback IP channel for monitoring. Use UDP port 3000.
+# Loopback IP channel for monitoring and debugging. Use UDP port 3000.
 --ip-ch     3       127.0.0.1 3000
 
 
@@ -40,5 +40,9 @@
 --route 98       3       -    127.0.0.1 2998
 --cc-to 98
 
-# Debugging route (using default INM and link addresses of InmHelper objects).
+# Interactive debugging route (default InmHelper INM and link addresses).
 --route 99       3       no-broadcast  127.0.0.1 2999
+
+# Extra interactive debugging routes (e.g. for custom test scripts).
+#--route 95       3       no-broadcast  127.0.0.1 2995
+#--route 96       3       no-broadcast  127.0.0.1 2996
