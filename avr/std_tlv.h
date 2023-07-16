@@ -86,7 +86,9 @@ enum {
 	TTLV_RES_OK              - Request successfully handled.
 	TTLV_RES_TYPE            - Error: Unrecognized message type.
 	TTLV_RES_LENGTH          - Error: Invalid message length.
+	TTLV_RES_VALUE           - Error: Invalid message value.
 	TTLV_RES_REGISTER        - Error: Message specified unrecognized logical register.
+	TTLV_RES_INTERNAL        - Error: Internal error encountered while handling message.
 	TTLV_RES_NOT_IMPLEMENTED - Error: Message recognized but cannot be handled.
 	TTLV_RES_APPLICATION     - Start of application-specific result code range.
 	TTLV_RES_NONE            - Invalid result code.
@@ -95,7 +97,9 @@ enum {
 	TTLV_RES_OK              = 0x00,
 	TTLV_RES_TYPE            = 0x01,
 	TTLV_RES_LENGTH          = 0x02,
-	TTLV_RES_REGISTER        = 0x03,
+	TTLV_RES_VALUE           = 0x03,
+	TTLV_RES_REGISTER        = 0x04,
+	TTLV_RES_INTERNAL        = 0x05,
 	TTLV_RES_NOT_IMPLEMENTED = 0x3f,
 	TTLV_RES_APPLICATION     = 0x40,
 	TTLV_RES_NONE            = 0xff

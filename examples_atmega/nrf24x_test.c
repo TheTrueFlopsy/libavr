@@ -38,9 +38,12 @@
 #define NOT_A_COMMAND 0b11110000
 #define NOT_A_REGISTER 0
 
+#define LED_CTRL_TASK_DELAY SCHED_TIME_MS(50)
+
 enum {
 	NRF24X_TASK_CAT    =  0,
-	MESSENGER_TASK_CAT =  1,
+	LED_CTRL_TASK_CAT  =  1,
+	MESSENGER_TASK_CAT =  2,
 	TTLV_TASK_CAT      = 14
 };
 
@@ -54,6 +57,7 @@ enum {
 	TTLV_APP_REG_STATUS     = TTLV_REG_APPLICATION + 0,
 	TTLV_APP_REG_CMD_OUT_0  = TTLV_REG_APPLICATION + 1,
 	TTLV_APP_REG_IOPINS     = TTLV_REG_APPLICATION + 2,  // CE and IRQ lines of the nRF24x chip
+	TTLV_APP_REG_LED_CTRL   = TTLV_REG_APPLICATION + 3,  // LED control mode
 	TTLV_APP_REG_NRF24X     = TTLV_REG_APPLICATION + 0x20,
 	TTLV_APP_REG_NRF24X_END = TTLV_APP_REG_NRF24X  + 0x20
 };
@@ -69,6 +73,26 @@ enum {
 	LED_PIN2 = PORTD2
 };
 
+enum {
+	LED_STATE_OFF  = 0,
+	LED_STATE_SLOW = 1,
+	LED_STATE_FAST = 2,
+	LED_STATE_ON   = 3
+};
+
+enum {
+	LED_CTRL_MANUAL = 0,
+	LED_CTRL_PTX    = 1,
+	LED_CTRL_PRX    = 2
+};
+
+enum {
+	LED_STEP_NONE    = 0,
+	LED_STEP_STARTUP = 1,
+	LED_STEP_INIT    = 2,
+	LED_STEP_BEGIN   = 3
+};
+
 static const uint8_t led_pins[N_LEDS] = {
 	BV(LED_PIN0),
 	BV(LED_PIN1),
@@ -77,21 +101,28 @@ static const uint8_t led_pins[N_LEDS] = {
 
 enum {
 	NRF_PIN_CE  = PORTD5,
-	NRF_PIN_IRQ = PIND6
+	NRF_PIN_IRQ = PIND6,
+	NRF_PIN_VCC = PORTD7
 };
 
-#define NRF_PINS_SIZE 2
+#define NRF_PINS_SIZE 3
 #define NRF_PINS_OFFSET 5
 
 
 // ---<<< Program State >>>---
-static uint8_t led_states[N_LEDS] = { 0, 0, 0 };
+static uint8_t led_states[N_LEDS] = { LED_STATE_OFF, LED_STATE_OFF, LED_STATE_OFF };
+static uint8_t led_blink_counter = 0;
+static uint8_t led_ctrl_mode = LED_CTRL_MANUAL;
+static uint8_t led_ctrl_step = LED_STEP_NONE;
 
+// TODO: Rationalize away the "cmd", "reg_r" and "reg_w" operations. They are
+// special cases of the generic "in" and "out".
 static uint8_t pending_cmd = NOT_A_COMMAND;
 
 static uint8_t pending_reg_r = NOT_A_REGISTER;
 static uint16_t pending_reg_r_request_id;
-static uint8_t pending_reg_r_srcadr;
+static uint8_t pending_reg_r_srcadr;      // For INM return values.
+static uint8_t *pending_reg_r_value_ptr;  // For local return values.
 
 static uint8_t pending_reg_w = NOT_A_REGISTER;
 static uint8_t pending_reg_w_value;
@@ -106,7 +137,8 @@ static uint8_t pending_nrf_out_bfr[NRF24X_BFR_SIZE];
 
 static uint8_t pending_nrf_in_cmd = NOT_A_COMMAND;
 static uint8_t pending_nrf_in_len;
-static uint8_t pending_nrf_in_srcadr;
+static uint8_t pending_nrf_in_srcadr;    // For INM return values.
+static uint8_t *pending_nrf_in_bfr_ptr;  // For local return values.
 
 #ifndef NRF24X_SYNCHRONOUS
 static uint8_t active_cmd = NOT_A_COMMAND;
@@ -114,6 +146,7 @@ static uint8_t active_cmd = NOT_A_COMMAND;
 static uint8_t active_reg_r = NOT_A_REGISTER;
 static uint16_t active_reg_r_request_id;
 static uint8_t active_reg_r_srcadr;
+static uint8_t *active_reg_r_value_ptr;
 static uint8_t active_reg_r_value;
 
 static uint8_t active_reg_w = NOT_A_REGISTER;
@@ -123,6 +156,7 @@ static uint8_t active_nrf_out_len = 0;
 static uint8_t active_nrf_in_cmd = NOT_A_COMMAND;
 static uint8_t active_nrf_in_len;
 static uint8_t active_nrf_in_srcadr;
+static uint8_t *active_nrf_in_bfr_ptr;
 static uint8_t active_nrf_in_bfr[NRF24X_BFR_SIZE];
 #endif
 
@@ -138,21 +172,74 @@ static union {
 } msg_data_in;
 
 
+// ---<<< Pre-Declaration of LED Task Sub-Handlers >>>---
+// --- Manual Mode ---
+static void led_handler_manual(sched_task *task);
+
+/*
+// --- PTX Mode ---
+static void led_handler_ptx_startup(sched_task *task);
+
+static void led_handler_ptx_init(sched_task *task);
+
+static void led_handler_ptx_begin(sched_task *task);
+
+static void led_handler_ptx_update(sched_task *task);
+
+static void led_handler_ptx_xmit(sched_task *task);
+
+static void led_handler_ptx_wait(sched_task *task);
+
+static void led_handler_ptx_clear(sched_task *task);
+
+static void led_handler_ptx_getlen(sched_task *task);
+
+static void led_handler_ptx_getdata(sched_task *task);
+
+// --- PRX Mode ---
+static void led_handler_prx_startup(sched_task *task);
+
+static void led_handler_prx_init(sched_task *task);
+
+static void led_handler_prx_begin(sched_task *task);
+
+static void led_handler_prx_wait(sched_task *task);
+
+static void led_handler_prx_clear(sched_task *task);
+
+static void led_handler_ptx_getlen(sched_task *task);
+
+static void led_handler_ptx_getdata(sched_task *task);
+
+static void led_handler_ptx_request(sched_task *task);
+*/
+
+
 // ---<<< Helper Functions >>>---
-static void update_led_state(uint8_t led_num, uint8_t led_flag) {
-	led_states[led_num] = led_flag;
-	
-	if (led_flag)  // Enable LED.
+static ttlv_result update_led_state(uint8_t led_num, uint8_t led_state) {
+	switch (led_state) {
+	case LED_STATE_ON:  // LED fully on
 		LED_PORT |= led_pins[led_num];
-	else  // Disable LED.
+		break;
+	case LED_STATE_SLOW:  // blink LED slowly
+	case LED_STATE_FAST:  // blink LED quickly
+		break;
+	case LED_STATE_OFF: // LED fully off
 		LED_PORT &= ~led_pins[led_num];
+		break;
+	default:
+		return TTLV_RES_VALUE;  // Unrecognized LED state.
+	}
+	
+	led_states[led_num] = led_state;
+	return TTLV_RES_OK;
 }
 
 static uint8_t get_led_flags(void) {
 	uint8_t led_flags = 0;
 	
 	for (uint8_t i = 0; i < N_LEDS; i++)
-		if (led_states[i])
+		if (led_states[i] == LED_STATE_ON)
 			led_flags |= BV(i);
 	
 	return led_flags;
@@ -160,9 +247,52 @@ static uint8_t get_led_flags(void) {
 
 static void set_led_flags(uint8_t led_flags) {
 	for (uint8_t i = 0; i < N_LEDS; i++) {
-		update_led_state(i, 1 & led_flags);
+		update_led_state(i, (1 & led_flags) ? LED_STATE_ON : LED_STATE_OFF);
 		led_flags >>= 1;
 	}
+}
+
+static void blink_leds(void) {
+	uint8_t toggle_slow = (GET_BITFIELD(3, led_blink_counter) == 0);
+	uint8_t toggle_fast = (GET_BITFIELD(1, led_blink_counter) == 0);
+	led_blink_counter++;
+	
+	for (uint8_t i = 0; i < N_LEDS; i++) {
+		if ((toggle_slow && led_states[i] == LED_STATE_SLOW) ||
+		    (toggle_fast && led_states[i] == LED_STATE_FAST))
+		{
+			LED_PINR |= led_pins[i];  // Toggle LED pin.
+		}
+	}
+}
+
+static ttlv_result set_led_ctrl_mode(uint8_t mode) {
+	sched_task *led_task = sched_find(
+		TASK_ST_NUM_CAT_MASK, TASK_ST_MAKE(0, LED_CTRL_TASK_CAT, 0), 0);
+	
+	if (led_task == NULL)
+		return TTLV_RES_INTERNAL;
+	
+	// FIXME: How to handle transitions from PTX or PRX mode to another mode?
+	
+	switch (mode) {
+	case LED_CTRL_MANUAL:  // manual LED control
+		led_task->handler = led_handler_manual;
+		break;
+	case LED_CTRL_PTX:  // automatic LED control, PTX role
+		//led_task->handler = led_handler_ptx_startup;
+		//break;
+		return TTLV_RES_NOT_IMPLEMENTED;
+	case LED_CTRL_PRX:  // automatic LED control, PRX role
+		//led_task->handler = led_handler_prx_startup;
+		//break;
+		return TTLV_RES_NOT_IMPLEMENTED;
+	default:
+		return TTLV_RES_VALUE;  // Unrecognized LED state.
+	}
+	
+	led_ctrl_mode = mode;
+	return TTLV_RES_OK;
 }
 
 static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) {
@@ -180,8 +310,17 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 	}
 	
 	switch (index) {
-	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
+	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if ON, otherwise 0)
 		*value_p = get_led_flags();
+		break;
+	case TTLV_REG_DEBUG1:  // LED blinker state 0
+		*value_p = led_states[0];
+		break;
+	case TTLV_REG_DEBUG2:  // LED blinker state 1
+		*value_p = led_states[1];
+		break;
+	case TTLV_REG_DEBUG3:  // LED blinker state 2
+		*value_p = led_states[2];
 		break;
 	case TTLV_REG_FWID_L:
 		*value_p = FWID_L;
@@ -192,14 +331,17 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 	case TTLV_REG_FWVERSION:
 		*value_p = FWVERSION;
 		break;
-	case TTLV_APP_REG_STATUS:  // nRF24x status register.
+	case TTLV_APP_REG_STATUS:  // nRF24x status register
 		*value_p = nrf24x_status;
 		break;
-	case TTLV_APP_REG_CMD_OUT_0:  // Pending nRF24x command.
+	case TTLV_APP_REG_CMD_OUT_0:  // Get pending nRF24x command without data bytes.
 		*value_p = pending_cmd;
 		break;
 	case TTLV_APP_REG_IOPINS:  // Get logic states of CE and IRQ pins.
 		*value_p = GET_BITFIELD_AT(NRF_PINS_SIZE, NRF_PINS_OFFSET, NRF_PINR);
+		break;
+	case TTLV_APP_REG_LED_CTRL:
+		*value_p = led_ctrl_mode;
 		break;
 	default:
 		return TTLV_RES_REGISTER;
@@ -221,18 +363,31 @@ static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
 		return TTLV_RES_OK;  // Send immediate INM response, finish write operation later.
 	}
 	
+	uint8_t tmp;
+	
 	switch (index) {
-	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
+	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 sets ON, 0 sets OFF)
 		set_led_flags(value);
 		break;
-	case TTLV_APP_REG_CMD_OUT_0:  // Trigger nRF24x command without data bytes.
+	case TTLV_REG_DEBUG1:  // LED blinker state 0
+		return update_led_state(0, value);
+	case TTLV_REG_DEBUG2:  // LED blinker state 1
+		return update_led_state(1, value);
+	case TTLV_REG_DEBUG3:  // LED blinker state 2
+		return update_led_state(2, value);
+	case TTLV_APP_REG_CMD_OUT_0:  // Enqueue nRF24x command without data bytes.
 		// NOTE: This is sufficient for the FLUSH_TX, FLUSH_RX, REUSE_TX_PL and NOP commands.
 		pending_cmd = value;
 		sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
 		break;
-	case TTLV_APP_REG_IOPINS:  // Set logic state of CE pin.
-		NRF_PORT = SET_BITFIELD_AT(1, NRF_PIN_CE, NRF_PORT, value);
+	case TTLV_APP_REG_IOPINS:  // Set logic state of CE and Vcc pins.
+		tmp = NRF_PORT;
+		tmp &= ~(BV(NRF_PIN_CE) | BV(NRF_PIN_VCC));
+		tmp |= (BV(NRF_PIN_CE) | BV(NRF_PIN_VCC)) & (value << NRF_PINS_OFFSET);
+		NRF_PORT = tmp;
 		break;
+	case TTLV_APP_REG_LED_CTRL:
+		return set_led_ctrl_mode(value);
 	default:
 		return TTLV_RES_REGISTER;
 	}
@@ -427,7 +582,45 @@ static void nrf24x_handler(sched_task *task) {
 	task->st |= TASK_ST_SLP(1);  // No work to do. Set sleep flag.
 }
 
-// TODO: Add generic nRF24x output and and input commands.
+static void led_handler_manual(sched_task *task) {
+	led_ctrl_step = LED_STEP_NONE;
+	blink_leds();
+	task->delay = LED_CTRL_TASK_DELAY;
+}
+
+/*
+static void led_handler_ptx_startup(sched_task *task) {
+	led_ctrl_step = LED_STEP_STARTUP;
+	blink_leds();
+	
+	// IDEA: Switch a 5 V supply with a PNP, let the linear regulator convert the transistor
+	// output to a steady 3.3 V. Any input above 4 V should be fine for the regulator.
+	NRF_PORT |= BV(NRF_PIN_VCC);  // Enable power supply to nRF24x module.
+	
+	task->delay = SCHED_TIME_MS(100);  // nRF24x startup delay
+	task->handler = led_handler_ptx_init;
+}
+
+static void led_handler_ptx_init(sched_task *task) {
+	blink_leds();
+	
+	if (led_ctrl_step != LED_STEP_INIT) { // Beginning initialization.
+		// TODO: Check whether there are enqueued nRF24x operations. In that case, wait.
+		
+		// TODO: Enqueue operations to set configuration registers in the nRF24x.
+		
+		led_ctrl_step = LED_STEP_INIT;
+	}
+	else {  // Waiting for initialization ops.
+		// TODO: Check whether there are no enqueued nRF24x operations. In that case, continue.
+		
+		task->handler = led_handler_ptx_begin;
+	}
+	
+	task->delay = LED_CTRL_TASK_DELAY;
+}
+*/
+
 static void message_handler(sched_task *task) {
 	ttlv_result res = TTLV_RES_NONE;
 	
@@ -568,6 +761,13 @@ static void init_tasks(void) {
 		.st = TASK_ST_MAKE(0, NRF24X_TASK_CAT, 0),
 		.delay = SCHED_TIME_ZERO,
 		.handler = nrf24x_handler
+	};
+	sched_add(&task);
+	
+	task = (sched_task) {
+		.st = TASK_ST_MAKE(0, LED_CTRL_TASK_CAT, 0),
+		.delay = LED_CTRL_TASK_DELAY,
+		.handler = led_handler_manual
 	};
 	sched_add(&task);
 	

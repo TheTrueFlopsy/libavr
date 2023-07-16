@@ -9,7 +9,7 @@ from nrf24x import *
 
 srcadr_ = 96
 udp_port_ = 2996
-dstadr = 1
+dstadr = 2
 r_cmd = bytes((NRF24X_R_RX_PAYLOAD,))
 payload = b'HELO'
 r_data = r_cmd + bytes((len(payload),))
