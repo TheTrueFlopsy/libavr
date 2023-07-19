@@ -325,6 +325,14 @@ uint8_t sched_remove(uint8_t st_mask, uint8_t st_val, uint8_t start_i) {
 	return start_i;
 }
 
+void sched_remove_all(uint8_t st_mask, uint8_t st_val) {
+	uint8_t i = UINT8_MAX;
+	
+	do {
+		i = sched_remove(st_mask, st_val, i+1);
+	} while (i < SCHED_MAX_TASKS);
+}
+
 void sched_run(void) {
 	sched_catflags tcww;
 	sched_time delta;

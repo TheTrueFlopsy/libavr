@@ -17,7 +17,7 @@
 	NOTE: If the macro *SCHED_USE_TIMER0* is defined, then the scheduler
 	will use Timer0 instead of Timer2. Since the ATtiny has no Timer2,
 	this macro is defined internally when *LIBAVR_ATTINY* is defined.
-	The same applies to the ATmega(16|32)U4 and *LIBAVR_ATMEGA_U*.
+	The same applies to the ATmegaU and *LIBAVR_ATMEGA_U*.
 	
 	NOTE: If the macro *SCHED_NO_ISR* is defined, then the scheduler
 	will be compiled without an *TIMER[02]_OVF_vect* ISR, which means
@@ -628,9 +628,9 @@ typedef struct sched_task {
 		field reaches zero. If the current time delta is greater than the
 		value of the field, the field will be set to zero.
 		
-		NOTE: When a task's *handler* is invoked for any reason, including
-		the task being notified or invoked via <sched_invoke>, any currently
-		elapsing delay is canceled by the scheduler. The *delay* field always
+		NOTE: When the scheduler invokes a task's *handler* for any reason,
+		including the task being notified or invoked via <sched_invoke>,
+		any currently elapsing delay is canceled. The *delay* field always
 		starts out zeroed when the task handler is invoked.
 		
 		NOTE: If a task should execute periodically, its task handler
@@ -646,6 +646,10 @@ typedef struct sched_task {
 		Pointer to the task handler procedure. The task handler will be invoked
 		whenever the scheduler executes the task. The handler may also be invoked
 		via the API functions <sched_invoke> and <sched_invoke_all>.
+		
+		NOTE: It is perfectly safe to update this field while the scheduler is
+		running (except in ISRs). For example, *handler* field updates can be used
+		to implement a state machine in a task.
 	*/
 	sched_task_handler handler;
 	
@@ -1025,6 +1029,9 @@ uint8_t sched_add(const sched_task *task);
 	corresponding bits in *st_val*. The search starts at index *start_i* in the
 	task list. If no matching task is found, then <SCHED_MAX_TASKS> is returned.
 	
+	NOTE: This function does not check whether the matching task was already
+	      marked as garbage.
+	
 	NOTE: This function delegates to <sched_ptr_query>, and the notes for that
 	      function also apply to this one.
 	
@@ -1038,6 +1045,21 @@ uint8_t sched_add(const sched_task *task);
 		if there were no matching tasks.
 */
 uint8_t sched_remove(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
+
+/**
+	Function: sched_remove_all
+	Marks all matching tasks on the task list for removal. Marks as garbage
+	every task on the list for which the TCSB bits selected (i.e. set to one)
+	in *st_mask* are equal to the corresponding bits in *st_val*.
+	
+	NOTE: This function delegates to <sched_remove>, and the notes for that
+	      function also apply to this one.
+	
+	Parameters:
+		st_mask - Bit mask to apply to the task control and status byte.
+		st_val - Bit pattern to compare with the task control and status byte.
+*/
+void sched_remove_all(uint8_t st_mask, uint8_t st_val);
 
 /**
 	Function: sched_run
