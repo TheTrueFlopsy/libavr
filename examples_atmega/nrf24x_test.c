@@ -373,9 +373,9 @@ static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
 		return TTLV_RES_OK;  // Send immediate INM response, finish write operation later.
 	}
 	
-	uint8_t tmp;
-	
 	switch (index) {
+		uint8_t tmp;
+		
 	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 sets ON, 0 sets OFF)
 		set_led_flags(value);
 		break;
@@ -1048,7 +1048,7 @@ int main(void) {
 	ttlv_xmit_inm_header.h.srcadr = INM_ADDR;  // Set INM source address.
 	
 	// Run SPI module in Master mode, at clock frequency F_CPU/64 ~= 250kHz (at F_CPU=16 MHz).
-	// Make the Slave mode slave select pin (SPI_SS in port B) a Master mode slave select output.
+	// Make the Slave mode slave select pin a Master mode slave select output.
 #ifdef NRF24X_SYNCHRONOUS
 	spihelper_mstr_init(BV(SPI_SS), 0, 0, BV(MSTR) | BV(SPR1));
 #else

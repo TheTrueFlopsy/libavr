@@ -1,7 +1,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <avr/io.h>
+#include <util/delay.h>
 
 // NOTE: When "auto_watchdog.h" is included, the watchdog timer is automatically
 //       disabled following an MCU reset.
@@ -16,7 +18,7 @@
 // ---<<< Constant Definitions >>>---
 #define FWID_L 0x04
 #define FWID_H 0x01
-#define FWVERSION 0x01
+#define FWVERSION 0x02
 
 #define LED_DDR DDRD
 #define LED_PORT PORTD
@@ -30,53 +32,96 @@
 #define NRF_PORT_IRQ PORTD
 #define NRF_PINR_IRQ PIND
 
-// NOTE: On the Arduino Leonardo board, the hardware SS pin of the ATmegaU (PB0)
+#define NRF_DDR_VCC DDRE
+#define NRF_PORT_VCC PORTE
+#define NRF_PINR_VCC PINE
+
+// NOTE: On the Arduino Leonardo board, the hardware SS pin of the ATmegaU (PB0/SPI_SS)
 //       is wired to the RXLED indicator, so a different pin (e.g. PB4/IO8) must
 //       be used to drive the SPI slave select output line.
-#define NRF24X_TEST_SS_PIN SPI_SS
-//#define NRF24X_TEST_SS_PIN PORTB4
+//#define NRF24X_TEST_SS_PIN SPI_SS
+#define NRF24X_TEST_SS_PIN PORTB4
 
 #define BAUD_RATE 38400
 //#define BAUD_RATE 9600
 #define USE_U2X 0
 
 #define INM_ADDR 0x02
-#define N_LEDS 3
 
 #define NRF24X_TEST_MAX_MSG_LEN 8
 
 #define NOT_A_COMMAND 0b11110000
-#define NOT_A_REGISTER 0
+
+#define LED_BLINK_TASK_DELAY SCHED_TIME_MS(50)
+
+#define LED_CTRL_TASK_DELAY SCHED_TIME_MS(10)
+#define LED_CTRL_MAX_PAYLOAD 6
+#define LED_CTRL_IDLE_DELAY SCHED_TIME_MS(2000)
 
 enum {
 	NRF24X_TASK_CAT    =  0,
-	MESSENGER_TASK_CAT =  1,
+	LED_BLINK_TASK_CAT =  1,
+	LED_CTRL_TASK_CAT  =  2,
+	MESSENGER_TASK_CAT =  3,
 	TTLV_TASK_CAT      = 14
 };
 
 enum {
-	TTLV_APP_MSG_T_OUT    = TTLV_MSG_T_APPLICATION + 0,
-	TTLV_APP_MSG_T_IN     = TTLV_MSG_T_APPLICATION + 1,
-	TTLV_APP_MSG_T_IN_RES = TTLV_MSG_T_APPLICATION + 2
+	TTLV_APP_MSG_T_OUT    = TTLV_MSG_T_APPLICATION + 0x00,
+	TTLV_APP_MSG_T_IN     = TTLV_MSG_T_APPLICATION + 0x01,
+	TTLV_APP_MSG_T_IN_RES = TTLV_MSG_T_APPLICATION + 0x02
 };
 
 enum {
-	TTLV_APP_REG_STATUS     = TTLV_REG_APPLICATION + 0,
-	TTLV_APP_REG_CMD_OUT_0  = TTLV_REG_APPLICATION + 1,
-	TTLV_APP_REG_IOPINS     = TTLV_REG_APPLICATION + 2,  // CE and IRQ lines of the nRF24x chip
+	TTLV_APP_REG_STATUS     = TTLV_REG_APPLICATION + 0x00,
+	TTLV_APP_REG_CMD_OUT_0  = TTLV_REG_APPLICATION + 0x01,
+	TTLV_APP_REG_IOPINS     = TTLV_REG_APPLICATION + 0x02,  // CE and IRQ lines of the nRF24x chip
+	TTLV_APP_REG_LED_CTRL   = TTLV_REG_APPLICATION + 0x03,  // LED control mode
+	TTLV_APP_REG_LED_STEP   = TTLV_REG_APPLICATION + 0x04,  // LED control step
 	TTLV_APP_REG_NRF24X     = TTLV_REG_APPLICATION + 0x20,
 	TTLV_APP_REG_NRF24X_END = TTLV_APP_REG_NRF24X  + 0x20
 };
 
 enum {
-	TTLV_APP_RES_BUSY     = TTLV_RES_APPLICATION + 0,
-	TTLV_APP_RES_BFR_SIZE = TTLV_RES_APPLICATION + 1
+	TTLV_APP_RES_BUSY     = TTLV_RES_APPLICATION + 0x00,
+	TTLV_APP_RES_BFR_SIZE = TTLV_RES_APPLICATION + 0x01
 };
+
+#define N_LEDS 3
 
 enum {
 	LED_PIN0 = PORTD4,
 	LED_PIN1 = PORTD0,
 	LED_PIN2 = PORTD1
+};
+
+#define N_LED_STATES 4
+
+enum {
+	LED_STATE_OFF  = 0,
+	LED_STATE_SLOW = 1,
+	LED_STATE_FAST = 2,
+	LED_STATE_ON   = 3
+};
+
+enum {
+	LED_CTRL_MANUAL = 0,
+	LED_CTRL_PTX    = 1,
+	LED_CTRL_PRX    = 2
+};
+
+enum {
+	LED_STEP_NONE         = 0,
+	LED_STEP_STARTUP      = 1,
+	LED_STEP_INIT_RETR    = 2,
+	LED_STEP_INIT_DYNPD   = 3,
+	LED_STEP_INIT_FEATURE = 4,
+	LED_STEP_BEGIN        = 5,
+	LED_STEP_UPDATE       = 6,
+	LED_STEP_WAIT_POLL    = 7,
+	LED_STEP_WAIT_POLLING = 8,
+	LED_STEP_FETCH_LEN    = 9,
+	LED_STEP_FETCH_DATA   = 10
 };
 
 static const uint8_t led_pins[N_LEDS] = {
@@ -86,22 +131,26 @@ static const uint8_t led_pins[N_LEDS] = {
 };
 
 enum {
-	NRF_PIN_CE  = PORTC6,
-	NRF_PIN_IRQ = PIND7
+	NRF_PIN_CE  = PORTC6, // output
+	NRF_PIN_IRQ = PIND7,  // input, active-low
+	NRF_PIN_VCC = PORTE6  // output, active-low (if implemented with a PNP transistor)
+};
+
+enum {
+	NRF_IN_OPT_NONE  = 0,
+	NRF_IN_OPT_REG_R = BV(0)  // Send INM_REG_READ_RES response message.
 };
 
 
 // ---<<< Program State >>>---
-static uint8_t led_states[N_LEDS] = { 0, 0, 0 };
+static uint8_t led_states[N_LEDS] = { LED_STATE_OFF, LED_STATE_OFF, LED_STATE_OFF };
+static uint8_t led_blink_counter = 0;
 
-static uint8_t pending_cmd = NOT_A_COMMAND;
-
-static uint8_t pending_reg_r = NOT_A_REGISTER;
-static uint16_t pending_reg_r_request_id;
-static uint8_t pending_reg_r_srcadr;
-
-static uint8_t pending_reg_w = NOT_A_REGISTER;
-static uint8_t pending_reg_w_value;
+static uint8_t led_ctrl_mode = LED_CTRL_MANUAL;
+static uint8_t led_ctrl_step = LED_STEP_NONE;
+static uint8_t led_ctrl_reg_val;  // Register values fetched via SPI are stored here.
+static uint8_t led_ctrl_payload_len;
+static uint8_t led_ctrl_payload[LED_CTRL_MAX_PAYLOAD];
 
 // ISSUE: Think about how to prevent wasteful buffer allocation and copying
 //        just to avoid accessing volatile data as non-volatile (which apparently
@@ -111,25 +160,22 @@ static uint8_t pending_reg_w_value;
 static uint8_t pending_nrf_out_len = 0;
 static uint8_t pending_nrf_out_bfr[NRF24X_BFR_SIZE];
 
+static uint8_t pending_nrf_in_options = NRF_IN_OPT_NONE;
 static uint8_t pending_nrf_in_cmd = NOT_A_COMMAND;
 static uint8_t pending_nrf_in_len;
-static uint8_t pending_nrf_in_srcadr;
+static uint16_t pending_nrf_in_request_id;
+static uint8_t pending_nrf_in_srcadr;    // For INM return values.
+static uint8_t *pending_nrf_in_bfr_ptr;  // For local return values.
 
 #ifndef NRF24X_SYNCHRONOUS
-static uint8_t active_cmd = NOT_A_COMMAND;
-
-static uint8_t active_reg_r = NOT_A_REGISTER;
-static uint16_t active_reg_r_request_id;
-static uint8_t active_reg_r_srcadr;
-static uint8_t active_reg_r_value;
-
-static uint8_t active_reg_w = NOT_A_REGISTER;
-
 static uint8_t active_nrf_out_len = 0;
 
+static uint8_t active_nrf_in_options = NRF_IN_OPT_NONE;
 static uint8_t active_nrf_in_cmd = NOT_A_COMMAND;
 static uint8_t active_nrf_in_len;
+static uint16_t active_nrf_in_request_id;
 static uint8_t active_nrf_in_srcadr;
+static uint8_t *active_nrf_in_bfr_ptr;
 static uint8_t active_nrf_in_bfr[NRF24X_BFR_SIZE];
 #endif
 
@@ -145,21 +191,60 @@ static union {
 } msg_data_in;
 
 
+// ---<<< Pre-Declaration of LED Task Sub-Handlers >>>---
+// --- Manual Mode / Common Steps ---
+static void led_handler_manual(sched_task *task);
+
+static void led_handler_reset(sched_task *task);
+
+static void led_handler_startup(sched_task *task);
+
+static void led_handler_init(sched_task *task);
+
+// --- PTX Mode ---
+static void led_handler_ptx_begin(sched_task *task);
+
+static void led_handler_ptx_update(sched_task *task);
+
+static void led_handler_ptx_wait(sched_task *task);
+
+static void led_handler_ptx_fetch(sched_task *task);
+
+// --- PRX Mode ---
+static void led_handler_prx_begin(sched_task *task);
+
+static void led_handler_prx_wait(sched_task *task);
+
+static void led_handler_prx_fetch(sched_task *task);
+
+static void led_handler_prx_request(sched_task *task);
+
+
 // ---<<< Helper Functions >>>---
-static void update_led_state(uint8_t led_num, uint8_t led_flag) {
-	led_states[led_num] = led_flag;
-	
-	if (led_flag)  // Enable LED.
+static ttlv_result set_led_state(uint8_t led_num, uint8_t led_state) {
+	switch (led_state) {
+	case LED_STATE_ON:  // LED fully on
 		LED_PORT |= led_pins[led_num];
-	else  // Disable LED.
+		break;
+	case LED_STATE_SLOW:  // blink LED slowly
+	case LED_STATE_FAST:  // blink LED quickly
+		break;
+	case LED_STATE_OFF: // LED fully off
 		LED_PORT &= ~led_pins[led_num];
+		break;
+	default:
+		return TTLV_RES_VALUE;  // Unrecognized LED state.
+	}
+	
+	led_states[led_num] = led_state;
+	return TTLV_RES_OK;
 }
 
 static uint8_t get_led_flags(void) {
 	uint8_t led_flags = 0;
 	
 	for (uint8_t i = 0; i < N_LEDS; i++)
-		if (led_states[i])
+		if (led_states[i] == LED_STATE_ON)
 			led_flags |= BV(i);
 	
 	return led_flags;
@@ -167,28 +252,99 @@ static uint8_t get_led_flags(void) {
 
 static void set_led_flags(uint8_t led_flags) {
 	for (uint8_t i = 0; i < N_LEDS; i++) {
-		update_led_state(i, 1 & led_flags);
+		set_led_state(i, (1 & led_flags) ? LED_STATE_ON : LED_STATE_OFF);
 		led_flags >>= 1;
 	}
+}
+
+static void blink_leds(void) {
+	uint8_t toggle_slow = (GET_BITFIELD(3, led_blink_counter) == 0);
+	uint8_t toggle_fast = (GET_BITFIELD(1, led_blink_counter) == 0);
+	led_blink_counter++;
+	
+	for (uint8_t i = 0; i < N_LEDS; i++) {
+		if ((toggle_slow && led_states[i] == LED_STATE_SLOW) ||
+		    (toggle_fast && led_states[i] == LED_STATE_FAST))
+		{
+			LED_PINR = led_pins[i];  // Toggle LED pin.
+		}
+	}
+}
+
+static ttlv_result set_led_ctrl_mode(uint8_t mode) {
+	if (mode != LED_CTRL_MANUAL && mode != LED_CTRL_PTX && mode != LED_CTRL_PRX)
+		return TTLV_RES_VALUE;  // Unrecognized LED control mode.
+	
+	if (mode != led_ctrl_mode) {
+		sched_task *led_ctrl_task = sched_find(
+			TASK_ST_NUM_CAT_MASK, TASK_ST_MAKE(0, LED_CTRL_TASK_CAT, 0), 0);
+		
+		if (led_ctrl_task == NULL)
+			return TTLV_RES_INTERNAL;
+		
+		// Turn off power to the nRF24x module and then reinitialize it.
+		led_ctrl_task->delay = SCHED_TIME_ZERO;
+		led_ctrl_task->handler = led_handler_reset;
+		led_ctrl_mode = mode;
+	}
+	
+	return TTLV_RES_OK;
+}
+
+// NOTE: Output data must be pre-loaded into pending_nrf_out_bfr.
+static void enqueue_nrf_out(uint8_t len) {
+	pending_nrf_out_len = len;
+	sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
+}
+
+static void enqueue_nrf_w_reg(uint8_t reg, uint8_t val) {
+	pending_nrf_out_bfr[0] = NRF24X_W_REG_CMD(reg);
+	pending_nrf_out_bfr[1] = val;
+	enqueue_nrf_out(2);
+}
+
+static uint8_t enqueue_nrf_in(
+	uint8_t opt, uint8_t cmd, uint8_t len, uint16_t req_id, uint8_t srcadr, uint8_t *bfr_ptr)
+{
+	if (pending_nrf_in_cmd != NOT_A_COMMAND)
+		return 0;
+	
+	pending_nrf_in_options = opt;
+	pending_nrf_in_cmd = cmd;
+	pending_nrf_in_len = len;
+	pending_nrf_in_request_id = req_id;
+	pending_nrf_in_srcadr = srcadr;
+	pending_nrf_in_bfr_ptr = bfr_ptr;
+	
+	sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
+	return 1;
 }
 
 static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) {
 	// NOTE: This is sufficient for the R_REGISTER command, except the 5-byte address registers.
 	if (index >= TTLV_APP_REG_NRF24X && index < TTLV_APP_REG_NRF24X_END) {
-		if (pending_reg_r != NOT_A_REGISTER)
+		if (enqueue_nrf_in(  // Attempt to enqueue nRF24x input operation.
+			NRF_IN_OPT_REG_R, NRF24X_R_REG_CMD(index), 1,
+			ttlv_recv_inm_header.h.msg_id, ttlv_recv_inm_header.h.srcadr, NULL))
+		{
+			return TTLV_RES_NONE;  // Suppress immediate INM response.
+		}
+		else  // Input operation already pending.
 			return TTLV_APP_RES_BUSY;
-		
-		pending_reg_r = index;
-		pending_reg_r_request_id = ttlv_recv_inm_header.h.msg_id;
-		pending_reg_r_srcadr = ttlv_recv_inm_header.h.srcadr;
-		
-		sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
-		return TTLV_RES_NONE;  // Suppress immediate INM response.
 	}
 	
 	switch (index) {
-	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
+	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if ON, otherwise 0)
 		*value_p = get_led_flags();
+		break;
+	case TTLV_REG_DEBUG1:  // LED blinker state 0
+		*value_p = led_states[0];
+		break;
+	case TTLV_REG_DEBUG2:  // LED blinker state 1
+		*value_p = led_states[1];
+		break;
+	case TTLV_REG_DEBUG3:  // LED blinker state 2
+		*value_p = led_states[2];
 		break;
 	case TTLV_REG_FWID_L:
 		*value_p = FWID_L;
@@ -199,15 +355,19 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 	case TTLV_REG_FWVERSION:
 		*value_p = FWVERSION;
 		break;
-	case TTLV_APP_REG_STATUS:  // nRF24x status register.
+	case TTLV_APP_REG_STATUS:  // nRF24x status register
 		*value_p = nrf24x_status;
-		break;
-	case TTLV_APP_REG_CMD_OUT_0:  // Pending nRF24x command.
-		*value_p = pending_cmd;
 		break;
 	case TTLV_APP_REG_IOPINS:  // Get logic states of CE and IRQ pins.
 		*value_p = GET_BITFIELD_AT(1, NRF_PIN_CE, NRF_PINR_CE) |
-		           (GET_BITFIELD_AT(1, NRF_PIN_IRQ, NRF_PINR_IRQ) << 1);
+               (GET_BITFIELD_AT(1, NRF_PIN_IRQ, NRF_PINR_IRQ) << 1) |
+               (GET_BITFIELD_AT(2, NRF_PIN_VCC, NRF_PINR_VCC) << 2);
+		break;
+	case TTLV_APP_REG_LED_CTRL:
+		*value_p = led_ctrl_mode;
+		break;
+	case TTLV_APP_REG_LED_STEP:
+		*value_p = led_ctrl_step;
 		break;
 	default:
 		return TTLV_RES_REGISTER;
@@ -219,28 +379,37 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
 	// NOTE: This is sufficient for the W_REGISTER command, except the 5-byte address registers.
 	if (index >= TTLV_APP_REG_NRF24X && index < TTLV_APP_REG_NRF24X_END) {
-		if (pending_reg_w != NOT_A_REGISTER)
+		if (pending_nrf_out_len)
 			return TTLV_APP_RES_BUSY;
 		
-		pending_reg_w = index;
-		pending_reg_w_value = value;
-		
-		sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
+		enqueue_nrf_w_reg(index, value);
 		return TTLV_RES_OK;  // Send immediate INM response, finish write operation later.
 	}
 	
 	switch (index) {
-	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 if enabled, otherwise 0).
+	case TTLV_REG_DEBUG0:  // LED blinker states as bits (1 sets ON, 0 sets OFF)
 		set_led_flags(value);
 		break;
-	case TTLV_APP_REG_CMD_OUT_0:  // Trigger nRF24x command without data bytes.
+	case TTLV_REG_DEBUG1:  // LED blinker state 0
+		return set_led_state(0, value);
+	case TTLV_REG_DEBUG2:  // LED blinker state 1
+		return set_led_state(1, value);
+	case TTLV_REG_DEBUG3:  // LED blinker state 2
+		return set_led_state(2, value);
+	case TTLV_APP_REG_CMD_OUT_0:  // Enqueue nRF24x command without data bytes.
 		// NOTE: This is sufficient for the FLUSH_TX, FLUSH_RX, REUSE_TX_PL and NOP commands.
-		pending_cmd = value;
-		sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
+		if (pending_nrf_out_len)
+			return TTLV_APP_RES_BUSY;
+		
+		pending_nrf_out_bfr[0] = value;
+		enqueue_nrf_out(1);  // Enqueue nRF24x output operation.
 		break;
-	case TTLV_APP_REG_IOPINS:  // Set logic state of CE pin.
+	case TTLV_APP_REG_IOPINS:  // Set logic state of CE and Vcc pins.
 		NRF_PORT_CE = SET_BITFIELD_AT(1, NRF_PIN_CE, NRF_PORT_CE, value);
+		NRF_PORT_VCC = SET_BITFIELD_AT(1, NRF_PIN_VCC, NRF_PORT_VCC, value);
 		break;
+	case TTLV_APP_REG_LED_CTRL:
+		return set_led_ctrl_mode(value);
 	default:
 		return TTLV_RES_REGISTER;
 	}
@@ -266,125 +435,51 @@ static void nrf24x_handler(sched_task *task) {
 		task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 		return;
 	}
-	else if (active_cmd != NOT_A_COMMAND) {  // nRF24x command transmitted.
-		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
-		active_cmd = NOT_A_COMMAND;  // Done.
-	}
-	else if (active_reg_w != NOT_A_REGISTER) {  // nRF24x register write finished.
-		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
-		active_reg_w = NOT_A_REGISTER;  // Done.
-	}
-	else if (active_reg_r != NOT_A_REGISTER) {  // nRF24x register read finished.
-		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
-		nrf24x_in_finish(&active_reg_r_value);  // Fetch read register value.
-		
-		// Send INM response.
-		msg_data_out.r.index = active_reg_r;
-		msg_data_out.r.value = active_reg_r_value;
-		msg_data_out.r.request_id = active_reg_r_request_id;
-		
-		ttlv_xmit(active_reg_r_srcadr,
-			TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
-		
-		active_reg_r = NOT_A_REGISTER;  // Done.
-	}
 	else if (active_nrf_out_len) {
 		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
 		active_nrf_out_len = 0;  // Done.
 	}
 	else if (active_nrf_in_cmd != NOT_A_COMMAND) {
-		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
-		nrf24x_in_finish(active_nrf_in_bfr);  // Fetch input command data.
-		// ISSUE: Verify that we got the right number of bytes?
+		uint8_t *nrf_in_bfr = (active_nrf_in_bfr_ptr) ? active_nrf_in_bfr_ptr : active_nrf_in_bfr;
 		
-		// Send INM response.
-		ttlv_xmit(active_nrf_in_srcadr,
-			TTLV_APP_MSG_T_IN_RES, active_nrf_in_len, active_nrf_in_bfr);
+		SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin high.
+		nrf24x_in_finish(nrf_in_bfr);  // Fetch input command data.
+		
+		// Send INM response if requested.
+		if (active_nrf_in_srcadr == TTLV_LOCAL_ADR)  // Do not send an INM response.
+			;  // Do nothing.
+		else if (NRF_IN_OPT_REG_R & active_nrf_in_options) {
+			msg_data_out.r.index = TTLV_APP_REG_NRF24X + NRF24X_REG_ADDR(active_nrf_in_cmd);
+			msg_data_out.r.value = nrf_in_bfr[0];
+			msg_data_out.r.request_id = active_nrf_in_request_id;
+			
+			ttlv_xmit(active_nrf_in_srcadr,
+				TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+		}
+		else {
+			ttlv_xmit(active_nrf_in_srcadr,
+				TTLV_APP_MSG_T_IN_RES, active_nrf_in_len, nrf_in_bfr);
+		}
 		
 		active_nrf_in_cmd = NOT_A_COMMAND;  // Done.
 	}
 #endif
 	
-	if (pending_cmd != NOT_A_COMMAND) {
-		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
-		res = nrf24x_out_0(pending_cmd);
-		
-		if (res) {  // Success!
-#ifdef NRF24X_SYNCHRONOUS
-			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Done. Drive slave select pin high.
-#else
-			active_cmd = pending_cmd;  // Wait for asynchronous SPI operation.
-			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
-#endif
-		}
-		else {  // ERROR
-			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Command canceled. Drive slave select pin high.
-		}
-		
-		pending_cmd = NOT_A_COMMAND;  // Command finished, initiated or canceled.
-		return;  // Either wait for async operation or avoid dallying too long in the handler.
-	}
-	
-	// NOTE: Process pending register writes before reads to make REG_WR_EXCH work properly.
-	if (pending_reg_w != NOT_A_REGISTER) {
-		// IDEA: Add delays (1 musec?) between driving SS low/high and exchanging bytes.
-		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
-		// IDEA: Try sending a register write as hard-coded bytes.
-		res = nrf24x_out_1(NRF24X_W_REG_CMD(pending_reg_w), pending_reg_w_value);
-		
-		if (res) {  // Success!
-#ifdef NRF24X_SYNCHRONOUS
-			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Done. Drive slave select pin high.
-#else
-			active_reg_w = pending_reg_w;  // Wait for asynchronous SPI operation.
-			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
-#endif
-		}
-		else {  // ERROR
-			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Command canceled. Drive slave select pin high.
-		}
-		
-		pending_reg_w = NOT_A_REGISTER;  // Register write finished, initiated or canceled.
-		return;  // Either wait for async operation or avoid dallying too long in the handler.
-	}
-	
-	if (pending_reg_r != NOT_A_REGISTER) {
-#ifdef NRF24X_SYNCHRONOUS
-		uint8_t active_reg_r_value;
-#endif
-		
-		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
-		res = nrf24x_in_1(NRF24X_R_REG_CMD(pending_reg_r), &active_reg_r_value);
-		
-		if (res) {  // Success!
-#ifdef NRF24X_SYNCHRONOUS
-			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Done. Drive slave select pin high.
-			
-			// Send INM response.
-			msg_data_out.r.index = pending_reg_r;
-			msg_data_out.r.value = active_reg_r_value;
-			msg_data_out.r.request_id = pending_reg_r_request_id;
-			
-			ttlv_xmit(pending_reg_r_srcadr,
-				TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
-#else
-			active_reg_r = pending_reg_r;  // Wait for asynchronous SPI operation.
-			active_reg_r_request_id = pending_reg_r_request_id;
-			active_reg_r_srcadr = pending_reg_r_srcadr;
-			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
-#endif
-		}
-		else {  // ERROR
-			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Command canceled. Drive slave select pin high.
-		}
-		
-		pending_reg_r = NOT_A_REGISTER;  // Register read finished, initiated or canceled.
-		return;  // Either wait for async operation or avoid dallying too long in the handler.
-	}
-	
+	// NOTE: Process pending output operation before input operation to make REG_WR_EXCH work properly.
 	if (pending_nrf_out_len) {
-		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
-		res = nrf24x_out_n(pending_nrf_out_bfr[0], pending_nrf_out_len-1, pending_nrf_out_bfr+1);
+		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin low.
+		
+		switch (pending_nrf_out_len) {
+		case 1:
+			res = nrf24x_out_0(pending_nrf_out_bfr[0]);
+			break;
+		case 2:
+			res = nrf24x_out_1(pending_nrf_out_bfr[0], pending_nrf_out_bfr[1]);
+			break;
+		default:
+			res = nrf24x_out_n(pending_nrf_out_bfr[0], pending_nrf_out_len-1, pending_nrf_out_bfr+1);
+			break;
+		}
 		
 		if (res) {  // Success!
 #ifdef NRF24X_SYNCHRONOUS
@@ -407,20 +502,41 @@ static void nrf24x_handler(sched_task *task) {
 		uint8_t active_nrf_in_bfr[NRF24X_BFR_SIZE];
 #endif
 		
-		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN); // Drive slave select pin low.
-		res = nrf24x_in_n(pending_nrf_in_cmd, pending_nrf_in_len, active_nrf_in_bfr);
+		uint8_t *nrf_in_bfr = (pending_nrf_in_bfr_ptr) ? pending_nrf_in_bfr_ptr : active_nrf_in_bfr;
+		
+		SPI_PORT &= ~BV(NRF24X_TEST_SS_PIN);  // Drive slave select pin low.
+		
+		if (pending_nrf_in_len == 1)
+			res = nrf24x_in_1(pending_nrf_in_cmd, nrf_in_bfr);
+		else
+			res = nrf24x_in_n(pending_nrf_in_cmd, pending_nrf_in_len, nrf_in_bfr);
 		
 		if (res) {  // Success!
 #ifdef NRF24X_SYNCHRONOUS
 			SPI_PORT |= BV(NRF24X_TEST_SS_PIN);  // Done. Drive slave select pin high.
 			
-			// Send INM response.
-			ttlv_xmit(pending_nrf_in_srcadr,
-				TTLV_APP_MSG_T_IN_RES, pending_nrf_in_len, active_nrf_in_bfr);
+			// Send INM response if requested.
+			if (pending_nrf_in_srcadr == TTLV_LOCAL_ADR)  // Do not send an INM response.
+				;  // Do nothing.
+			else if (NRF_IN_OPT_REG_R & pending_nrf_in_options) {
+				msg_data_out.r.index = TTLV_APP_REG_NRF24X + NRF24X_REG_ADDR(pending_nrf_in_cmd);
+				msg_data_out.r.value = nrf_in_bfr[0];
+				msg_data_out.r.request_id = pending_nrf_in_request_id;
+				
+				ttlv_xmit(pending_nrf_in_srcadr,
+					TTLV_MSG_T_INM_REG_READ_RES, TTLV_MSG_L_INM_REG_READ_RES, msg_data_out.b);
+			}
+			else {
+				ttlv_xmit(pending_nrf_in_srcadr,
+					TTLV_APP_MSG_T_IN_RES, pending_nrf_in_len, nrf_in_bfr);
+			}
 #else
+			active_nrf_in_options = pending_nrf_in_options;
 			active_nrf_in_cmd = pending_nrf_in_cmd;  // Wait for asynchronous SPI operation.
 			active_nrf_in_len = pending_nrf_in_len;
+			active_nrf_in_request_id = pending_nrf_in_request_id;
 			active_nrf_in_srcadr = pending_nrf_in_srcadr;
+			active_nrf_in_bfr_ptr = pending_nrf_in_bfr_ptr;
 			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
 #endif
 		}
@@ -433,6 +549,330 @@ static void nrf24x_handler(sched_task *task) {
 	}
 	
 	task->st |= TASK_ST_SLP(1);  // No work to do. Set sleep flag.
+}
+
+static void led_blink_handler(sched_task *task) {
+	blink_leds();
+	task->delay = LED_BLINK_TASK_DELAY;
+}
+
+// --- Manual Mode / Common Steps---
+static void led_handler_manual(sched_task *task) {
+	task->delay = LED_CTRL_TASK_DELAY;
+}
+
+static void led_handler_reset(sched_task *task) {
+	led_ctrl_step = LED_STEP_NONE;
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		return;  // In that case, wait.
+	
+#ifndef NRF24X_SYNCHRONOUS
+	if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+		return;  // In that case, also wait.
+#endif
+	
+	task->delay = SCHED_TIME_MS(500);  // Too short for power cycling?
+	
+	if (led_ctrl_mode == LED_CTRL_PTX || led_ctrl_mode == LED_CTRL_PRX)
+		task->handler = led_handler_startup;
+	else
+		task->handler = led_handler_manual;
+	
+	NRF_PORT_VCC |= BV(NRF_PIN_VCC);  // Disable power supply to nRF24x module.
+}
+
+static void led_handler_startup(sched_task *task) {
+	led_ctrl_step = LED_STEP_STARTUP;
+	task->delay = SCHED_TIME_MS(200);  // nRF24x startup delay (with some margin)
+	task->handler = led_handler_init;
+	
+	NRF_PORT_VCC &= ~BV(NRF_PIN_VCC);  // Enable power supply to nRF24x module.
+}
+
+static void led_handler_init(sched_task *task) {
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		return;  // In that case, wait.
+	
+	switch (led_ctrl_step) {
+	case LED_STEP_INIT_RETR:
+		// Write to the DYNPD register.
+		led_ctrl_step = LED_STEP_INIT_DYNPD;
+		enqueue_nrf_w_reg(NRF24X_DYNPD, BV(NRF24X_P0));
+		break;
+	case LED_STEP_INIT_DYNPD:
+		// Write to the FEATURE register.
+		led_ctrl_step = LED_STEP_INIT_FEATURE;
+		enqueue_nrf_w_reg(NRF24X_FEATURE, BV(NRF24X_EN_DPL) | BV(NRF24X_EN_ACK_PAY));
+		break;
+	case LED_STEP_INIT_FEATURE:  // Initialization done.
+		switch (led_ctrl_mode) {
+		case LED_CTRL_PTX:
+			task->handler = led_handler_ptx_begin;
+			break;
+		case LED_CTRL_PRX:
+			task->handler = led_handler_prx_begin;
+			break;
+		default:  // Something has gone wrong.
+			task->handler = led_handler_reset;
+			break;
+		}
+		break;
+	default:  // Beginning initialization.
+		// Write to the SETUP_RETR register.
+		led_ctrl_step = LED_STEP_INIT_RETR;
+		enqueue_nrf_w_reg(NRF24X_SETUP_RETR, NRF24X_SETUP_RETR_VAL(1, 3));
+		break;
+	}
+}
+
+// --- PTX Mode ---
+static void led_handler_ptx_begin(sched_task *task) {
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		return;  // In that case, wait.
+	
+	if (led_ctrl_step == LED_STEP_BEGIN) {
+		task->handler = led_handler_ptx_update;  // Chip activation done.
+		srandom(SCHED_TIME_TO_TICKS(sched_ticks)); // Initialize PRNG.
+	}
+	else {  // Activate the chip.
+		led_ctrl_step = LED_STEP_BEGIN;
+		enqueue_nrf_w_reg(NRF24X_CONFIG, BV(NRF24X_EN_CRC) | BV(NRF24X_PWR_UP));
+	}
+}
+
+static void led_handler_ptx_update(sched_task *task) {
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		return;  // In that case, wait.
+	
+	if (led_ctrl_step == LED_STEP_UPDATE) {  // LED state update initiated.
+#ifndef NRF24X_SYNCHRONOUS
+		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+			return;  // In that case, wait. (Never set CE high before all SPI ops have finished.)
+#endif
+		
+		// Drive the CE pin high for more than 10 μs to trigger transmission.
+		NRF_PORT_CE |= BV(NRF_PIN_CE);
+		_delay_us(50.0);
+		NRF_PORT_CE &= ~BV(NRF_PIN_CE);
+		
+		task->handler = led_handler_ptx_wait;  // Wait for response.
+	}
+	else {  // Begin LED state update.
+		led_ctrl_step = LED_STEP_UPDATE;
+		
+		// Update local LED states (arbitrarily chosen state change).
+		uint32_t r = (uint32_t)random();
+		uint8_t led_num = (uint8_t)(r >> 8) % N_LEDS;
+		uint8_t led_state = (uint8_t)r % N_LED_STATES;
+		set_led_state(led_num, led_state);
+		
+		// Submit a LED state update message for transmission with the W_TX_PAYLOAD command.
+		pending_nrf_out_bfr[0] = NRF24X_W_TX_PAYLOAD;
+		pending_nrf_out_bfr[1] = led_num;
+		pending_nrf_out_bfr[2] = led_state;
+		enqueue_nrf_out(3);
+		
+		// TODO: If a LED state change has been requested by the PRX, then submit an extended
+		// state update message (6 bytes: 3 × (LED index, state code)).
+	}
+}
+
+static void led_handler_ptx_wait(sched_task *task) {
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (led_ctrl_step == LED_STEP_WAIT_POLLING) {  // STATUS polling in progress.
+		if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+			return;  // In that case, wait.
+		
+#ifndef NRF24X_SYNCHRONOUS
+		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+			return;  // In that case, also wait.
+#endif
+		
+		uint8_t status = led_ctrl_reg_val;  // Get STATUS value.
+		
+		// ISSUE: Use a timeout as a fallback if we never see one of the expected interrupts?
+		if (BV(NRF24X_TX_DS) & status) {  // Transmission successful!
+			if (BV(NRF24X_RX_DR) & status) {  // Acknowledgement payload received.
+				task->handler = led_handler_ptx_fetch;  // Fetch the received payload.
+				enqueue_nrf_w_reg(NRF24X_STATUS, BV(NRF24X_TX_DS) | BV(NRF24X_RX_DR));  // Clear interrupt flags.
+			}
+			else {
+				task->delay = LED_CTRL_IDLE_DELAY;  // Idle until next LED state update.
+				task->handler = led_handler_ptx_update;
+				enqueue_nrf_w_reg(NRF24X_STATUS, BV(NRF24X_TX_DS));  // Clear interrupt flag.
+			}
+		}
+		else if (BV(NRF24X_MAX_RT) & status) {  // Transmission failed.
+			task->handler = led_handler_ptx_update;  // Try again.
+			enqueue_nrf_w_reg(NRF24X_STATUS, BV(NRF24X_MAX_RT));  // Clear interrupt flag.
+		}
+		else  // Transmission still ongoing?
+			led_ctrl_step = LED_STEP_WAIT_POLL;
+	}
+	else if (BV(NRF_PIN_IRQ) & NRF_PINR_IRQ)  // Don't bother with polling until the IRQ pin goes low.
+		led_ctrl_step = LED_STEP_WAIT_POLL;  // Do nothing more at this time.
+	else if (enqueue_nrf_in(  // Attempt to poll the STATUS register.
+		NRF_IN_OPT_NONE, NRF24X_R_REG_CMD(NRF24X_STATUS), 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val))
+	{
+		led_ctrl_step = LED_STEP_WAIT_POLLING;
+	}
+}
+
+static void led_handler_ptx_fetch(sched_task *task) {
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		return;  // In that case, wait.
+	
+	switch (led_ctrl_step) {
+		uint8_t payload_len;
+		
+	case LED_STEP_FETCH_LEN:
+#ifndef NRF24X_SYNCHRONOUS
+		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+			return;  // In that case, also wait.
+#endif
+		
+		payload_len = led_ctrl_reg_val;  // Get RX_PW_P0 value.
+		
+		// FIXME: Flush the RX FIFO if the payload is too large.
+		enqueue_nrf_in(  // Get the message payload.
+			NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload);
+		
+		led_ctrl_step = LED_STEP_FETCH_DATA;
+		led_ctrl_payload_len = payload_len;
+		break;
+	case LED_STEP_FETCH_DATA:
+#ifndef NRF24X_SYNCHRONOUS
+		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+			return;  // In that case, also wait.
+#endif
+		
+		// TODO: Parse the received payload and update LED states accordingly.
+		
+		task->delay = LED_CTRL_IDLE_DELAY;  // Idle until next LED state update.
+		task->handler = led_handler_ptx_update;
+		break;
+	default:  // Beginning acknowledgement payload fetch.
+		enqueue_nrf_in(  // Get the RX_PW_P0 register.
+			NRF_IN_OPT_NONE, NRF24X_R_REG_CMD(NRF24X_RX_PW_P0), 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val);
+		
+		led_ctrl_step = LED_STEP_FETCH_LEN;
+		break;
+	}
+}
+
+// --- PRX Mode ---
+static void led_handler_prx_begin(sched_task *task) {
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		return;  // In that case, wait.
+	
+	if (led_ctrl_step == LED_STEP_BEGIN)
+		task->handler = led_handler_prx_wait;  // Chip activation done.
+	else {  // Activate the chip.
+		led_ctrl_step = LED_STEP_BEGIN;
+		enqueue_nrf_w_reg(NRF24X_CONFIG, BV(NRF24X_EN_CRC) | BV(NRF24X_PWR_UP) | BV(NRF24X_PRIM_RX));
+	}
+}
+
+static void led_handler_prx_wait(sched_task *task) {
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (led_ctrl_step == LED_STEP_WAIT_POLLING) {  // STATUS polling in progress.
+		if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+			return;  // In that case, wait.
+		
+#ifndef NRF24X_SYNCHRONOUS
+		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+			return;  // In that case, also wait.
+#endif
+		
+		uint8_t status = led_ctrl_reg_val;  // Get STATUS value.
+		
+		if (BV(NRF24X_RX_DR) & status) {  // Packet received!
+			task->handler = led_handler_prx_fetch;  // Fetch the received payload.
+			enqueue_nrf_w_reg(NRF24X_STATUS, BV(NRF24X_TX_DS) | BV(NRF24X_RX_DR));  // Clear interrupt flags.
+		}
+		else  // Keep waiting.
+			led_ctrl_step = LED_STEP_WAIT_POLL;
+	}
+	else if (BV(NRF_PIN_IRQ) & NRF_PINR_IRQ)  // Don't bother with polling until the IRQ pin goes low.
+		led_ctrl_step = LED_STEP_WAIT_POLL;  // Do nothing more at this time.
+	else if (enqueue_nrf_in(  // Attempt to poll the STATUS register.
+		NRF_IN_OPT_NONE, NRF24X_R_REG_CMD(NRF24X_STATUS), 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val))
+	{
+		led_ctrl_step = LED_STEP_WAIT_POLLING;
+	}
+}
+
+static void led_handler_prx_fetch(sched_task *task) {
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		return;  // In that case, wait.
+	
+	switch (led_ctrl_step) {
+		uint8_t payload_len;
+		
+	case LED_STEP_FETCH_LEN:
+#ifndef NRF24X_SYNCHRONOUS
+		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+			return;  // In that case, also wait.
+#endif
+		
+		payload_len = led_ctrl_reg_val;  // Get RX_PW_P0 value.
+		
+		// FIXME: Flush the RX FIFO if the payload is too large.
+		enqueue_nrf_in(  // Get the message payload.
+			NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload);
+		
+		led_ctrl_step = LED_STEP_FETCH_DATA;
+		led_ctrl_payload_len = payload_len;
+		break;
+	case LED_STEP_FETCH_DATA:
+#ifndef NRF24X_SYNCHRONOUS
+		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+			return;  // In that case, also wait.
+#endif
+		
+		// Parse the received payload and update LED states accordingly.
+		payload_len = led_ctrl_payload_len;
+		
+		for (uint8_t i = 0; i < payload_len; i += 2) {
+			uint8_t led_num = led_ctrl_payload[i];
+			uint8_t led_state = led_ctrl_payload[i+1];
+			
+			if (led_num < N_LEDS)
+				set_led_state(led_num, led_state);
+		}
+		
+		// TODO: Consider submitting a LED state change request for transmission with the next
+		// acknowledgement message.
+		
+		task->handler = led_handler_prx_wait;  // Resume waiting for packages.
+		break;
+	default:  // Beginning payload fetch.
+		enqueue_nrf_in(  // Get the RX_PW_P0 register.
+			NRF_IN_OPT_NONE, NRF24X_R_REG_CMD(NRF24X_RX_PW_P0), 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val);
+		
+		led_ctrl_step = LED_STEP_FETCH_LEN;
+		break;
+	}
+}
+
+static void led_handler_prx_request(sched_task *task) {
+	// TODO: Implement this.
 }
 
 static void message_handler(sched_task *task) {
@@ -531,8 +971,7 @@ static void message_handler(sched_task *task) {
 		}
 		else {
 			ttlv_recv(pending_nrf_out_bfr);
-			pending_nrf_out_len = ttlv_recv_header.h.length;
-			sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
+			enqueue_nrf_out(ttlv_recv_header.h.length);  // Enqueue nRF24x output operation.
 			res = TTLV_RES_OK;
 		}
 	}
@@ -544,14 +983,12 @@ static void message_handler(sched_task *task) {
 		else {
 			ttlv_recv(msg_data_in.b);
 			
-			pending_nrf_in_len = msg_data_in.b[1];
-			
-			if (pending_nrf_in_len >= NRF24X_BFR_SIZE)
+			if (msg_data_in.b[1] >= NRF24X_BFR_SIZE)
 				res = TTLV_APP_RES_BFR_SIZE;
 			else {
-				pending_nrf_in_cmd = msg_data_in.b[0];
-				pending_nrf_in_srcadr = ttlv_recv_inm_header.h.srcadr;
-				sched_task_tcww |= SCHED_CATFLAG(NRF24X_TASK_CAT);  // Awaken nRF24x control task.
+				enqueue_nrf_in(  // Enqueue nRF24x input operation.
+					NRF_IN_OPT_NONE, msg_data_in.b[0], msg_data_in.b[1],
+					0, ttlv_recv_inm_header.h.srcadr, NULL);
 			}
 		}
 	}
@@ -579,6 +1016,20 @@ static void init_tasks(void) {
 	sched_add(&task);
 	
 	task = (sched_task) {
+		.st = TASK_ST_MAKE(0, LED_BLINK_TASK_CAT, 0),
+		.delay = LED_BLINK_TASK_DELAY,
+		.handler = led_blink_handler
+	};
+	sched_add(&task);
+	
+	task = (sched_task) {
+		.st = TASK_ST_MAKE(0, LED_CTRL_TASK_CAT, 0),
+		.delay = LED_CTRL_TASK_DELAY,
+		.handler = led_handler_manual
+	};
+	sched_add(&task);
+	
+	task = (sched_task) {
 		.st = TASK_ST_MAKE(0, MESSENGER_TASK_CAT, 0),
 		.delay = SCHED_TIME_ZERO,
 		.handler = message_handler
@@ -593,8 +1044,10 @@ int main(void) {
 	// Set LED pins as outputs.
 	LED_DDR |= BV(LED_PIN0) | BV(LED_PIN1) | BV(LED_PIN2);
 	
-	// Set nRF24x CE control pin as output.
+	// Set nRF24x CE and Vcc control pins as outputs.
+	NRF_PORT_VCC |= BV(NRF_PIN_VCC);  // Vcc control pin is active-low.
 	NRF_DDR_CE |= BV(NRF_PIN_CE);
+	NRF_DDR_VCC |= BV(NRF_PIN_VCC);
 	
 	sched_init();
 	
@@ -605,8 +1058,7 @@ int main(void) {
 	ttlv_xmit_inm_header.h.srcadr = INM_ADDR;  // Set INM source address.
 	
 	// Run SPI module in Master mode, at clock frequency F_CPU/64 ~= 250kHz (at F_CPU=16 MHz).
-	// Make the Slave mode slave select pin (NRF24X_TEST_SS_PIN in port B) a Master mode slave
-	// select output.
+	// Make the Slave mode slave select pin a Master mode slave select output.
 #ifdef NRF24X_SYNCHRONOUS
 	spihelper_mstr_init(BV(NRF24X_TEST_SS_PIN), 0, 0, BV(MSTR) | BV(SPR1));
 #else
