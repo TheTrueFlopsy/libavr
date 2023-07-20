@@ -106,8 +106,9 @@ enum {
 	LED_STEP_UPDATE       = 6,
 	LED_STEP_WAIT_POLL    = 7,
 	LED_STEP_WAIT_POLLING = 8,
-	LED_STEP_FETCH_LEN    = 9,
-	LED_STEP_FETCH_DATA   = 10
+	LED_STEP_WAIT_FLUSH   = 9,
+	LED_STEP_FETCH_LEN    = 10,
+	LED_STEP_FETCH_DATA   = 11
 };
 
 static const uint8_t led_pins[N_LEDS] = {
@@ -564,6 +565,8 @@ static void led_handler_reset(sched_task *task) {
 		return;  // In that case, also wait.
 #endif
 	
+	NRF_PORT &= ~BV(NRF_PIN_CE);  // Set the CE pin low.
+	
 	task->delay = SCHED_TIME_MS(500);  // Too short for power cycling?
 	
 	if (led_ctrl_mode == LED_CTRL_PTX || led_ctrl_mode == LED_CTRL_PRX)
@@ -582,6 +585,7 @@ static void led_handler_startup(sched_task *task) {
 	NRF_PORT &= ~BV(NRF_PIN_VCC);  // Enable power supply to nRF24x module.
 }
 
+// IDEA: Try LED control without dynamic payload length and acknowledgement payloads.
 static void led_handler_init(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
@@ -596,6 +600,10 @@ static void led_handler_init(sched_task *task) {
 		break;
 	case LED_STEP_INIT_DYNPD:
 		// Write to the FEATURE register.
+		// ISSUE: Set the FEATURE bits before setting DYNPD (and other config regs)?
+		// ISSUE: Do that ACTIVATE thing? Am I sure I have nRF24L01+ chips? Perhaps
+		// they actually need it too? (It definitely says "24L01+" on the chip, but
+		// who knows?)
 		led_ctrl_step = LED_STEP_INIT_FEATURE;
 		enqueue_nrf_w_reg(NRF24X_FEATURE, BV(NRF24X_EN_DPL) | BV(NRF24X_EN_ACK_PAY));
 		break;
@@ -628,10 +636,11 @@ static void led_handler_ptx_begin(sched_task *task) {
 		return;  // In that case, wait.
 	
 	if (led_ctrl_step == LED_STEP_BEGIN) {
+		srandom(SCHED_TIME_TO_TICKS(sched_ticks));  // Initialize PRNG.
+		
 		task->handler = led_handler_ptx_update;  // Chip activation done.
-		srandom(SCHED_TIME_TO_TICKS(sched_ticks)); // Initialize PRNG.
 	}
-	else {  // Activate the chip.
+	else {  // Activate the chip as PTX.
 		led_ctrl_step = LED_STEP_BEGIN;
 		enqueue_nrf_w_reg(NRF24X_CONFIG, BV(NRF24X_EN_CRC) | BV(NRF24X_PWR_UP));
 	}
@@ -673,6 +682,8 @@ static void led_handler_ptx_update(sched_task *task) {
 		
 		// TODO: If a LED state change has been requested by the PRX, then submit an extended
 		// state update message (6 bytes: 3 × (LED index, state code)).
+		// TODO: Also submit an extended update message if the previous state update transmission
+		// failed (since the PRX is now at least two updates out of synch with the PTX).
 	}
 }
 
@@ -703,11 +714,19 @@ static void led_handler_ptx_wait(sched_task *task) {
 			}
 		}
 		else if (BV(NRF24X_MAX_RT) & status) {  // Transmission failed.
-			task->handler = led_handler_ptx_update;  // Try again.
+			led_ctrl_step = LED_STEP_WAIT_FLUSH;
 			enqueue_nrf_w_reg(NRF24X_STATUS, BV(NRF24X_MAX_RT));  // Clear interrupt flag.
 		}
 		else  // Transmission still ongoing?
 			led_ctrl_step = LED_STEP_WAIT_POLL;
+	}
+	else if (led_ctrl_step == LED_STEP_WAIT_FLUSH) {
+		task->delay = LED_CTRL_IDLE_DELAY;  // Idle until next LED state update.
+		task->handler = led_handler_ptx_update;  // Try again later.
+		
+		// Unacknowledged payloads remain in the TX FIFO, which must be flushed to remove the payload.
+		pending_nrf_out_bfr[0] = NRF24X_FLUSH_TX;
+		enqueue_nrf_out(1);
 	}
 	else if (BV(NRF_PIN_IRQ) & NRF_PINR)  // Don't bother with polling until the IRQ pin goes low.
 		led_ctrl_step = LED_STEP_WAIT_POLL;  // Do nothing more at this time.
@@ -733,14 +752,22 @@ static void led_handler_ptx_fetch(sched_task *task) {
 			return;  // In that case, also wait.
 #endif
 		
-		payload_len = led_ctrl_reg_val;  // Get RX_PW_P0 value.
+		payload_len = led_ctrl_reg_val;  // Get payload length received from chip.
 		
-		// FIXME: Flush the RX FIFO if the payload is too large.
-		enqueue_nrf_in(  // Get the message payload.
-			NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload);
-		
-		led_ctrl_step = LED_STEP_FETCH_DATA;
-		led_ctrl_payload_len = payload_len;
+		if (payload_len > sizeof(led_ctrl_payload)) {  // Payload too large.
+			task->delay = LED_CTRL_IDLE_DELAY;  // Idle until next LED state update.
+			task->handler = led_handler_ptx_update;
+			
+			pending_nrf_out_bfr[0] = NRF24X_FLUSH_RX;  // Flush the RX FIFO.
+			enqueue_nrf_out(1);
+		}
+		else {
+			led_ctrl_step = LED_STEP_FETCH_DATA;
+			led_ctrl_payload_len = payload_len;
+			
+			enqueue_nrf_in(  // Get the message payload.
+				NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload);
+		}
 		break;
 	case LED_STEP_FETCH_DATA:
 #ifndef NRF24X_SYNCHRONOUS
@@ -754,10 +781,10 @@ static void led_handler_ptx_fetch(sched_task *task) {
 		task->handler = led_handler_ptx_update;
 		break;
 	default:  // Beginning acknowledgement payload fetch.
-		enqueue_nrf_in(  // Get the RX_PW_P0 register.
-			NRF_IN_OPT_NONE, NRF24X_R_REG_CMD(NRF24X_RX_PW_P0), 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val);
-		
 		led_ctrl_step = LED_STEP_FETCH_LEN;
+		
+		enqueue_nrf_in(  // Get the message payload length.
+			NRF_IN_OPT_NONE, NRF24X_R_RX_PL_WID, 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val);
 		break;
 	}
 }
@@ -769,9 +796,19 @@ static void led_handler_prx_begin(sched_task *task) {
 	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
 		return;  // In that case, wait.
 	
-	if (led_ctrl_step == LED_STEP_BEGIN)
+	if (led_ctrl_step == LED_STEP_BEGIN) {
+#ifndef NRF24X_SYNCHRONOUS
+		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+			return;  // In that case, also wait.
+#endif
+		
+		// Set the CE pin high to enter the RX Mode state.
+		_delay_us(50.0);  // Wait an extra little while just to be safe.
+		NRF_PORT |= BV(NRF_PIN_CE);
+		
 		task->handler = led_handler_prx_wait;  // Chip activation done.
-	else {  // Activate the chip.
+	}
+	else {  // Activate the chip as PRX.
 		led_ctrl_step = LED_STEP_BEGIN;
 		enqueue_nrf_w_reg(NRF24X_CONFIG, BV(NRF24X_EN_CRC) | BV(NRF24X_PWR_UP) | BV(NRF24X_PRIM_RX));
 	}
@@ -822,14 +859,21 @@ static void led_handler_prx_fetch(sched_task *task) {
 			return;  // In that case, also wait.
 #endif
 		
-		payload_len = led_ctrl_reg_val;  // Get RX_PW_P0 value.
+		payload_len = led_ctrl_reg_val;  // Get payload length received from chip.
 		
-		// FIXME: Flush the RX FIFO if the payload is too large.
-		enqueue_nrf_in(  // Get the message payload.
-			NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload);
-		
-		led_ctrl_step = LED_STEP_FETCH_DATA;
-		led_ctrl_payload_len = payload_len;
+		if (payload_len > sizeof(led_ctrl_payload)) {  // Payload too large.
+			task->handler = led_handler_prx_wait;  // Resume waiting for packages.
+			
+			pending_nrf_out_bfr[0] = NRF24X_FLUSH_RX;  // Flush the RX FIFO.
+			enqueue_nrf_out(1);
+		}
+		else {
+			led_ctrl_step = LED_STEP_FETCH_DATA;
+			led_ctrl_payload_len = payload_len;
+			
+			enqueue_nrf_in(  // Get the message payload.
+				NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload);
+		}
 		break;
 	case LED_STEP_FETCH_DATA:
 #ifndef NRF24X_SYNCHRONOUS
@@ -854,10 +898,10 @@ static void led_handler_prx_fetch(sched_task *task) {
 		task->handler = led_handler_prx_wait;  // Resume waiting for packages.
 		break;
 	default:  // Beginning payload fetch.
-		enqueue_nrf_in(  // Get the RX_PW_P0 register.
-			NRF_IN_OPT_NONE, NRF24X_R_REG_CMD(NRF24X_RX_PW_P0), 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val);
-		
 		led_ctrl_step = LED_STEP_FETCH_LEN;
+		
+		enqueue_nrf_in(  // Get the message payload length.
+			NRF_IN_OPT_NONE, NRF24X_R_RX_PL_WID, 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val);
 		break;
 	}
 }
