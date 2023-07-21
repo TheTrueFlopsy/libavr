@@ -52,10 +52,11 @@
 
 #define NOT_A_COMMAND 0b11110000
 
+#define N_LEDS 3
 #define LED_BLINK_TASK_DELAY SCHED_TIME_MS(50)
 
 #define LED_CTRL_TASK_DELAY SCHED_TIME_MS(10)
-#define LED_CTRL_MAX_PAYLOAD 6
+#define LED_CTRL_MAX_PAYLOAD (2*N_LEDS)
 #define LED_CTRL_IDLE_DELAY SCHED_TIME_MS(2000)
 
 enum {
@@ -78,6 +79,8 @@ enum {
 	TTLV_APP_REG_IOPINS     = TTLV_REG_APPLICATION + 0x02,  // CE and IRQ lines of the nRF24x chip
 	TTLV_APP_REG_LED_CTRL   = TTLV_REG_APPLICATION + 0x03,  // LED control mode
 	TTLV_APP_REG_LED_STEP   = TTLV_REG_APPLICATION + 0x04,  // LED control step
+	TTLV_APP_REG_LED_FLAGS  = TTLV_REG_APPLICATION + 0x05,  // LED control flags
+	TTLV_APP_REG_LED_RATE   = TTLV_REG_APPLICATION + 0x06,  // LED update request frequency
 	TTLV_APP_REG_NRF24X     = TTLV_REG_APPLICATION + 0x20,
 	TTLV_APP_REG_NRF24X_END = TTLV_APP_REG_NRF24X  + 0x20
 };
@@ -86,8 +89,6 @@ enum {
 	TTLV_APP_RES_BUSY     = TTLV_RES_APPLICATION + 0x00,
 	TTLV_APP_RES_BFR_SIZE = TTLV_RES_APPLICATION + 0x01
 };
-
-#define N_LEDS 3
 
 enum {
 	LED_PIN0 = PORTD4,
@@ -125,6 +126,21 @@ enum {
 	LED_STEP_FETCH_DATA   = 11
 };
 
+enum {
+	LED_FLAG_NONE   = 0,
+	LED_FLAG_SYNCH  = BV(0),
+	LED_FLAG_FREEZE = BV(1),
+	LED_FLAG_INV    = BV(2),
+	LED_FLAG_ROTP   = BV(3),
+	LED_FLAG_ROTM   = BV(4)
+};
+
+enum {
+	LED_UPDATE_NONE   = 0,
+	LED_UPDATE_INVERT = 1,
+	LED_UPDATE_ROTATE = 2
+};
+
 static const uint8_t led_pins[N_LEDS] = {
 	BV(LED_PIN0),
 	BV(LED_PIN1),
@@ -149,9 +165,12 @@ static uint8_t led_blink_counter = 0;
 
 static uint8_t led_ctrl_mode = LED_CTRL_MANUAL;
 static uint8_t led_ctrl_step = LED_STEP_NONE;
+static uint8_t led_ctrl_flags = LED_FLAG_NONE;
 static uint8_t led_ctrl_reg_val;  // Register values fetched via SPI are stored here.
 static uint8_t led_ctrl_payload_len;
 static uint8_t led_ctrl_payload[LED_CTRL_MAX_PAYLOAD];
+static uint8_t led_ctrl_rate = 0;
+static uint8_t led_ctrl_counter = 0;
 
 // ISSUE: Think about how to prevent wasteful buffer allocation and copying
 //        just to avoid accessing volatile data as non-volatile (which apparently
@@ -258,6 +277,47 @@ static void set_led_flags(uint8_t led_flags) {
 	}
 }
 
+static void invert_led_states(void) {
+	for (uint8_t i = 0; i < N_LEDS; i++)
+		set_led_state(i, 0x03 & ~led_states[i]);
+}
+
+static void rotate_led_states(int8_t step) {
+	if (step > 0) {
+		for (int8_t s = 0; s < step; s++) {
+			uint8_t tmp = led_states[N_LEDS-1];
+			
+			for (uint8_t i = 0; i < N_LEDS-1; i++)
+				led_states[i+1] = led_states[i];
+			
+			led_states[0] = tmp;
+		}
+	}
+	else if (step < 0) {
+		for (int8_t s = 0; s > step; s--) {
+			uint8_t tmp = led_states[0];
+			
+			for (uint8_t i = N_LEDS-1; i > 0; i--)
+				led_states[i-1] = led_states[i];
+			
+			led_states[N_LEDS-1] = tmp;
+		}
+	}
+}
+
+static void update_all_leds(uint8_t update_type, uint8_t update_arg) {
+	switch (update_type) {  // Check requested update type.
+	case LED_UPDATE_INVERT:
+		invert_led_states();
+		break;
+	case LED_UPDATE_ROTATE:
+		rotate_led_states((int8_t)update_arg);
+		break;
+	default:
+		break;  // Unrecognized, do nothing.
+	}
+}
+
 static void blink_leds(void) {
 	uint8_t toggle_slow = (GET_BITFIELD(3, led_blink_counter) == 0);
 	uint8_t toggle_fast = (GET_BITFIELD(1, led_blink_counter) == 0);
@@ -361,14 +421,20 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 		break;
 	case TTLV_APP_REG_IOPINS:  // Get logic states of CE and IRQ pins.
 		*value_p = GET_BITFIELD_AT(1, NRF_PIN_CE, NRF_PINR_CE) |
-               (GET_BITFIELD_AT(1, NRF_PIN_IRQ, NRF_PINR_IRQ) << 1) |
-               (GET_BITFIELD_AT(2, NRF_PIN_VCC, NRF_PINR_VCC) << 2);
+		           (GET_BITFIELD_AT(1, NRF_PIN_IRQ, NRF_PINR_IRQ) << 1) |
+		           (GET_BITFIELD_AT(2, NRF_PIN_VCC, NRF_PINR_VCC) << 2);
 		break;
 	case TTLV_APP_REG_LED_CTRL:
 		*value_p = led_ctrl_mode;
 		break;
 	case TTLV_APP_REG_LED_STEP:
 		*value_p = led_ctrl_step;
+		break;
+	case TTLV_APP_REG_LED_FLAGS:
+		*value_p = led_ctrl_flags;
+		break;
+	case TTLV_APP_REG_LED_RATE:
+		*value_p = led_ctrl_rate;
 		break;
 	default:
 		return TTLV_RES_REGISTER;
@@ -411,6 +477,12 @@ static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
 		break;
 	case TTLV_APP_REG_LED_CTRL:
 		return set_led_ctrl_mode(value);
+	case TTLV_APP_REG_LED_FLAGS:
+		led_ctrl_flags = value;
+		break;
+	case TTLV_APP_REG_LED_RATE:
+		led_ctrl_rate = value;
+		break;
 	default:
 		return TTLV_RES_REGISTER;
 	}
@@ -566,11 +638,13 @@ static void led_handler_reset(sched_task *task) {
 	led_ctrl_step = LED_STEP_NONE;
 	task->delay = LED_CTRL_TASK_DELAY;
 	
-	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+	// Check whether there is a pending nRF24x operation.
+	if (pending_nrf_out_len || pending_nrf_in_cmd != NOT_A_COMMAND)
 		return;  // In that case, wait.
 	
 #ifndef NRF24X_SYNCHRONOUS
-	if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+	// Check whether there is an active nRF24x operation.
+	if (active_nrf_out_len || active_nrf_in_cmd != NOT_A_COMMAND)
 		return;  // In that case, also wait.
 #endif
 	
@@ -640,7 +714,7 @@ static void led_handler_ptx_begin(sched_task *task) {
 		return;  // In that case, wait.
 	
 	if (led_ctrl_step == LED_STEP_BEGIN) {
-		srandom(SCHED_TIME_TO_TICKS(sched_ticks)); // Initialize PRNG.
+		srandom(SCHED_TIME_TO_TICKS(sched_ticks));  // Initialize PRNG.
 		
 		task->handler = led_handler_ptx_update;  // Chip activation done.
 	}
@@ -676,18 +750,30 @@ static void led_handler_ptx_update(sched_task *task) {
 		uint32_t r = (uint32_t)random();
 		uint8_t led_num = (uint8_t)(r >> 8) % N_LEDS;
 		uint8_t led_state = (uint8_t)r % N_LED_STATES;
-		set_led_state(led_num, led_state);
+		
+		if (LED_FLAG_FREEZE & led_ctrl_flags)  // The FREEZE flag preserves current LED states.
+			led_state = led_states[led_num];
+		else
+			set_led_state(led_num, led_state);
 		
 		// Submit a LED state update message for transmission with the W_TX_PAYLOAD command.
 		pending_nrf_out_bfr[0] = NRF24X_W_TX_PAYLOAD;
-		pending_nrf_out_bfr[1] = led_num;
-		pending_nrf_out_bfr[2] = led_state;
-		enqueue_nrf_out(3);
 		
-		// TODO: If a LED state change has been requested by the PRX, then submit an extended
-		// state update message (6 bytes: 3 × (LED index, state code)).
-		// TODO: Also submit an extended update message if the previous state update transmission
-		// failed (since the PRX is now at least two updates out of synch with the PTX).
+		if (LED_FLAG_SYNCH & led_ctrl_flags) {  // Full LED state synch requested.
+			led_ctrl_flags &= ~LED_FLAG_SYNCH;
+			
+			for (uint8_t i = 0; i < N_LEDS; i++) {
+				pending_nrf_out_bfr[1 + 2*i] = i;
+				pending_nrf_out_bfr[2 + 2*i] = led_states[i];
+			}
+			
+			enqueue_nrf_out(1 + 2*N_LEDS);
+		}
+		else {
+			pending_nrf_out_bfr[1] = led_num;
+			pending_nrf_out_bfr[2] = led_state;
+			enqueue_nrf_out(3);
+		}
 	}
 }
 
@@ -719,6 +805,11 @@ static void led_handler_ptx_wait(sched_task *task) {
 		}
 		else if (BV(NRF24X_MAX_RT) & status) {  // Transmission failed.
 			led_ctrl_step = LED_STEP_WAIT_FLUSH;
+			
+			// Request a full LED state synch at the next update (since the PRX will be at least
+			// two updates out of synch with the PTX by then).
+			led_ctrl_flags |= LED_FLAG_SYNCH;
+			
 			enqueue_nrf_w_reg(NRF24X_STATUS, BV(NRF24X_MAX_RT));  // Clear interrupt flag.
 		}
 		else  // Transmission still ongoing?
@@ -765,12 +856,11 @@ static void led_handler_ptx_fetch(sched_task *task) {
 			pending_nrf_out_bfr[0] = NRF24X_FLUSH_RX;  // Flush the RX FIFO.
 			enqueue_nrf_out(1);
 		}
-		else {
+		else if (enqueue_nrf_in(  // Attempt to get the message payload.
+			NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload))
+		{
 			led_ctrl_step = LED_STEP_FETCH_DATA;
 			led_ctrl_payload_len = payload_len;
-			
-			enqueue_nrf_in(  // Get the message payload.
-				NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload);
 		}
 		break;
 	case LED_STEP_FETCH_DATA:
@@ -779,16 +869,21 @@ static void led_handler_ptx_fetch(sched_task *task) {
 			return;  // In that case, also wait.
 #endif
 		
-		// TODO: Parse the received payload and update LED states accordingly.
+		// Parse the received payload and update LED states accordingly.
+		update_all_leds(led_ctrl_payload[0], led_ctrl_payload[1]);
+		
+		// Request a full LED state synch at the next update (since all states have changed).
+		led_ctrl_flags |= LED_FLAG_SYNCH;
 		
 		task->delay = LED_CTRL_IDLE_DELAY;  // Idle until next LED state update.
 		task->handler = led_handler_ptx_update;
 		break;
 	default:  // Beginning acknowledgement payload fetch.
-		led_ctrl_step = LED_STEP_FETCH_LEN;
-		
-		enqueue_nrf_in(  // Get the message payload length.
-			NRF_IN_OPT_NONE, NRF24X_R_RX_PL_WID, 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val);
+		if (enqueue_nrf_in(  // Attempt to get the message payload length.
+			NRF_IN_OPT_NONE, NRF24X_R_RX_PL_WID, 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val))
+		{
+			led_ctrl_step = LED_STEP_FETCH_LEN;
+		}
 		break;
 	}
 }
@@ -871,12 +966,11 @@ static void led_handler_prx_fetch(sched_task *task) {
 			pending_nrf_out_bfr[0] = NRF24X_FLUSH_RX;  // Flush the RX FIFO.
 			enqueue_nrf_out(1);
 		}
-		else {
+		else if (enqueue_nrf_in(  // Get the message payload.
+			NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload))
+		{
 			led_ctrl_step = LED_STEP_FETCH_DATA;
 			led_ctrl_payload_len = payload_len;
-			
-			enqueue_nrf_in(  // Get the message payload.
-				NRF_IN_OPT_NONE, NRF24X_R_RX_PAYLOAD, payload_len, 0, TTLV_LOCAL_ADR, led_ctrl_payload);
 		}
 		break;
 	case LED_STEP_FETCH_DATA:
@@ -896,22 +990,55 @@ static void led_handler_prx_fetch(sched_task *task) {
 				set_led_state(led_num, led_state);
 		}
 		
-		// TODO: Consider submitting a LED state change request for transmission with the next
-		// acknowledgement message.
-		
 		task->handler = led_handler_prx_wait;  // Resume waiting for packages.
+		
+		// Consider submitting a LED state change request for transmission with the next
+		// acknowledgement message.
+		if (led_ctrl_counter > 0) {
+			if (led_ctrl_counter == 1) {
+				led_ctrl_counter = led_ctrl_rate;
+				task->handler = led_handler_prx_request;  // Submit a state change request.
+			}
+			else
+				led_ctrl_counter--;
+		}
 		break;
 	default:  // Beginning payload fetch.
-		led_ctrl_step = LED_STEP_FETCH_LEN;
-		
-		enqueue_nrf_in(  // Get the message payload length.
-			NRF_IN_OPT_NONE, NRF24X_R_RX_PL_WID, 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val);
+		if (enqueue_nrf_in(  // Get the message payload length.
+			NRF_IN_OPT_NONE, NRF24X_R_RX_PL_WID, 1, 0, TTLV_LOCAL_ADR, &led_ctrl_reg_val))
+		{
+			led_ctrl_step = LED_STEP_FETCH_LEN;
+		}
 		break;
 	}
 }
 
 static void led_handler_prx_request(sched_task *task) {
-	// TODO: Implement this.
+	task->delay = LED_CTRL_TASK_DELAY;
+	
+	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		return;  // In that case, wait.
+	
+	pending_nrf_out_bfr[0] = NRF24X_W_ACK_PAYLOAD_CMD(0);  // Write acknowledgement payload.
+	
+	uint8_t flags = led_ctrl_flags;
+	
+	if (LED_FLAG_INV & flags) {  // Request state inversion.
+		pending_nrf_out_bfr[1] = LED_UPDATE_INVERT;
+		enqueue_nrf_out(2);
+	}
+	else if (LED_FLAG_ROTP & flags) {  // Request forward rotation.
+		pending_nrf_out_bfr[1] = LED_UPDATE_ROTATE;
+		pending_nrf_out_bfr[2] = 1;
+		enqueue_nrf_out(3);
+	}
+	else {  // Request backward rotation.
+		pending_nrf_out_bfr[1] = LED_UPDATE_ROTATE;
+		pending_nrf_out_bfr[2] = (uint8_t)(-1);
+		enqueue_nrf_out(3);
+	}
+	
+	task->handler = led_handler_prx_wait;  // Resume waiting for packages.
 }
 
 static void message_handler(sched_task *task) {
