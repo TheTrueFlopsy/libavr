@@ -147,6 +147,17 @@ enum {
 	NRF_IN_OPT_REG_R = BV(0)  // Send INM_REG_READ_RES response message.
 };
 
+enum {
+	NRFQ_NONE        = 0,
+	NRFQ_OUT_PENDING = BV(0),
+	NRFQ_OUT_ACTIVE  = BV(1),
+	NRFQ_OUT         = NRFQ_OUT_PENDING | NRFQ_OUT_ACTIVE,
+	NRFQ_IN_PENDING  = BV(2),
+	NRFQ_IN_ACTIVE   = BV(3),
+	NRFQ_IN          = NRFQ_IN_PENDING | NRFQ_IN_ACTIVE,
+	NRFQ_ANY         = NRFQ_OUT | NRFQ_IN
+};
+
 
 // ---<<< Program State >>>---
 static uint8_t led_states[N_LEDS] = { LED_STATE_OFF, LED_STATE_OFF, LED_STATE_OFF };
@@ -277,9 +288,9 @@ static void rotate_led_states(int8_t step) {
 			uint8_t tmp = led_states[N_LEDS-1];
 			
 			for (uint8_t i = 0; i < N_LEDS-1; i++)
-				led_states[i+1] = led_states[i];
+				set_led_state(i+1, led_states[i]);
 			
-			led_states[0] = tmp;
+			set_led_state(0, tmp);
 		}
 	}
 	else if (step < 0) {
@@ -287,9 +298,9 @@ static void rotate_led_states(int8_t step) {
 			uint8_t tmp = led_states[0];
 			
 			for (uint8_t i = N_LEDS-1; i > 0; i--)
-				led_states[i-1] = led_states[i];
+				set_led_state(i-1, led_states[i]);
 			
-			led_states[N_LEDS-1] = tmp;
+			set_led_state(N_LEDS-1, tmp);
 		}
 	}
 }
@@ -339,6 +350,26 @@ static ttlv_result set_led_ctrl_mode(uint8_t mode) {
 	}
 	
 	return TTLV_RES_OK;
+}
+
+static uint8_t check_nrf_queues(uint8_t queue_flags) {
+	if ((NRFQ_OUT_PENDING & queue_flags) && pending_nrf_out_len)
+		return 1;
+	
+#ifndef NRF24X_SYNCHRONOUS
+	if ((NRFQ_OUT_ACTIVE & queue_flags) && active_nrf_out_len)
+		return 1;
+#endif
+	
+	if ((NRFQ_IN_PENDING & queue_flags) && pending_nrf_in_cmd != NOT_A_COMMAND)
+		return 1;
+	
+#ifndef NRF24X_SYNCHRONOUS
+	if ((NRFQ_IN_ACTIVE & queue_flags) && active_nrf_in_cmd != NOT_A_COMMAND)
+		return 1;
+#endif
+	
+	return 0;
 }
 
 // NOTE: Output data must be pre-loaded into pending_nrf_out_bfr.
@@ -473,6 +504,7 @@ static ttlv_result ttlv_reg_write(ttlv_reg_index index, ttlv_reg_value value) {
 		break;
 	case TTLV_APP_REG_LED_RATE:
 		led_ctrl_rate = value;
+		led_ctrl_counter = value;  // Reset the counter whenever the rate changes.
 		break;
 	default:
 		return TTLV_RES_REGISTER;
@@ -629,15 +661,8 @@ static void led_handler_reset(sched_task *task) {
 	led_ctrl_step = LED_STEP_NONE;
 	task->delay = LED_CTRL_TASK_DELAY;
 	
-	// Check whether there is a pending nRF24x operation.
-	if (pending_nrf_out_len || pending_nrf_in_cmd != NOT_A_COMMAND)
+	if (check_nrf_queues(NRFQ_ANY))  // Check whether there are any enqueued operations.
 		return;  // In that case, wait.
-	
-#ifndef NRF24X_SYNCHRONOUS
-	// Check whether there is an active nRF24x operation.
-	if (active_nrf_out_len || active_nrf_in_cmd != NOT_A_COMMAND)
-		return;  // In that case, also wait.
-#endif
 	
 	NRF_PORT &= ~BV(NRF_PIN_CE);  // Set the CE pin low.
 	
@@ -662,7 +687,7 @@ static void led_handler_startup(sched_task *task) {
 static void led_handler_init(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
-	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+	if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
 		return;  // In that case, wait.
 	
 	switch (led_ctrl_step) {
@@ -674,9 +699,8 @@ static void led_handler_init(sched_task *task) {
 	case LED_STEP_INIT_DYNPD:
 		// Write to the FEATURE register.
 		// ISSUE: Set the FEATURE bits before setting DYNPD (and other config regs)?
-		// ISSUE: Do that ACTIVATE thing? Am I sure I have nRF24L01+ chips? Perhaps
-		// they actually need it too? (It definitely says "24L01+" on the chip, but
-		// who knows?)
+		// ISSUE: Do that ACTIVATE thing, in case someone has a nRF24L01 without the '+'?
+		//        Does the nRF24L01+ tolerate that?
 		led_ctrl_step = LED_STEP_INIT_FEATURE;
 		enqueue_nrf_w_reg(NRF24X_FEATURE, BV(NRF24X_EN_DPL) | BV(NRF24X_EN_ACK_PAY));
 		break;
@@ -705,15 +729,18 @@ static void led_handler_init(sched_task *task) {
 static void led_handler_ptx_begin(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
-	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
-		return;  // In that case, wait.
-	
 	if (led_ctrl_step == LED_STEP_BEGIN) {
+		if (check_nrf_queues(NRFQ_OUT))  // Check whether there is an enqueued output operation.
+			return;  // In that case, wait.
+		
 		srandom(SCHED_TIME_TO_TICKS(sched_ticks));  // Initialize PRNG.
 		
 		task->handler = led_handler_ptx_update;  // Chip activation done.
 	}
 	else {  // Activate the chip as PTX.
+		if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
+			return;  // In that case, wait.
+		
 		led_ctrl_step = LED_STEP_BEGIN;
 		enqueue_nrf_w_reg(NRF24X_CONFIG, BV(NRF24X_EN_CRC) | BV(NRF24X_PWR_UP));
 	}
@@ -722,16 +749,15 @@ static void led_handler_ptx_begin(sched_task *task) {
 static void led_handler_ptx_update(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
-	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+	if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
 		return;  // In that case, wait.
 	
 	if (led_ctrl_step == LED_STEP_UPDATE) {  // LED state update initiated.
-#ifndef NRF24X_SYNCHRONOUS
-		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
+		if (check_nrf_queues(NRFQ_OUT_ACTIVE))  // Check whether there is an active output operation.
 			return;  // In that case, wait. (Never set CE high before all SPI ops have finished.)
-#endif
 		
 		// Drive the CE pin high for more than 10 μs to trigger transmission.
+		_delay_us(50.0);  // Wait an extra little while just to be safe.
 		NRF_PORT |= BV(NRF_PIN_CE);
 		_delay_us(50.0);
 		NRF_PORT &= ~BV(NRF_PIN_CE);
@@ -776,13 +802,9 @@ static void led_handler_ptx_wait(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	if (led_ctrl_step == LED_STEP_WAIT_POLLING) {  // STATUS polling in progress.
-		if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		// Check whether there is a pending output or enqueued input operation.
+		if (check_nrf_queues(NRFQ_OUT_PENDING | NRFQ_IN))
 			return;  // In that case, wait.
-		
-#ifndef NRF24X_SYNCHRONOUS
-		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
-			return;  // In that case, also wait.
-#endif
 		
 		uint8_t status = led_ctrl_reg_val;  // Get STATUS value.
 		
@@ -811,6 +833,9 @@ static void led_handler_ptx_wait(sched_task *task) {
 			led_ctrl_step = LED_STEP_WAIT_POLL;
 	}
 	else if (led_ctrl_step == LED_STEP_WAIT_FLUSH) {
+		if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
+			return;  // In that case, wait.
+		
 		task->delay = LED_CTRL_IDLE_DELAY;  // Idle until next LED state update.
 		task->handler = led_handler_ptx_update;  // Try again later.
 		
@@ -830,21 +855,19 @@ static void led_handler_ptx_wait(sched_task *task) {
 static void led_handler_ptx_fetch(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
-	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
-		return;  // In that case, wait.
-	
 	switch (led_ctrl_step) {
 		uint8_t payload_len;
 		
 	case LED_STEP_FETCH_LEN:
-#ifndef NRF24X_SYNCHRONOUS
-		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
-			return;  // In that case, also wait.
-#endif
+		if (check_nrf_queues(NRFQ_IN))  // Check whether there is an enqueued input operation.
+			return;  // In that case, wait.
 		
 		payload_len = led_ctrl_reg_val;  // Get payload length received from chip.
 		
 		if (payload_len > sizeof(led_ctrl_payload)) {  // Payload too large.
+			if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
+				return;  // In that case, wait.
+			
 			task->delay = LED_CTRL_IDLE_DELAY;  // Idle until next LED state update.
 			task->handler = led_handler_ptx_update;
 			
@@ -859,10 +882,8 @@ static void led_handler_ptx_fetch(sched_task *task) {
 		}
 		break;
 	case LED_STEP_FETCH_DATA:
-#ifndef NRF24X_SYNCHRONOUS
-		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
-			return;  // In that case, also wait.
-#endif
+		if (check_nrf_queues(NRFQ_IN))  // Check whether there is an enqueued input operation.
+			return;  // In that case, wait.
 		
 		// Parse the received payload and update LED states accordingly.
 		update_all_leds(led_ctrl_payload[0], led_ctrl_payload[1]);
@@ -887,15 +908,10 @@ static void led_handler_ptx_fetch(sched_task *task) {
 static void led_handler_prx_begin(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
-	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+	if (check_nrf_queues(NRFQ_OUT))  // Check whether there is an enqueued output operation.
 		return;  // In that case, wait.
 	
 	if (led_ctrl_step == LED_STEP_BEGIN) {
-#ifndef NRF24X_SYNCHRONOUS
-		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
-			return;  // In that case, also wait.
-#endif
-		
 		// Set the CE pin high to enter the RX Mode state.
 		_delay_us(50.0);  // Wait an extra little while just to be safe.
 		NRF_PORT |= BV(NRF_PIN_CE);
@@ -912,17 +928,15 @@ static void led_handler_prx_wait(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	if (led_ctrl_step == LED_STEP_WAIT_POLLING) {  // STATUS polling in progress.
-		if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+		if (check_nrf_queues(NRFQ_IN))  // Check whether there is an enqueued input operation.
 			return;  // In that case, wait.
-		
-#ifndef NRF24X_SYNCHRONOUS
-		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
-			return;  // In that case, also wait.
-#endif
 		
 		uint8_t status = led_ctrl_reg_val;  // Get STATUS value.
 		
 		if (BV(NRF24X_RX_DR) & status) {  // Packet received!
+			if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
+				return;  // In that case, wait.
+			
 			task->handler = led_handler_prx_fetch;  // Fetch the received payload.
 			enqueue_nrf_w_reg(NRF24X_STATUS, BV(NRF24X_TX_DS) | BV(NRF24X_RX_DR));  // Clear interrupt flags.
 		}
@@ -941,21 +955,19 @@ static void led_handler_prx_wait(sched_task *task) {
 static void led_handler_prx_fetch(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
-	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
-		return;  // In that case, wait.
-	
 	switch (led_ctrl_step) {
 		uint8_t payload_len;
 		
 	case LED_STEP_FETCH_LEN:
-#ifndef NRF24X_SYNCHRONOUS
-		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
-			return;  // In that case, also wait.
-#endif
+		if (check_nrf_queues(NRFQ_IN))  // Check whether there is an enqueued input operation.
+			return;  // In that case, wait.
 		
 		payload_len = led_ctrl_reg_val;  // Get payload length received from chip.
 		
 		if (payload_len > sizeof(led_ctrl_payload)) {  // Payload too large.
+			if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
+				return;  // In that case, wait.
+			
 			task->handler = led_handler_prx_wait;  // Resume waiting for packages.
 			
 			pending_nrf_out_bfr[0] = NRF24X_FLUSH_RX;  // Flush the RX FIFO.
@@ -969,10 +981,8 @@ static void led_handler_prx_fetch(sched_task *task) {
 		}
 		break;
 	case LED_STEP_FETCH_DATA:
-#ifndef NRF24X_SYNCHRONOUS
-		if (active_nrf_out_len)  // Check whether there is an active nRF24x output operation.
-			return;  // In that case, also wait.
-#endif
+		if (check_nrf_queues(NRFQ_IN))  // Check whether there is an enqueued input operation.
+			return;  // In that case, wait.
 		
 		// Parse the received payload and update LED states accordingly.
 		payload_len = led_ctrl_payload_len;
@@ -1011,7 +1021,7 @@ static void led_handler_prx_fetch(sched_task *task) {
 static void led_handler_prx_request(sched_task *task) {
 	task->delay = LED_CTRL_TASK_DELAY;
 	
-	if (pending_nrf_out_len)  // Check whether there is a pending nRF24x output operation.
+	if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
 		return;  // In that case, wait.
 	
 	pending_nrf_out_bfr[0] = NRF24X_W_ACK_PAYLOAD_CMD(0);  // Write acknowledgement payload.
