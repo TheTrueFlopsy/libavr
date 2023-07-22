@@ -287,8 +287,8 @@ static void rotate_led_states(int8_t step) {
 		for (int8_t s = 0; s < step; s++) {
 			uint8_t tmp = led_states[N_LEDS-1];
 			
-			for (uint8_t i = 0; i < N_LEDS-1; i++)
-				set_led_state(i+1, led_states[i]);
+			for (uint8_t i = N_LEDS-1; i > 0; i--)
+				set_led_state(i, led_states[i-1]);
 			
 			set_led_state(0, tmp);
 		}
@@ -297,8 +297,8 @@ static void rotate_led_states(int8_t step) {
 		for (int8_t s = 0; s > step; s--) {
 			uint8_t tmp = led_states[0];
 			
-			for (uint8_t i = N_LEDS-1; i > 0; i--)
-				set_led_state(i-1, led_states[i]);
+			for (uint8_t i = 0; i < N_LEDS-1; i++)
+				set_led_state(i, led_states[i+1]);
 			
 			set_led_state(N_LEDS-1, tmp);
 		}
