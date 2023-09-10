@@ -21,7 +21,7 @@ f_cpu_prescale := 5
 
 avrdude := avrdude
 
-# Arduino Uno settings:
+# Settings for Arduino Uno:
 avrdude_port := /dev/ttyUSB0
 avrdude_device := m328p
 avrdude_prog := arduino

@@ -6,6 +6,8 @@
 	Generic bit and bit field manipulation macros.
 */
 
+// TODO: Document the rest of the bitops macros.
+
 /**
 	Macro: BV
 	Utility macro that maps a bit number to an integer value with (only)

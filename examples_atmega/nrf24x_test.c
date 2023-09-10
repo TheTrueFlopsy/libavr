@@ -528,7 +528,7 @@ static void nrf24x_handler(sched_task *task) {
 	
 #ifndef NRF24X_SYNCHRONOUS
 	if (SPI_IS_ACTIVE) {  // SPI interface is busy, unable to proceed.
-		task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+		task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
 		return;
 	}
 	else if (active_nrf_out_len) {
@@ -582,7 +582,7 @@ static void nrf24x_handler(sched_task *task) {
 			SPI_PORT |= BV(SPI_SS);  // Done. Drive slave select pin high.
 #else
 			active_nrf_out_len = pending_nrf_out_len;  // Wait for asynchronous SPI operation.
-			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+			task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
 #endif
 		}
 		else {  // ERROR
@@ -633,7 +633,7 @@ static void nrf24x_handler(sched_task *task) {
 			active_nrf_in_request_id = pending_nrf_in_request_id;
 			active_nrf_in_srcadr = pending_nrf_in_srcadr;
 			active_nrf_in_bfr_ptr = pending_nrf_in_bfr_ptr;
-			task->st |= TASK_ST_SLP(1);  // Set sleep flag.
+			task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
 #endif
 		}
 		else {  // ERROR
@@ -644,7 +644,7 @@ static void nrf24x_handler(sched_task *task) {
 		return;  // Either wait for async operation or avoid dallying too long in the handler.
 	}
 	
-	task->st |= TASK_ST_SLP(1);  // No work to do. Set sleep flag.
+	task->st |= TASK_SLEEP_BIT;  // No work to do. Set sleep flag.
 }
 
 static void led_blink_handler(sched_task *task) {

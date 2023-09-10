@@ -24,6 +24,8 @@
 	whether the asynchronous API is available, define the macro *NRF24X_SYNCHRONOUS*.
 */
 
+// TODO: Document the nRF24x module.
+
 #if defined(SPI_NO_ASYNC_API) && !defined(NRF24X_SYNCHRONOUS)
 #define NRF24X_SYNCHRONOUS
 #endif

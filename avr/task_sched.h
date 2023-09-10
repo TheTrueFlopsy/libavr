@@ -133,8 +133,8 @@
 /**
 	Macro: SCHED_CLOCK_PRESCALE
 	The CPU clock prescale value of the timer that the scheduler uses to keep track
-	of elapsed time. It is usually best to set this via <SCHED_CLOCK_PRESCALE_LOG>.
-	Constant macro.
+	of elapsed time. Equivalent to the number of CPU clock cycles per timer tick.
+	It is usually best to set this via <SCHED_CLOCK_PRESCALE_LOG>. Constant macro.
 */
 #define SCHED_CLOCK_PRESCALE (1 << SCHED_CLOCK_PRESCALE_LOG)
 
@@ -687,6 +687,9 @@ extern sched_catflags sched_task_tcww;
 	The scheduler iteration timestamp. When task handlers run, this variable
 	will contain a timestamp obtained at the beginning of the current scheduler
 	iteration.
+	
+	NOTE: The function <sched_get_timestamp> can provide timestamps that are
+	      closer to the current time, in case high precision is needed.
 */
 extern sched_time sched_ticks;
 
@@ -807,6 +810,17 @@ sched_time sched_time_add(sched_time a, sched_time b);
 	timestamp corresponds to.
 */
 sched_time sched_time_sub(sched_time a, sched_time b);
+
+/**
+	Function: sched_busy_wait
+	Busy waits a specified duration of time. The whole range of durations
+	representable by <sched_time> is supported, accurate down to four CPU
+	clock cycles (plus a small overhead).
+	
+	Parameters:
+		duration - A <sched_time> representing the requested duration of the busy wait.
+*/
+void sched_busy_wait(sched_time duration);
 
 
 /// Section: API Functions - Scheduler Operations
@@ -1060,6 +1074,23 @@ uint8_t sched_remove(uint8_t st_mask, uint8_t st_val, uint8_t start_i);
 		st_val - Bit pattern to compare with the task control and status byte.
 */
 void sched_remove_all(uint8_t st_mask, uint8_t st_val);
+
+/**
+	Function: sched_get_timestamp
+	Gets a scheduler timestamp corresponding to the current time.
+	
+	NOTE: This function can provide a timestamp that corresponds more closely
+	      to the current time than the scheduler iteration timestamp in
+	      <sched_ticks> does, but calling the function is less efficient than
+	      reading the variable.
+	
+	CAUTION: This function MUST NOT be called before the scheduler has been
+	         started (via <sched_run>), or ever from an ISR.
+	
+	Returns:
+		A <sched_time> containing the scheduler timestamp for the current time.
+*/
+sched_time sched_get_timestamp(void);
 
 /**
 	Function: sched_run

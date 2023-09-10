@@ -6,10 +6,7 @@
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <util/atomic.h>
-
-#ifdef SCHED_RATE_LIMITING
 #include <util/delay_basic.h>
-#endif
 
 #endif
 
@@ -200,6 +197,37 @@ sched_time sched_time_sub(sched_time a, sched_time b) {  // Subtracts B from A.
 
 #ifndef LIBAVR_TEST_BUILD
 
+void sched_busy_wait(sched_time duration) {
+	if (duration.h == 0) {  // short wait
+#if SCHED_CLOCK_PRESCALE_LOG <= 2
+		_delay_loop_2(duration.l >> (2 - SCHED_CLOCK_PRESCALE_LOG));
+#else
+		_delay_loop_2((uint16_t)duration.l << (SCHED_CLOCK_PRESCALE_LOG - 2));
+#endif
+	}
+	else {  // long wait
+		uint32_t quad_cycles;
+		
+		// Convert sched_time to quad cycles (i.e. the number of CPU clock cycles
+		// to wait, divided by four). Take the configured number of clock cycles
+		// per scheduler tick (i.e. SCHED_CLOCK_PRESCALE) into account.
+#if SCHED_CLOCK_PRESCALE_LOG <= 2
+		quad_cycles = duration.l >> (2 - SCHED_CLOCK_PRESCALE_LOG);
+#else
+		quad_cycles = (uint16_t)duration.l << (SCHED_CLOCK_PRESCALE_LOG - 2);
+#endif
+		
+		quad_cycles += (uint32_t)duration.h << (SCHED_CLOCK_PRESCALE_LOG + 6);  // 8 - 2 = 6.
+		
+		while (quad_cycles > UINT16_MAX) {
+			_delay_loop_2(0);
+			quad_cycles -= UINT16_MAX;
+		}
+		
+		_delay_loop_2((uint16_t)quad_cycles);  // Four (i.e. 1 << 2) cycles per step.
+	}
+}
+
 void sched_init(void) {
 	sched_isr_tcww = 0;
 	sched_task_tcww = 0;
@@ -331,6 +359,26 @@ void sched_remove_all(uint8_t st_mask, uint8_t st_val) {
 	do {
 		i = sched_remove(st_mask, st_val, i+1);
 	} while (i < SCHED_MAX_TASKS);
+}
+
+sched_time sched_get_timestamp(void) {
+	sched_time timestamp;
+	
+	ATOMIC_BLOCK(ATOMIC_FORCEON) {
+		timestamp.l = SCHED_TCNT;  // Get TCNT as seen /before/ checking for overflow.
+		timestamp.h = sched_tick_count_h;  // Get 'sched_tick_count_h'.
+		
+		// NOTE: Timer counts are NOT stopped by disabling interrupts. See sched_run
+		//       for additional commentary.
+		if (SCHED_TIFR_BIT_MASK & SCHED_TIFR) {  // Timer overflowed inside the atomic block.
+			SCHED_TIFR = SCHED_TIFR_BIT_MASK;  // Clear the overflow interrupt flag.
+			timestamp.l = SCHED_TCNT;          // Get TCNT as seen /after/ the overflow.
+			timestamp.h++;                     // Increment and write back 'sched_tick_count_h'.
+			sched_tick_count_h = timestamp.h;
+		}
+	}
+	
+	return timestamp;
 }
 
 void sched_run(void) {
@@ -481,17 +529,9 @@ void sched_run(void) {
 		else
 			delta = sched_time_sub(delta, sched_delay);
 		
-		if (sched_time_gt(SCHED_MIN_DELTA, delta)) {
+		if (sched_time_gt(SCHED_MIN_DELTA, delta)) {  // Impose scheduler rate limiting delay.
 			sched_delay = sched_time_sub(SCHED_MIN_DELTA, delta);
-			
-			// Impose scheduler iteration rate limiting delay.
-#if SCHED_CLOCK_PRESCALE_LOG < 2
-			delta.h = ((uint16_t)sched_delay.l >> (2 - SCHED_CLOCK_PRESCALE_LOG));
-#else
-			delta.h = ((uint16_t)sched_delay.l << (SCHED_CLOCK_PRESCALE_LOG - 2));
-#endif
-			delta.h += sched_delay.h << (SCHED_CLOCK_PRESCALE_LOG + 6);  // 8 - 2 = 6.
-			_delay_loop_2(delta.h);  // Four (i.e. 1 << 2) cycles per step.
+			sched_busy_wait(sched_delay);
 		}
 		else  // No scheduler delay.
 			sched_delay = SCHED_TIME_ZERO;
