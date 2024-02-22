@@ -8,6 +8,8 @@
 /**
 	File: tbouncer.h
 	Input debouncing module that uses the <task_sched.h> task scheduler.
+	Can be configured to notify and/or synchronously invoke tasks when there
+	is a change in the debounced input value of specified I/O pins.
 	
 	NOTE: To disable debouncing on an I/O port, define the macro
 	*TBOUNCER_DISABLE_PORT_{x}*, where *{x}* is "A", "B", "C" or "D". Doing
