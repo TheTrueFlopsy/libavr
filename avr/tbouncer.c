@@ -216,7 +216,7 @@ void tbouncer_init(
 	uint8_t a_mask, uint8_t b_mask, uint8_t c_mask, uint8_t d_mask,
 	sched_catflags notify_cats, uint8_t invoke_mask, uint8_t invoke_st)
 {
-	sched_task task;
+	sched_task __attribute__ ((unused)) task;  // NOTE: Unused in test build.
 	
 	// Initialize debouncer state.
 	tbouncer_task_cats = notify_cats;

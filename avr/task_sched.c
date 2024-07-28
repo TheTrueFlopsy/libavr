@@ -447,6 +447,18 @@ void sched_run(void) {
 		n_ready = 0;
 		task_p = task_list;
 		
+		// IDEA: Replace the sorting and execution passes with a single pass
+		//       that prunes garbage tasks, lets sleeping tasks be and updates
+		//       the delays of and potentially executes ready tasks.
+		//         ? There's really no point in sorting on category and instance
+		//           number, is there?
+		//           ? Is there any compelling reason to disallow arbitrary changes
+		//             of a task's category and instance numbers?
+		//         ? We still need to check each "ready" task at the head of the
+		//           list for being asleep/garbage, so what's the point in bringing
+		//           them to the head?
+		//         ? Garbage tasks are pruned immediately after the sorting pass, so
+		//           why even bother moving them to the tail?
 		for (uint8_t i = 0; i < sched_list_size; i++, task_p++) {
 			sched_task *task_k1_p = task_p;  // Current task record pointer.
 			sched_task task_i = *task_k1_p;  // Current task record.
@@ -511,6 +523,8 @@ void sched_run(void) {
 			//        some silly two-steps-forward-one-step-back exercise, and restoring index
 			//        registers only to immediately clobber them. You'd think writing three zeros
 			//        to memory would be easy.
+			// IDEA: Use memset/memcpy to clear/assign structs? Investigate whether this produces
+			//       faster code.
 			task_p->delay = SCHED_TIME_ZERO;  // Clear the task execution delay.
 			task_i.handler(task_p);  // Call the task handler.
 		}

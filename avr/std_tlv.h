@@ -134,6 +134,8 @@ typedef struct __attribute__ ((__packed__)) ttlv_msg_inm_result {
 
 /// Section: Logical Registers
 
+// TODO: Invent, document and implement some sensible scheme for the FWIDs.
+//       Unless I decide to replace them entirely.
 enum {
 	TTLV_REG_NULL = 0x00,
 	TTLV_REG_APP_STATUS = 0x01, // Zero means normal status.

@@ -92,7 +92,7 @@
 		N - A number of bits.
 	
 	Returns:
-		The number of possible states of an *N*-bit value.
+		The number of possible states of an *N*-bit value (i.e. 2^*N*).
 */
 #define BITSTATES(N) BV(N)
 
@@ -106,7 +106,7 @@
 		N - A number of bits.
 	
 	Returns:
-		The maximum value of an *N*-bit unsigned integer.
+		The maximum value of an *N*-bit unsigned integer (i.e. 2^*N* - 1).
 */
 #define BITMAX(N) BITMASK(N)
 

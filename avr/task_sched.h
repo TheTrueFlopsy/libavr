@@ -292,6 +292,11 @@
 
 #define SCHED_MIN_DELTA SCHED_TIME_LH(SCHED_MIN_DELTA_L, SCHED_MIN_DELTA_H)
 
+
+// IDEA: Replace sched_time with 32-bit tick counts? This is a simpler
+//       (hopefully more efficient) representation with larger range,
+//       at the cost of 33% larger memory use.
+//         ? Use int32_t to enable negative intervals? What's the use?
 /**
 	Struct: sched_time
 	Represents either a duration or a scheduler timestamp. Time is measured
@@ -583,6 +588,9 @@ struct sched_task;
 */
 typedef void (*sched_task_handler)(struct sched_task *task);
 
+// IDEA: Make sched_task 8 bytes large, accommodating a 32-bit delay and an extra
+//       byte of flags, etc. Having a dedicated zombie/garbage flag would make some
+//       things less messy.
 /**
 	Struct: sched_task
 	Represents an instance of a task that can be scheduled for execution.
@@ -654,6 +662,11 @@ typedef struct sched_task {
 	sched_task_handler handler;
 	
 } sched_task;
+
+// ISSUE: Are these a good idea?
+#define TASK_AWAKEN(T) ((T)->st &= ~TASK_SLEEP_BIT)
+#define TASK_PUT_TO_SLEEP(T) ((T)->st |= TASK_SLEEP_BIT)
+#define TASK_DELAY_BY(T, D) ((T)->delay = (D))
 
 
 /// Section: API Variables

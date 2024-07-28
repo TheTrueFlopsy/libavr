@@ -8,6 +8,7 @@ import inm.inm as inm
 
 # TODO: Figure out how to support color output.
 #       Go full ncurses (probably the best bet)?
+#       The 'rich' package is another possibility.
 
 DEFAULT_IP_ADR_VAL = inm.InetMessageChannel.DEFAULT_IP_ADR
 DEFAULT_UDP_PORT_VAL = inm.InetMessageChannel.DEFAULT_UDP_PORT

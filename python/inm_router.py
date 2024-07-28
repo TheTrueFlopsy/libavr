@@ -13,6 +13,10 @@ from inm.inm import ResultCode as _RC, ValueConversions as _VC
 from inm.inm import StandardTypes as _ST, StandardResults as _SRes, StandardRegisters as _SR
 
 
+# IDEA: Add channel options to either ignore channels whose interfaces (e.g. network
+# endpoint or serial port) aren't available, or watch for the interface and try
+# to connect when it appears.
+
 _DEFAULT_UDP_PORT = inm.InetMessageChannel.DEFAULT_UDP_PORT
 _DEFAULT_BAUDRATE = inm.SerialMessageChannel.DEFAULT_BAUDRATE
 _MAX_BAUDRATE = 10_000_000
@@ -24,7 +28,7 @@ _DEFAULT_HOOK_INTERVAL = 1.0  # 1 second between main loop hook invocations
 _prog_title = 'INM Router Script'
 # 0xAABBCCDD
 # A: major version, B: minor version, C: revision, D: build.
-_prog_version = 0x01_00_05_01  # 1.0.5.1
+_prog_version = 0x01_00_05_02  # 1.0.5.2
 
 _firmware_id_l = 0x01
 _firmware_id_h = 0x03
@@ -194,7 +198,7 @@ def _parse_route_options(option_str):
 	for option_name in option_list:
 		if option_name == '-':
 			pass  # NOPtion
-		elif option_name == 'no-broadcast':
+		elif option_name in ('nb', 'no-broadcast'):
 			options |= RouteOptions.NO_BROADCAST
 		else:
 			_log.error(f'Invalid route option {option_name} specified. Exiting.')

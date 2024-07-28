@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 
+#include "bitops.h"
 #include "task_sched.h"
 
 // NOTE: #X means "wrap the value of X in double quotes, without macro expansion".
@@ -26,11 +27,11 @@ int main(int argc, char **argv) {
 	PRINTLN_SYM(SCHED_MIN_DELTA_L, d);
 	PRINTLN_SYM(SCHED_MIN_DELTA_H, d);
 	
-	PRINTLN_SYM(TASK_ST_N(5), d);
-	PRINTLN_SYM(TASK_ST_MAX(5), d);
-	PRINTLN_SYM(TASK_ST_MASK(2, 5), 02X);
-	PRINTLN_SYM(TASK_ST_GET(4, 0b01110000, 0b11011001), d);
-	PRINTLN_SYM(TASK_ST_SET(4, 0b01110000, 0b11011001, 2), 02X);
+	PRINTLN_SYM(BITSTATES(5), d);
+	PRINTLN_SYM(BITMAX(5), d);
+	PRINTLN_SYM(BITMASK_AT(2, 5), 02X);
+	PRINTLN_SYM(GET_BITFIELD_AT(3, 4, 0b11011001), d);
+	PRINTLN_SYM(SET_BITFIELD_AT(3, 4, 0b11011001, 2), 02X);
 	
 	PRINTLN_SYM(TASK_ST_NUM_OFFS, d);
 	PRINTLN_SYM(TASK_ST_NUM_BITS, d);
