@@ -99,27 +99,27 @@ enum {
 
 /**
 	Macro: NRF24X_R_REG_CMD
-	Constructs an *R_REGISTER* command word with a specified nRF24x register address.
+	Constructs an R_REGISTER command word with a specified nRF24x register address.
 	Function-like macro.
 	
 	Parameters:
 		A - 5-bit register address
 	
 	Returns:
-		An *R_REGISTER* command word containing the specified register address.
+		An R_REGISTER command word containing the specified register address.
 */
 #define NRF24X_R_REG_CMD(A) ((uint8_t)(NRF24X_R_REGISTER | NRF24X_REG_ADDR(A)))
 
 /**
 	Macro: NRF24X_W_REG_CMD
-	Constructs a *W_REGISTER* command word with a specified nRF24x register address.
+	Constructs a W_REGISTER command word with a specified nRF24x register address.
 	Function-like macro.
 	
 	Parameters:
 		A - 5-bit register address
 	
 	Returns:
-		A *W_REGISTER* command word containing the specified register address.
+		A W_REGISTER command word containing the specified register address.
 */
 #define NRF24X_W_REG_CMD(A) ((uint8_t)(NRF24X_W_REGISTER | NRF24X_REG_ADDR(A)))
 
@@ -131,14 +131,14 @@ enum {
 
 /**
 	Macro: NRF24X_W_ACK_PAYLOAD_CMD
-	Constructs a *W_ACK_PAYLOAD* command word with a specified nRF24x data pipe number.
+	Constructs a W_ACK_PAYLOAD command word with a specified nRF24x data pipe number.
 	Function-like macro.
 	
 	Parameters:
 		P - 3-bit data pipe number
 	
 	Returns:
-		A *W_ACK_PAYLOAD* command word containing the specified data pipe number.
+		A W_ACK_PAYLOAD command word containing the specified data pipe number.
 */
 #define NRF24X_W_ACK_PAYLOAD_CMD(P) ((uint8_t)(NRF24X_W_ACK_PAYLOAD | NRF24X_PIPE_NUM(P)))
 
@@ -264,6 +264,18 @@ enum {
 #define NRF24X_ARD_OFFSET 4
 #define NRF24X_ARC_SIZE 4
 
+/**
+	Macro: NRF24X_SETUP_RETR_VAL
+	Constructs a SETUP_RETR register value from ARD and ARC bitfield values.
+	Function-like macro.
+	
+	Parameters:
+		ARD - 4-bit ARD bitfield value
+		ARC - 4-bit ARC bitfield value
+	
+	Returns:
+		A SETUP_RETR register value containing the specified ARD and ARC values.
+*/
 #define NRF24X_SETUP_RETR_VAL(ARD, ARC) \
 	(MAKE_BITFIELD_AT(NRF24X_ARD_SIZE, NRF24X_ARD_OFFSET, ARD) | \
 	 GET_BITFIELD(NRF24X_ARC_SIZE, ARC))
@@ -274,6 +286,17 @@ enum {
 
 #define NRF24X_RF_CH_SIZE 7
 
+/**
+	Macro: NRF24X_RF_CH_VAL
+	Constructs an RF_CH register value from an RF_CH bitfield value.
+	Function-like macro.
+	
+	Parameters:
+		CH - 7-bit RF_CH bitfield value
+	
+	Returns:
+		An RF_CH register value containing the specified bitfield value.
+*/
 #define NRF24X_RF_CH_VAL(CH) GET_BITFIELD(NRF24X_RF_CH_SIZE, CH)
 
 /**
@@ -318,17 +341,50 @@ enum {
 
 #define NRF24X_RX_P_NO_OFFSET 1
 
+/**
+	Macro: NRF24X_GET_RX_P_NO
+	Extracts the RX_P_NO bitfield value from a STATUS register value.
+	Function-like macro.
+	
+	Parameters:
+		ST - STATUS register value
+	
+	Returns:
+		The 3-bit RX_P_NO bitfield value in the specified register value.
+*/
 #define NRF24X_GET_RX_P_NO(ST) \
 	GET_BITFIELD_AT(NRF24X_PIPE_NUM_SIZE, NRF24X_RX_P_NO_OFFSET, ST)
 
 #define NRF24X_PLOS_CNT_SIZE 4
 #define NRF24X_PLOS_CNT_OFFSET 4
 
+/**
+	Macro: NRF24X_GET_PLOS_CNT
+	Extracts the PLOS_CNT bitfield value from an OBSERVE_TX register value.
+	Function-like macro.
+	
+	Parameters:
+		OTX - OBSERVE_TX register value
+	
+	Returns:
+		The 4-bit PLOS_CNT bitfield value in the specified register value.
+*/
 #define NRF24X_GET_PLOS_CNT(OTX) \
 	GET_BITFIELD_AT(NRF24X_PLOS_CNT_SIZE, NRF24X_PLOS_CNT_OFFSET, OTX)
 
 #define NRF24X_ARC_CNT_SIZE 4
 
+/**
+	Macro: NRF24X_GET_ARC_CNT
+	Extracts the ARC_CNT bitfield value from an OBSERVE_TX register value.
+	Function-like macro.
+	
+	Parameters:
+		OTX - OBSERVE_TX register value
+	
+	Returns:
+		The 4-bit ARC_CNT bitfield value in the specified register value.
+*/
 #define NRF24X_GET_ARC_CNT(OTX) GET_BITFIELD(NRF24X_ARC_CNT_SIZE, OTX)
 
 /**
@@ -384,9 +440,10 @@ enum {
 
 /**
 	Variable: nrf24x_status
-	The nRF24x IC will return the value of its STATUS register when it receives
-	a command word via SPI. Some of the API macros and functions in this module
-	will store the returned STATUS value here when they receive it.
+	Storage location for STATUS values. The nRF24x IC returns the value of its
+	STATUS register when it receives a command word via SPI. Some of the API
+	macros and functions in this module will store the returned STATUS value
+	here when they receive it.
 */
 extern volatile uint8_t nrf24x_status;
 
@@ -455,7 +512,7 @@ extern uint8_t nrf24x_pending_n_in;
 
 /**
 	Function: nrf24x_out_0
-	Sends a 0-byte output command (i.e. one that consists only of a command word)
+	Sends a 0-byte output command (one that consists only of a command word)
 	to the nRF24x.
 	
 	NOTE: Writes the STATUS register value returned by the nRF24x to <nrf24x_status>.
@@ -473,7 +530,7 @@ uint8_t nrf24x_out_0(uint8_t cmd);
 
 /**
 	Function: nrf24x_out_1
-	Sends a 1-byte output command (i.e. one that consists of a command word and
+	Sends a 1-byte output command (one that consists of a command word and
 	a single output data byte) to the nRF24x.
 	
 	NOTE: Not defined when *NRF24X_NO_CMD_BFR* is defined in asynchronous mode.
@@ -493,7 +550,7 @@ uint8_t nrf24x_out_1(uint8_t cmd, uint8_t data);
 
 /**
 	Function: nrf24x_out_n
-	Sends an N-byte output command (i.e. one that consists of a command word and
+	Sends an N-byte output command (one that consists of a command word and
 	a specified number of output data bytes) to the nRF24x.
 	
 	NOTE: Not defined when *NRF24X_NO_CMD_BFR* is defined in asynchronous mode.
@@ -514,7 +571,7 @@ uint8_t nrf24x_out_n(uint8_t cmd, uint8_t n_out, uint8_t *bfr_out);
 
 /**
 	Function: nrf24x_in_1
-	Sends a 1-byte input command (i.e. one that receives a single input data byte
+	Sends a 1-byte input command (one that receives a single input data byte
 	in response) to the nRF24x.
 	
 	NOTE: Not defined when *NRF24X_NO_CMD_BFR* is defined in asynchronous mode.
@@ -536,7 +593,7 @@ uint8_t nrf24x_in_1(uint8_t cmd, uint8_t *data_p);
 
 /**
 	Function: nrf24x_in_n
-	Sends an N-byte input command (i.e. one that receives a specified number
+	Sends an N-byte input command (one that receives a specified number
 	of input data bytes in response) to the nRF24x.
 	
 	NOTE: Not defined when *NRF24X_NO_CMD_BFR* is defined in asynchronous mode.
@@ -563,6 +620,10 @@ uint8_t nrf24x_in_n(uint8_t cmd, uint8_t n_in, uint8_t *bfr_in);
 /**
 	Macro: NRF24X_NONE_PENDING
 	Special value returned by <nrf24x_in_finish> when no asynchronous command is pending.
+	
+	CAUTION: This is equal to 255/0xff, so that value MUST NOT be used as an actual data
+	byte count. There will generally not be any need for byte counts that large, anyway.
+	
 	Constant macro.
 */
 #define NRF24X_NONE_PENDING 0xff

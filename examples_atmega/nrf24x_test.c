@@ -321,15 +321,18 @@ static void update_all_leds(uint8_t update_type, uint8_t update_arg) {
 static void blink_leds(void) {
 	uint8_t toggle_slow = (GET_BITFIELD(3, led_blink_counter) == 0);
 	uint8_t toggle_fast = (GET_BITFIELD(1, led_blink_counter) == 0);
+	uint8_t pins_to_toggle = 0;
 	led_blink_counter++;
 	
 	for (uint8_t i = 0; i < N_LEDS; i++) {
 		if ((toggle_slow && led_states[i] == LED_STATE_SLOW) ||
 		    (toggle_fast && led_states[i] == LED_STATE_FAST))
 		{
-			LED_PINR = led_pins[i];  // Toggle LED pin.
+			pins_to_toggle |= led_pins[i];  // Set pin to toggle.
 		}
 	}
+	
+	LED_PINR = pins_to_toggle;  // Toggle LED pins.
 }
 
 static ttlv_result set_led_ctrl_mode(uint8_t mode) {
@@ -531,11 +534,11 @@ static void nrf24x_handler(sched_task *task) {
 		task->st |= TASK_SLEEP_BIT;  // Set sleep flag.
 		return;
 	}
-	else if (active_nrf_out_len) {
+	else if (active_nrf_out_len) {  // Active output command finished.
 		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
 		active_nrf_out_len = 0;  // Done.
 	}
-	else if (active_nrf_in_cmd != NOT_A_COMMAND) {
+	else if (active_nrf_in_cmd != NOT_A_COMMAND) {  // Active input command finished.
 		uint8_t *nrf_in_bfr = (active_nrf_in_bfr_ptr) ? active_nrf_in_bfr_ptr : active_nrf_in_bfr;
 		
 		SPI_PORT |= BV(SPI_SS);  // Drive slave select pin high.
@@ -653,11 +656,11 @@ static void led_blink_handler(sched_task *task) {
 }
 
 // --- Manual Mode / Common Steps---
-static void led_handler_manual(sched_task *task) {
+static void led_handler_manual(sched_task *task) {  // Dummy handler for manual mode.
 	task->delay = LED_CTRL_TASK_DELAY;
 }
 
-static void led_handler_reset(sched_task *task) {
+static void led_handler_reset(sched_task *task) {  // Resets the nRF24x.
 	led_ctrl_step = LED_STEP_NONE;
 	task->delay = LED_CTRL_TASK_DELAY;
 	
@@ -676,7 +679,7 @@ static void led_handler_reset(sched_task *task) {
 	NRF_PORT |= BV(NRF_PIN_VCC);  // Disable power supply to nRF24x module.
 }
 
-static void led_handler_startup(sched_task *task) {
+static void led_handler_startup(sched_task *task) {  // Powers up the nRF24x.
 	led_ctrl_step = LED_STEP_STARTUP;
 	task->delay = SCHED_TIME_MS(200);  // nRF24x startup delay (with some margin)
 	task->handler = led_handler_init;
@@ -684,7 +687,7 @@ static void led_handler_startup(sched_task *task) {
 	NRF_PORT &= ~BV(NRF_PIN_VCC);  // Enable power supply to nRF24x module.
 }
 
-static void led_handler_init(sched_task *task) {
+static void led_handler_init(sched_task *task) {  // Initializes the nRF24x.
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
@@ -726,7 +729,7 @@ static void led_handler_init(sched_task *task) {
 }
 
 // --- PTX Mode ---
-static void led_handler_ptx_begin(sched_task *task) {
+static void led_handler_ptx_begin(sched_task *task) {  // PTX control mode setup.
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	if (led_ctrl_step == LED_STEP_BEGIN) {
@@ -746,7 +749,7 @@ static void led_handler_ptx_begin(sched_task *task) {
 	}
 }
 
-static void led_handler_ptx_update(sched_task *task) {
+static void led_handler_ptx_update(sched_task *task) {  // Initiates LED state update.
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
@@ -798,7 +801,7 @@ static void led_handler_ptx_update(sched_task *task) {
 	}
 }
 
-static void led_handler_ptx_wait(sched_task *task) {
+static void led_handler_ptx_wait(sched_task *task) {  // Waits for LED update response.
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	if (led_ctrl_step == LED_STEP_WAIT_POLLING) {  // STATUS polling in progress.
@@ -852,7 +855,7 @@ static void led_handler_ptx_wait(sched_task *task) {
 	}
 }
 
-static void led_handler_ptx_fetch(sched_task *task) {
+static void led_handler_ptx_fetch(sched_task *task) {  // Handles LED update request in response.
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	switch (led_ctrl_step) {
@@ -905,7 +908,7 @@ static void led_handler_ptx_fetch(sched_task *task) {
 }
 
 // --- PRX Mode ---
-static void led_handler_prx_begin(sched_task *task) {
+static void led_handler_prx_begin(sched_task *task) {  // PRX control mode setup.
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	if (check_nrf_queues(NRFQ_OUT))  // Check whether there is an enqueued output operation.
@@ -924,7 +927,7 @@ static void led_handler_prx_begin(sched_task *task) {
 	}
 }
 
-static void led_handler_prx_wait(sched_task *task) {
+static void led_handler_prx_wait(sched_task *task) {  // Waits for LED state update message.
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	if (led_ctrl_step == LED_STEP_WAIT_POLLING) {  // STATUS polling in progress.
@@ -952,7 +955,7 @@ static void led_handler_prx_wait(sched_task *task) {
 	}
 }
 
-static void led_handler_prx_fetch(sched_task *task) {
+static void led_handler_prx_fetch(sched_task *task) {  // Handles LED state update message.
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	switch (led_ctrl_step) {
@@ -1018,7 +1021,7 @@ static void led_handler_prx_fetch(sched_task *task) {
 	}
 }
 
-static void led_handler_prx_request(sched_task *task) {
+static void led_handler_prx_request(sched_task *task) {  // Submits LED state update request.
 	task->delay = LED_CTRL_TASK_DELAY;
 	
 	if (check_nrf_queues(NRFQ_OUT_PENDING))  // Check whether there is a pending output operation.
@@ -1136,7 +1139,8 @@ static void message_handler(sched_task *task) {
 		}
 	}
 	else if (TTLV_CHECK_TL_MAX(TTLV_APP_MSG_T_OUT, NRF24X_TEST_MAX_MSG_LEN)) {
-		if (pending_nrf_out_len) {
+		// Explicit nRF24x output operation request.
+		if (pending_nrf_out_len) {  // Operation queue is full.
 			ttlv_finish_recv();
 			res = TTLV_APP_RES_BUSY;
 		}
@@ -1147,7 +1151,8 @@ static void message_handler(sched_task *task) {
 		}
 	}
 	else if (TTLV_CHECK_TL(TTLV_APP_MSG_T_IN, 2)) {
-		if (pending_nrf_in_cmd != NOT_A_COMMAND) {
+		// Explicit nRF24x input operation request.
+		if (pending_nrf_in_cmd != NOT_A_COMMAND) {  // Operation queue is full.
 			ttlv_finish_recv();
 			res = TTLV_APP_RES_BUSY;
 		}
@@ -1179,6 +1184,10 @@ static void message_handler(sched_task *task) {
 static void init_tasks(void) {
 	sched_task task;
 	
+	// The NRF24X task is responsible for carrying out SPI operations enqueued
+	// by other tasks. If requested, it will transmit the result of an input
+	// operation in an INM response message. The task is compatible with both
+	// the synchronous and asynchronous modes of the nRF24x interface module.
 	task = (sched_task) {
 		.st = TASK_ST_MAKE(0, NRF24X_TASK_CAT, 0),
 		.delay = SCHED_TIME_ZERO,
@@ -1186,6 +1195,7 @@ static void init_tasks(void) {
 	};
 	sched_add(&task);
 	
+	// The LED_BLINK task handles the timing of blinking LEDs.
 	task = (sched_task) {
 		.st = TASK_ST_MAKE(0, LED_BLINK_TASK_CAT, 0),
 		.delay = LED_BLINK_TASK_DELAY,
@@ -1193,6 +1203,18 @@ static void init_tasks(void) {
 	};
 	sched_add(&task);
 	
+	// The LED_CTRL task is an implementation of a protocol to synchronize the
+	// state of LEDs between two systems over an nRF24x wireless link.
+	// One system's nRF24x operates as PTX (basically the client/initiator) and
+	// the other's as PRX (the server/responder). The PTX system regularly updates
+	// the state of its LEDs and sends an update message to the PRX system, which
+	// updates its own LEDs accordingly. The PRX system may also send (a different
+	// kind of) LED update request in response to the PTX system. Many aspects
+	// of this behavior can be configured via the INM interface.
+	//
+	// The LED update protocol relies on a finite-state machine that is implemented
+	// by having one handler procedure for each state and updating the task handler
+	// pointer when there is a state transition.
 	task = (sched_task) {
 		.st = TASK_ST_MAKE(0, LED_CTRL_TASK_CAT, 0),
 		.delay = LED_CTRL_TASK_DELAY,
@@ -1200,6 +1222,7 @@ static void init_tasks(void) {
 	};
 	sched_add(&task);
 	
+	// The MESSENGER task receives and processes incoming INM requests.
 	task = (sched_task) {
 		.st = TASK_ST_MAKE(0, MESSENGER_TASK_CAT, 0),
 		.delay = SCHED_TIME_ZERO,
