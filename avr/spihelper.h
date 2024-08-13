@@ -158,14 +158,14 @@ extern volatile spi_state spi_request_state;
 /**
 	Macro: SPI_IS_READY
 	Evaluates to a true value if and only if the SPI module is initialized and
-	ready to begin a new operation. Expression macro.
+	ready to begin a new asynchronous operation. Expression macro.
 */
 #define SPI_IS_READY (spi_request_state == SPI_READY)
 
 /**
 	Macro: SPI_IS_ACTIVE
 	Evaluates to a true value if and only if the SPI module is busy with an
-	ongoing operation. Expression macro.
+	ongoing asynchronous operation. Expression macro.
 */
 #define SPI_IS_ACTIVE (spi_request_state == SPI_ACTIVE)
 

@@ -3,7 +3,7 @@
 
 /**
 	File: bitops.h
-	Generic bit and bit field manipulation macros.
+	General-purpose bit and bit field manipulation macros.
 */
 
 /**
