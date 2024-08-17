@@ -9,6 +9,7 @@ from nrf24x import *
 
 srcadr_ = 96
 udp_port_ = 2996
+timeout_ = 1
 dstadr = 2
 r_cmd = bytes((NRF24X_R_RX_PAYLOAD,))
 payload = b'HELO'
@@ -16,7 +17,7 @@ r_data = r_cmd + bytes((len(payload),))
 
 nrf24x.verbose = True  # Log each nRF24x register operation on standard output.
 
-with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_) as h:
+with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_, timeout=timeout_) as h:
 	# Ask target INM node about its firmware version.
 	fw_ver = get_reg(h, dstadr, h.Reg.FWVERSION)
 	print(f'Node {dstadr} has firmware version {fw_ver:#04x}.')
@@ -24,6 +25,12 @@ with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_) as h:
 	# Ask target INM node about its firmware ID.
 	fw_id = get_regpair(h, dstadr, h.Reg.FWID)
 	print(f'Node {dstadr} has firmware ID {fw_id:#06x}.')
+	
+	# Power up the nRF24x.
+	get_reg_assert(h, dstadr, NRF24X_IOPINS, 0x04)
+	set_reg(h, dstadr, NRF24X_IOPINS, 0x00)
+	time.sleep(0.2)  # Sleep for 200 milliseconds.
+	get_reg_assert(h, dstadr, NRF24X_IOPINS, 0x02)
 	
 	# Read register CONFIG/0x00 from nRF24x chip.
 	get_reg_assert(h, dstadr, nrf24x_reg(0x00), 0x08)
@@ -120,5 +127,10 @@ with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_) as h:
 	set_reg(h, dstadr, nrf24x_reg(0x00), 0x09)
 	time.sleep(0.01)  # Sleep for 10 milliseconds.
 	get_reg_assert(h, dstadr, nrf24x_reg(0x00), 0x09)
+	
+	# Power down the nRF24x.
+	set_reg(h, dstadr, NRF24X_IOPINS, 0x04)
+	time.sleep(0.2)  # Sleep for 200 milliseconds.
+	get_reg_assert(h, dstadr, NRF24X_IOPINS, 0x04)
 	
 	print('DONE')

@@ -22,8 +22,25 @@ NRF24X_W_TX_PAYLOAD = 0b10100000  # 0xa0
 
 verbose = False
 
+def is_nrf24x_reg_num(n):
+	return 0x00 <= n < 0x20
+
+def is_nrf24x_reg(reg):
+	return is_nrf24x_reg_num(reg - NRF24X_REG_START)
+
 def nrf24x_reg(n):
-	return NRF24X_REG_START + n if 0x00 <= n < 0x20 else None
+	return NRF24X_REG_START + n if is_nrf24x_reg_num(n) else None
+
+def nrf24x_reg_num(reg):
+	return reg - NRF24X_REG_START if is_nrf24x_reg(reg) else None
+
+def reg_to_str(reg):
+	nrf_reg_num = nrf24x_reg_num(reg)
+	
+	if nrf_reg_num is not None:
+		return f'{reg:#04x} ({nrf_reg_num:#04x})'
+	else:
+		return f'{reg:#04x}'
 
 def abort(reason=None):
 	if reason is not None:
@@ -46,14 +63,14 @@ def get_reg(h, dstadr, reg):
 	r_index, reg_val, req_id = msg.format_mval(conv=h.VC.Int)  # Unpack INM_REG_READ_RES payload.
 	
 	if verbose:
-		print(f'Got value {reg_val:#04x} from register {reg:#04x}.')
+		print(f'Got value {reg_val:#04x} from register {reg_to_str(reg)}.')
 	
 	return reg_val
 
 def get_reg_assert(h, dstadr, reg, expected_val):
 	reg_val = get_reg(h, dstadr, reg)
 	if reg_val != expected_val:  # unexpected value
-		abort(f'Got value {reg_val:#04x} from register {reg:#04x}, expected {expected_val:#04x}.')
+		abort(f'Got value {reg_val:#04x} from register {reg_to_str(reg)}, expected {expected_val:#04x}.')
 
 def get_regpair(h, dstadr, reg):
 	res, header, msg, link_adr = h.sendrecv(dstadr, h.Typ.REGPAIR_READ, reg)
@@ -71,7 +88,7 @@ def get_regpair(h, dstadr, reg):
 
 def set_reg(h, dstadr, reg, reg_val):
 	if verbose:
-		print(f'Setting value {reg_val:#04x} in register {reg:#04x}.')
+		print(f'Setting value {reg_val:#04x} in register {reg_to_str(reg)}.')
 	
 	res, header, msg, link_adr = h.sendrecv_mval(dstadr, h.Typ.REG_WRITE, (reg, reg_val))
 	abort_on_fail(res)

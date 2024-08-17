@@ -27,8 +27,8 @@ _DEFAULT_HOOK_INTERVAL = 1.0  # 1 second between main loop hook invocations
 
 _prog_title = 'INM Router Script'
 # 0xAABBCCDD
-# A: major version, B: minor version, C: revision, D: build.
-_prog_version = 0x01_00_05_02  # 1.0.5.2
+# A: major version, B: minor version, C: revision, D: build
+_prog_version = 0x01_00_05_03  # 1.0.5.3
 
 _firmware_id_l = 0x01
 _firmware_id_h = 0x03
@@ -373,10 +373,15 @@ def main():
 			sys.exit(1)
 		
 		rtab = _init_routes(args, channels)
+		relay_messages = args.relay
+		
+		if relay_messages and inm_adr not in rtab:
+			_log.warning('Relay enabled but no relay route specified. Disabling.')
+			relay_messages = False
 		
 		try:
 			with inm.RoutingMessageChannel(inm_adr, rtab, channels, hook_interval, None, selector) as rch:
-				rch.relay_messages = args.relay
+				rch.relay_messages = relay_messages
 				
 				for cc_adr in cc_to:
 					rch.add_cc_adr(cc_adr)

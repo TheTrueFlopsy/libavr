@@ -450,10 +450,10 @@ static ttlv_result ttlv_reg_read(ttlv_reg_index index, ttlv_reg_value *value_p) 
 	case TTLV_APP_REG_STATUS:  // nRF24x status register
 		*value_p = nrf24x_status;
 		break;
-	case TTLV_APP_REG_IOPINS:  // Get logic states of CE and IRQ pins.
+	case TTLV_APP_REG_IOPINS:  // Get logic states of CE, IRQ and Vcc pins.
 		*value_p = GET_BITFIELD_AT(1, NRF_PIN_CE, NRF_PINR_CE) |
 		           (GET_BITFIELD_AT(1, NRF_PIN_IRQ, NRF_PINR_IRQ) << 1) |
-		           (GET_BITFIELD_AT(2, NRF_PIN_VCC, NRF_PINR_VCC) << 2);
+		           (GET_BITFIELD_AT(1, NRF_PIN_VCC, NRF_PINR_VCC) << 2);
 		break;
 	case TTLV_APP_REG_LED_CTRL:
 		*value_p = led_ctrl_mode;
