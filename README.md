@@ -332,7 +332,7 @@ debouncer (`tbouncer.h`) and memory monitors (`memmon.h`).
 
 ### examples_atmega/nrf24x_test.c – nRF24x Wireless Demo
 Demonstration of the nRF24x helper module (`nrf24x.h`). Lets two MCUs, each connected
-to an nRF24x transceiver, exchange information about the state of LEDs to keep them
+to an nRF24L01+ transceiver, exchange information about the state of LEDs to keep them
 synchronized. Also demonstrates updating the task handler pointer to implement a state
 machine. Controlled via a TLV/INM interface (`task_tlv.h` and `std_tlv.h`).
 

@@ -87,7 +87,6 @@ with helper.InmHelper(srcadr=srcadr_, udp_port=udp_port_, timeout=timeout_) as h
 	set_reg(h, dstadr, NRF24X_IOPINS, 0x00)
 	get_reg_assert(h, dstadr, NRF24X_IOPINS, 0x00)
 	
-	#time.sleep(0.1)  # Sleep for 100 milliseconds.
 	time.sleep(1.0)  # Sleep for 1 second.
 	
 	# Read register STATUS/0x07 from nRF24x chip.

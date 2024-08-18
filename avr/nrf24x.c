@@ -104,9 +104,15 @@ uint8_t nrf24x_in_n(uint8_t cmd, uint8_t n_in, uint8_t *bfr_in) {
 #endif
 
 #if !defined(NRF24X_NO_CMD_BFR) && !defined(NRF24X_SYNCHRONOUS)
-uint8_t nrf24x_in_finish(uint8_t *bfr_in) {
-	// ISSUE: Add a check to ensure that no asynchronous SPI operation is ongoing?
+uint8_t nrf24x_try_finish(uint8_t *n_in, uint8_t *bfr_in) {
+	if (SPI_IS_ACTIVE)
+		return 0;
 	
+	*n_in = nrf24x_in_finish(bfr_in);
+	return 1;
+}
+
+uint8_t nrf24x_in_finish(uint8_t *bfr_in) {
 	uint8_t n_in = nrf24x_pending_n_in;
 	if (n_in == NRF24X_NONE_PENDING)
 		return NRF24X_NONE_PENDING;

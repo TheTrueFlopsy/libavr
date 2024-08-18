@@ -628,6 +628,9 @@ uint8_t nrf24x_in_n(uint8_t cmd, uint8_t n_in, uint8_t *bfr_in);
 */
 #define NRF24X_NONE_PENDING 0xff
 
+// NOTE: Last-minute addition. Not sure it's a good idea. Leaving it undocumented.
+uint8_t nrf24x_try_finish(uint8_t *n_in, uint8_t *bfr_in);
+
 /**
 	Function: nrf24x_in_finish
 	Used to finish an asynchronous input command sent to the nRF24x and fetch
